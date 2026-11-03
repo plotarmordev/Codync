@@ -32,6 +32,7 @@ quotes itself.
 
 | Method | Body | Notes |
 |---|---|---|
+| `bots` | `{}` | `{bots: [Bot]}`: every bot and group on this computer, each as its `bot` event carries it (`id`, `name`, `kind`, `status`, `activity`, `unread`, …; `Hub::bot_json`), without deleted ones. For callers that want the roster once instead of the event stream; needs the bearer token (`401` without it) or a device's `control` scope. |
 | `send` | `botId, text, clientNonce, replyTo?` | `botId` is a bot or a group. `replyTo`: the id of a user message or final reply in that chat; anything else is refused. Works in the relay mailbox too. |
 | `createBot` | `{kind:"group", name, description?, members}` | Returns the existing group when these exact bots already share one. |
 | `updateBot` | `{id, name?, members?, pinned?, hidden?, section?}` | A group can't become a bot or the reverse. `section`: a name, or `null` for none. |

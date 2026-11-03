@@ -241,6 +241,10 @@ export const isImageName = (name: string) =>
 /** A shared image small enough to show in the chat (the whole file is fetched for it). */
 export const showsAsImage = (file: SharedFile) => isImageName(file.name) && file.size <= 20 * 1024 * 1024
 
+/** A shared voice note or other sound small enough to play in the chat (the whole file is fetched for it). */
+export const showsAsAudio = (file: SharedFile) =>
+  ['mp3', 'm4a', 'wav', 'aac'].includes(file.name.split('.').pop()?.toLowerCase() ?? '') && file.size <= 20 * 1024 * 1024
+
 export interface ConnectionRequest {
   [key: string]: unknown
 }

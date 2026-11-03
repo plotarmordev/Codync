@@ -107,6 +107,8 @@ private fun isImageName(name: String) = name.substringAfterLast('.', "").lowerca
 @Serializable data class SharedFile(val id: String, val name: String, val size: Long, val sha256: String) {
     /** An image small enough to show in the chat (the phone fetches all of it). */
     val showsAsImage: Boolean get() = isImageName(name) && size <= 20L * 1024 * 1024
+    /** A voice note or other sound small enough to play in the chat (the phone fetches all of it). */
+    val showsAsAudio: Boolean get() = name.substringAfterLast('.', "").lowercase() in listOf("mp3", "m4a", "wav", "aac") && size <= 20L * 1024 * 1024
 
     /** Before any of it is read: a name that can't leave its folder and a hash to check. */
     fun validate() {

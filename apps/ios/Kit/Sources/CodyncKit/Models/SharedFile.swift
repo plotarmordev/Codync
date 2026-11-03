@@ -16,6 +16,10 @@ public struct SharedFile: Codable, Hashable, Sendable, Identifiable {
 
     /// An image small enough to show in the chat (the phone fetches all of it).
     public var showsAsImage: Bool { Attachment.isImage(name) && size <= 20 * 1024 * 1024 }
+    /// A voice note or other sound small enough to play in the chat (the phone fetches all of it).
+    public var showsAsAudio: Bool {
+        ["mp3", "m4a", "wav", "aac"].contains((name as NSString).pathExtension.lowercased()) && size <= 20 * 1024 * 1024
+    }
 
     public func validate() throws {
         guard size >= 0, size <= 100 * 1024 * 1024,

@@ -84,7 +84,7 @@ import kotlinx.coroutines.withContext
 
 /** An image a bot shared, like `AttachmentImage`. */
 @Composable internal fun SharedImage(file: SharedFile, entryId: String, maxPixels: Int, state: AppState, store: AppStore, modifier: Modifier) =
-    RemoteImage(file.id, maxPixels, state, modifier, ContentScale.Fit) { store.sharedImage(entryId, file) }
+    RemoteImage(file.id, maxPixels, state, modifier, ContentScale.Fit) { store.sharedFile(entryId, file) }
 
 /** A picture `load` fetches from the computer into the cache (iOS `AttachmentImage`); a placeholder until then. */
 @Composable private fun RemoteImage(id: String, maxPixels: Int, state: AppState, modifier: Modifier, scale: ContentScale, load: suspend () -> java.io.File) {

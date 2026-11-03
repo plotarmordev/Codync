@@ -66,6 +66,12 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
         "manageCall" => {
             crate::chat::manage::call(hub, str_arg(&b, "botId")?, str_arg(&b, "name")?, &b["arguments"]).await?
         }
+        // The roster as the event stream's `bot` events carry it, without the deletion records a catch-up keeps.
+        "bots" => {
+            let bots: Vec<Value> =
+                hub.store.bots()?.iter().filter(|row| !row.deleted).map(|row| hub.bot_json(row)).collect();
+            json!({"bots": bots})
+        }
         "history" => {
             let bot = str_arg(&b, "botId")?;
             let before = b["beforeSeq"].as_i64().unwrap_or(i64::MAX);

@@ -22,71 +22,114 @@ import androidx.compose.ui.unit.dp
 import com.codync.android.core.Entry
 import com.codync.android.core.SharedFile
 import com.codync.android.design.*
+import java.io.File
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Plays a sound a bot shared (a voice note), fetched once from the computer (iOS `SharedAudio`); one card's player. */
-private class SharedAudio(private val manager: AudioManager) {
+/** A loaded sound, ready to play (`MediaSound` in the app). */
+internal interface Sound {
+    val playing: Boolean
+    /** Whether it started (another app may hold the audio focus). */
+    fun start(): Boolean
+    fun pause()
+    fun release()
+}
+
+/**
+ * Plays a sound a bot shared (a voice note), fetched once from the computer by [load] (iOS `SharedAudio`); one card's
+ * player. [open] makes the player and calls back when it stops on its own.
+ */
+internal class SharedAudio(
+    private val load: suspend () -> File,
+    private val open: (File, stopped: () -> Unit) -> Sound,
+    private val failed: () -> Unit,
+) {
     var playing by mutableStateOf(false)
         private set
-    private var player: MediaPlayer? = null
+    private var sound: Sound? = null
     /** Taps arrive on the main thread: one while the sound loads is dropped, so it never starts a second player. */
     private var loading = false
-    private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
-    /** Other apps' sound pauses while the note plays and picks up again after (iOS hands back its audio session). */
-    private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(attributes)
-        .setOnAudioFocusChangeListener { if (it != AudioManager.AUDIOFOCUS_GAIN) pause() }.build()
+    /** The card went: a load still running then starts nothing. */
+    private var released = false
 
-    suspend fun toggle(entry: Entry, file: SharedFile, store: AppStore) {
-        val current = player
-        if (current != null && current.isPlaying) {
-            pause()
+    suspend fun toggle() {
+        val current = sound
+        if (current != null && current.playing) {
+            current.pause()
+            playing = false
             return
         }
         if (loading) return
         loading = true
         try {
-            val ready = current ?: MediaPlayer().also { player = it }.apply {
-                setAudioAttributes(attributes)
-                setDataSource(store.sharedFile(entry.id, file).path)
-                setOnCompletionListener { finished() }
-                prepare()
+            val ready = current ?: load().let { file ->
+                if (released) return
+                open(file) { playing = false }.also { sound = it }
             }
-            if (manager.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return
-            ready.start()
-            playing = true
+            playing = ready.start()
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { release(); store.showError(IOException("Couldn't play ${file.name}.")) }
+        catch (_: Exception) { drop(); failed() }
         finally { loading = false }
     }
 
-    private fun pause() {
-        player?.takeIf { it.isPlaying }?.pause()
-        finished()
+    fun release() {
+        released = true
+        drop()
     }
 
-    /** Paused, released or played to its end: other apps' sound may pick up again. */
-    private fun finished() {
+    private fun drop() {
+        sound?.release()
+        sound = null
         playing = false
+    }
+}
+
+/** A voice note through `MediaPlayer`, holding the audio focus while it plays as iOS holds its audio session. */
+private class MediaSound(private val manager: AudioManager, file: File, private val stopped: () -> Unit) : Sound {
+    private val attributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+    /** Other apps' sound pauses while the note plays and picks up again after. */
+    private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).setAudioAttributes(attributes)
+        .setOnAudioFocusChangeListener { if (it != AudioManager.AUDIOFOCUS_GAIN) { pause(); stopped() } }.build()
+    private val player = MediaPlayer().apply {
+        try {
+            setAudioAttributes(attributes)
+            setDataSource(file.path)
+            setOnCompletionListener { manager.abandonAudioFocusRequest(focus); stopped() }
+            prepare()
+        } catch (error: Exception) { release(); throw error }
+    }
+
+    override val playing get() = player.isPlaying
+
+    override fun start(): Boolean {
+        if (manager.requestAudioFocus(focus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return false
+        player.start()
+        return true
+    }
+
+    override fun pause() {
+        if (player.isPlaying) player.pause()
         manager.abandonAudioFocusRequest(focus)
     }
 
-    fun release() {
-        player?.release()
-        player = null
-        finished()
+    override fun release() {
+        player.release()
+        manager.abandonAudioFocusRequest(focus)
     }
 }
 
 /** A voice note's play/pause, in place of its file icon. */
 @Composable internal fun SharedAudioButton(entry: Entry, file: SharedFile, store: AppStore) {
     val manager = LocalContext.current.getSystemService(AudioManager::class.java)
-    val audio = remember(file.id) { SharedAudio(manager) }
+    val audio = remember(file.id) {
+        SharedAudio(load = { store.sharedFile(entry.id, file) }, open = { path, stopped -> MediaSound(manager, path, stopped) },
+            failed = { store.showError(IOException("Couldn't play ${file.name}.")) })
+    }
     val scope = rememberCoroutineScope()
     DisposableEffect(audio) { onDispose { audio.release() } }
-    Box(Modifier.size(36.dp).plainButton { scope.launch { audio.toggle(entry, file, store) } }
+    Box(Modifier.size(36.dp).plainButton { scope.launch { audio.toggle() } }
         .semantics { contentDescription = (if (audio.playing) "Pause " else "Play ") + file.name }, contentAlignment = Alignment.Center) {
         Symbol(if (audio.playing) "pause.circle" else "play.circle", size = 24.dp, tint = Palette.text)
     }

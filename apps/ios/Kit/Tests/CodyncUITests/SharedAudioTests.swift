@@ -6,8 +6,13 @@ import Testing
 /// A sound's fetch from the computer that the test answers when it chooses.
 @MainActor private final class HeldLoad {
     private var waiting: CheckedContinuation<Data?, Never>?
+    private(set) var calls = 0
 
-    func call() async -> Data? { await withCheckedContinuation { waiting = $0 } }
+    func call() async -> Data? {
+        calls += 1
+        return await withCheckedContinuation { waiting = $0 }
+    }
+
     func asked() async -> Bool { await until { self.waiting != nil } }
 
     func answer(_ data: Data?) {
@@ -26,7 +31,8 @@ private func silentWAV() -> Data {
     return wav + Data("data".utf8) + le(UInt32(samples.count)) + samples
 }
 
-@MainActor @Test func aVoiceNoteWhoseCardGoesWhileItLoadsNeverPlays() async {
+/// A voice note's player whose fetch `load` holds, on a store to report errors to.
+@MainActor private func playing(_ body: (SharedAudio, HeldLoad, BotStore, SharedFile) async -> Void) async {
     let suite = "SharedAudioTests.\(UUID().uuidString)"
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)
@@ -34,14 +40,33 @@ private func silentWAV() -> Data {
     defer { store.retire() }
     let load = HeldLoad()
     let audio = SharedAudio { _, _, _ in await load.call() }
-    let note = SharedFile(id: UUID().uuidString, name: "note.wav", size: 0, sha256: "")
+    await body(audio, load, store, SharedFile(id: UUID().uuidString, name: "note.wav", size: 0, sha256: ""))
+}
 
-    let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
-    #expect(await load.asked())
-    audio.stop()
-    load.answer(silentWAV())
-    await tap.value
+@MainActor @Test func aSecondTapWhileTheSoundLoadsPlaysItOnce() async {
+    await playing { audio, load, store, note in
+        let first = Task { await audio.toggle(note, entryId: "entry", model: store) }
+        #expect(await load.asked())
+        await audio.toggle(note, entryId: "entry", model: store)
+        load.answer(silentWAV())
+        await first.value
 
-    #expect(!audio.playing)
-    #expect(store.lastError == nil)
+        #expect(load.calls == 1)
+        #expect(audio.playing)
+        await audio.toggle(note, entryId: "entry", model: store)
+        #expect(!audio.playing)
+    }
+}
+
+@MainActor @Test func aVoiceNoteWhoseCardGoesWhileItLoadsNeverPlays() async {
+    await playing { audio, load, store, note in
+        let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+        #expect(await load.asked())
+        audio.stop()
+        load.answer(silentWAV())
+        await tap.value
+
+        #expect(!audio.playing)
+        #expect(store.lastError == nil)
+    }
 }

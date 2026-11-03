@@ -15,6 +15,12 @@ final class SharedAudio {
     @ObservationIgnored private var ownsSession = false
     /// Bumped by `stop()`: a load still running when the card went doesn't start playing.
     @ObservationIgnored private var generation = 0
+    /// Fetches the sound's bytes; tests hold it open to stop the card mid-load.
+    private let load: @MainActor (BotStore, SharedFile, String) async -> Data?
+
+    init(load: @escaping @MainActor (BotStore, SharedFile, String) async -> Data? = { await $0.sharedFileData($1, entryId: $2) }) {
+        self.load = load
+    }
 
     func toggle(_ file: SharedFile, entryId: String, model: BotStore) async {
         if let player, player.isPlaying {
@@ -58,7 +64,7 @@ final class SharedAudio {
 
     private func prepared(_ file: SharedFile, entryId: String, model: BotStore) async throws -> AVAudioPlayer {
         if let player { return player }
-        guard let data = await model.sharedFileData(file, entryId: entryId) else { throw CocoaError(.fileReadUnknown) }
+        guard let data = await load(model, file, entryId) else { throw CocoaError(.fileReadUnknown) }
         let player = try AVAudioPlayer(data: data)
         let done = PlayDone { [weak self] in Task { @MainActor in self?.finished() } }
         player.delegate = done

@@ -222,7 +222,7 @@ async fn publish(hub: &Arc<Hub>, bot: &str, args: &Value) -> Result<Value> {
             artifact.entry_id = Some(entry);
             put(hub, &mut artifact)?;
         }
-        // A routine, a room or a bot request: the artifact is in the chat's Library, and its reply says so.
+        // A room or a bot request: the artifact is in the chat's Library, and its reply says so.
         Err(error) => answer["card"] = format!("not posted ({error:#}); mention the artifact in your reply").into(),
     }
     Ok(answer)

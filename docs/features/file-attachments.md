@@ -35,11 +35,11 @@ Files travel in both directions: users attach inputs, and bots explicitly share 
 
 ## Files from a bot
 
-In its own chat, a bot calls the built-in chat MCP tool
+In its own chat, including a routine run, a bot calls the built-in chat MCP tool
 `send_file {path, name?}`. Paths may be absolute or relative to its working directory.
 The optional name is a display filename without folders. Any regular file type is
 accepted, including binary, hidden, extensionless and empty files, up to 100 MiB.
-Directories and special files are refused. Group, routine and delegated turns cannot
+Directories and special files are refused. Group and delegated turns cannot
 publish files.
 
 The host streams a snapshot into `~/.codync/bots/<bot>/files/<fileId>` and records

@@ -22,10 +22,10 @@ When to make one is part of every bot's instructions (`chat::outbox::INSTRUCTION
 message, one artifact per subject, updated rather than made again. A session whose frozen instructions predate
 artifacts gets a one-line reminder of this with each message in the bot's own chat (`turn.rs`, like `send_file`'s).
 
-A publish in the bot's own chat also posts an artifact card there: a final `agent` entry with
-`{text: "Artifact: <title>", final: true, artifact: {id, title, updatedAt}}`. Older apps show the text. In a routine
-run, a group chat or a request from another bot the artifact is saved and in the chat's Library, but no card is
-posted (`card` in the answer says so), and the bot mentions it in its reply.
+A publish in the bot's own chat, a routine run's included, also posts an artifact card there: a final `agent` entry
+with `{text: "Artifact: <title>", final: true, artifact: {id, title, updatedAt}}`. Older apps show the text. In a
+group chat or a request from another bot the artifact is saved and in the chat's Library, but no card is posted
+(`card` in the answer says so), and the bot mentions it in its reply.
 
 A message about an artifact is a reply to its card: `replyTo` carries the artifact id and quotes it under its current
 title (`replies::quote`), and the bot reads `[Codync: this is about your artifact "<title>" (id …). Its current HTML is

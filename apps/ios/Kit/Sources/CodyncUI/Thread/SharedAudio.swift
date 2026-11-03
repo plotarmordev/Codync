@@ -13,6 +13,8 @@ final class SharedAudio {
     @ObservationIgnored private var loading = false
     /// Whether this player turned the audio session on (a call or dictation keeps its own).
     @ObservationIgnored private var ownsSession = false
+    /// Bumped by `stop()`: a load still running when the card went doesn't start playing.
+    @ObservationIgnored private var generation = 0
 
     func toggle(_ file: SharedFile, entryId: String, model: BotStore) async {
         if let player, player.isPlaying {
@@ -23,8 +25,10 @@ final class SharedAudio {
         guard !loading else { return }
         loading = true
         defer { loading = false }
+        let started = generation
         do {
             let player = try await prepared(file, entryId: entryId, model: model)
+            guard generation == started else { return }
             // Heard with the ringer off too.
             let session = AVAudioSession.sharedInstance()
             if session.category != .playAndRecord {
@@ -39,6 +43,7 @@ final class SharedAudio {
     }
 
     func stop() {
+        generation += 1
         player?.stop()
         finished()
     }

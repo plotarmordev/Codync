@@ -8,20 +8,30 @@ import Observation
 final class SharedAudio {
     private(set) var playing = false
     @ObservationIgnored private var player: AVAudioPlayer?
-    @ObservationIgnored private var finished: Finished?
+    @ObservationIgnored private var done: PlayDone?
+    /// A tap while the sound loads is dropped, so it never starts a second player.
+    @ObservationIgnored private var loading = false
+    /// Whether this player turned the audio session on (a call or dictation keeps its own).
+    @ObservationIgnored private var ownsSession = false
 
     func toggle(_ file: SharedFile, entryId: String, model: BotStore) async {
         if let player, player.isPlaying {
             player.pause()
-            playing = false
+            finished()
             return
         }
+        guard !loading else { return }
+        loading = true
+        defer { loading = false }
         do {
             let player = try await prepared(file, entryId: entryId, model: model)
-            // Heard with the ringer off too; a call or dictation keeps its own session.
+            // Heard with the ringer off too.
             let session = AVAudioSession.sharedInstance()
-            if session.category != .playAndRecord { try session.setCategory(.playback) }
-            try session.setActive(true)
+            if session.category != .playAndRecord {
+                try session.setCategory(.playback)
+                try session.setActive(true)
+                ownsSession = true
+            }
             playing = player.play()
         } catch {
             model.lastError = "Couldn't play \(file.name)."
@@ -30,25 +40,24 @@ final class SharedAudio {
 
     func stop() {
         player?.stop()
+        finished()
+    }
+
+    /// Paused, stopped or played to its end: other apps' audio may pick up again.
+    private func finished() {
         playing = false
+        guard ownsSession else { return }
+        ownsSession = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func prepared(_ file: SharedFile, entryId: String, model: BotStore) async throws -> AVAudioPlayer {
         if let player { return player }
         guard let data = await model.sharedFileData(file, entryId: entryId) else { throw CocoaError(.fileReadUnknown) }
         let player = try AVAudioPlayer(data: data)
-        let finished = Finished { [weak self] in Task { @MainActor in self?.playing = false } }
-        player.delegate = finished
-        (self.player, self.finished) = (player, finished)
+        let done = PlayDone { [weak self] in Task { @MainActor in self?.finished() } }
+        player.delegate = done
+        (self.player, self.done) = (player, done)
         return player
     }
-}
-
-/// Player delegate: a note that played to its end shows Play again.
-private final class Finished: NSObject, AVAudioPlayerDelegate, Sendable {
-    let onFinish: @Sendable () -> Void
-
-    init(onFinish: @escaping @Sendable () -> Void) { self.onFinish = onFinish }
-
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) { onFinish() }
 }

@@ -155,5 +155,9 @@ public struct Attachment: Codable, Hashable, Sendable, Identifiable {
     public static func isImage(_ name: String) -> Bool {
         ["png", "jpg", "jpeg", "heic", "gif", "webp", "tiff", "bmp"].contains((name as NSString).pathExtension.lowercased())
     }
+
+    public static func isAudio(_ name: String) -> Bool {
+        ["mp3", "m4a", "wav", "aac"].contains((name as NSString).pathExtension.lowercased())
+    }
 }
 

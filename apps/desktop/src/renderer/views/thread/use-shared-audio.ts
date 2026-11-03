@@ -6,6 +6,8 @@ import { useStore } from '../../store/context'
 export function useSharedAudio(file: SharedFile, entryId: string) {
   const store = useStore()
   const audio = useRef<HTMLAudioElement | null>(null)
+  // A tap while the sound loads is dropped, so it never starts a second player.
+  const loading = useRef(false)
   const [playing, setPlaying] = useState(false)
   useEffect(() => () => {
     audio.current?.pause()
@@ -24,7 +26,10 @@ export function useSharedAudio(file: SharedFile, entryId: string) {
   }
   const toggle = () => {
     if (playing) audio.current?.pause()
-    else play().catch(() => store.setError(`Couldn't play ${file.name}.`))
+    else if (!loading.current) {
+      loading.current = true
+      play().catch(() => store.setError(`Couldn't play ${file.name}.`)).finally(() => { loading.current = false })
+    }
   }
   return { playing, toggle }
 }

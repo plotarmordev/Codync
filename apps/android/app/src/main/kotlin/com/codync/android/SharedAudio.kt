@@ -27,6 +27,8 @@ private class SharedAudio {
     var playing by mutableStateOf(false)
         private set
     private var player: MediaPlayer? = null
+    /** Taps arrive on the main thread: one while the sound loads is dropped, so it never starts a second player. */
+    private var loading = false
 
     suspend fun toggle(entry: Entry, file: SharedFile, store: AppStore) {
         val current = player
@@ -35,16 +37,19 @@ private class SharedAudio {
             playing = false
             return
         }
+        if (loading) return
+        loading = true
         try {
-            val ready = current ?: MediaPlayer().apply {
+            val ready = current ?: MediaPlayer().also { player = it }.apply {
                 setDataSource(store.sharedFile(entry.id, file).path)
                 setOnCompletionListener { playing = false }
                 prepare()
-            }.also { player = it }
+            }
             ready.start()
             playing = true
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { store.showError(IOException("Couldn't play ${file.name}.")) }
+        catch (_: Exception) { release(); store.showError(IOException("Couldn't play ${file.name}.")) }
+        finally { loading = false }
     }
 
     fun release() {

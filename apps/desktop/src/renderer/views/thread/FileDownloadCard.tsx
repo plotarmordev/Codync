@@ -49,8 +49,11 @@ function FileCard({ entry, file, audio, icon }: { entry: Entry; file: SharedFile
   </VStack>
 }
 
-/** The play/pause button, or the spinner while the sound comes over. */
+/** The play/pause button, or the spinner while the sound comes over, in the file icon's 24 px slot. */
 function AudioIcon({ snapshot, toggle }: { snapshot: AudioSnapshot; toggle: () => void }) {
-  if (snapshot.phase === 'loading') return <div className="file-card-loading"><Spinner size={18} /></div>
-  return <IconButtonBase title={snapshot.phase === 'playing' ? 'Pause' : 'Play'} icon={snapshot.phase === 'playing' ? 'pause.circle' : 'play.circle'} size={36} onClick={toggle} />
+  return <div className="file-card-play">
+    {snapshot.phase === 'loading'
+      ? <Spinner size={18} />
+      : <IconButtonBase title={snapshot.phase === 'playing' ? 'Pause' : 'Play'} icon={snapshot.phase === 'playing' ? 'pause.circle' : 'play.circle'} size={36} onClick={toggle} />}
+  </div>
 }

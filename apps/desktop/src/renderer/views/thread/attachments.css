@@ -85,10 +85,14 @@
 @media (prefers-reduced-motion: reduce) {
   .file-card-progress > div { transition: none; }
 }
-/* Keeps the voice note's row height while its sound loads. */
-.file-card-loading {
-  width: 36px;
+/* The play button's 36 px target overflows the file icon's 24 px slot, so names line up across cards. The slot
+   keeps its size while the sound loads. */
+.file-card-play {
+  width: 24px;
   height: 36px;
   display: grid;
   place-items: center;
+}
+.file-card-play > button {
+  margin: 0 -6px;
 }

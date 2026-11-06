@@ -417,10 +417,19 @@ pub(super) fn user_line(e: &Entry) -> String {
 /// A file's size as the apps show it (Apple's `ByteCountFormatter`, `.file`): decimal units, KB whole, MB to one
 /// decimal place, larger to two, trailing zeros dropped.
 pub(in crate::tui) fn file_size(bytes: u64) -> String {
-    const UNITS: [(&str, u32); 5] = [("KB", 0), ("MB", 1), ("GB", 2), ("TB", 2), ("PB", 2)];
-    // In hundredths, tenths or wholes of unit `i`, rounded half up.
-    let rounded = |i: usize| {
-        let step = 1000_u64.pow(i as u32 + 1) / 10_u64.pow(UNITS[i].1);
+    // Each unit: its name, its size in bytes, and the decimal places it shows.
+    const UNITS: [(&str, u64, usize); 5] = [
+        ("KB", 1_000, 0),
+        ("MB", 1_000_000, 1),
+        ("GB", 1_000_000_000, 2),
+        ("TB", 1_000_000_000_000, 2),
+        ("PB", 1_000_000_000_000_000, 2),
+    ];
+    // 10 to the places a unit shows.
+    const PLACES: [u64; 3] = [1, 10, 100];
+    // The size in the smallest place a unit shows (wholes, tenths or hundredths), rounded half up.
+    let shown = |(_, size, places): (&str, u64, usize)| {
+        let step = size / PLACES[places];
         (bytes + step / 2) / step
     };
     match bytes {
@@ -429,16 +438,12 @@ pub(in crate::tui) fn file_size(bytes: u64) -> String {
         2..1000 => format!("{bytes} bytes"),
         _ => {
             // A size that rounds to 1000 of a unit reads as 1 of the next.
-            let mut i = 0;
-            while i + 1 < UNITS.len() && rounded(i) >= 1000 * 10_u64.pow(UNITS[i].1) {
-                i += 1;
-            }
-            let (unit, places) = UNITS[i];
-            let scale = 10_u64.pow(places);
-            let fraction = format!("{:0width$}", rounded(i) % scale, width = places as usize);
-            match fraction.trim_end_matches('0') {
-                "" => format!("{} {unit}", rounded(i) / scale),
-                fraction => format!("{}.{fraction} {unit}", rounded(i) / scale),
+            let unit = UNITS.into_iter().find(|&u| shown(u) < 1000 * PLACES[u.2]).unwrap_or(UNITS[UNITS.len() - 1]);
+            let (name, _, places) = unit;
+            let (whole, fraction) = (shown(unit) / PLACES[places], shown(unit) % PLACES[places]);
+            match format!("{fraction:0places$}").trim_end_matches('0') {
+                "" => format!("{whole} {name}"),
+                fraction => format!("{whole}.{fraction} {name}"),
             }
         }
     }

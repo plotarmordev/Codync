@@ -13,7 +13,9 @@ test('byteCount matches ByteCountFormatter(.file): decimal units, no needless ze
     [0, 'Zero KB'], [1, '1 byte'], [43, '43 bytes'], [999, '999 bytes'],
     [1000, '1 KB'], [1499, '1 KB'], [1500, '2 KB'], [47600, '48 KB'], [64400, '64 KB'], [380030, '380 KB'],
     [999500, '1 MB'], [1049999, '1 MB'], [1050000, '1.1 MB'], [1234567, '1.2 MB'], [12345678, '12.3 MB'],
-    [1000000000, '1 GB'], [1234567890, '1.23 GB'],
+    [2550000, '2.6 MB'], [16650000, '16.7 MB'],
+    [999995000, '1 GB'], [1000000000, '1 GB'], [1005000000, '1.01 GB'], [1234567890, '1.23 GB'], [2555000000, '2.56 GB'],
+    [999999999999, '1 TB'], [1234567890123, '1.23 TB'],
   ]
   for (const [bytes, text] of expected) assert.equal(byteCount(bytes), text, `${bytes}`)
 })

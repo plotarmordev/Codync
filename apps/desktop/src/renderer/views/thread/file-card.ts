@@ -3,18 +3,21 @@ import type { DownloadState } from '../../store/file-downloads'
 import type { AudioSnapshot } from './shared-audio'
 
 /** A byte count the way Apple's `ByteCountFormatter(.file)` writes it: decimal units, no needless zeros. */
+/** Each unit: its name, its size in bytes, and the decimal places it shows (as the terminal UI's `file_size`). */
+const UNITS: [name: string, size: number, places: number][] = [['KB', 1e3, 0], ['MB', 1e6, 1], ['GB', 1e9, 2], ['TB', 1e12, 2], ['PB', 1e15, 2]]
+
 export function byteCount(bytes: number) {
   if (bytes <= 0) return 'Zero KB'
   if (bytes < 1000) return `${bytes} ${bytes === 1 ? 'byte' : 'bytes'}`
-  const units = ['KB', 'MB', 'GB']
-  const decimals = [0, 1, 2]
-  let value = bytes / 1000
-  let unit = 0
-  while (unit < units.length - 1 && Number(value.toFixed(decimals[unit])) >= 1000) {
-    value /= 1000
-    unit++
+  // The size in the smallest place a unit shows, rounded half up from the whole bytes: a scaled float can sit just
+  // under a half (2.55 is 2.5499… as a double) and round down where Apple's formatter rounds up.
+  const shown = ([, size, places]: (typeof UNITS)[number]) => {
+    const step = size / 10 ** places
+    return Math.floor((bytes + step / 2) / step)
   }
-  return `${parseFloat(value.toFixed(decimals[unit]))} ${units[unit]}`
+  // A size that rounds to 1000 of a unit reads as 1 of the next.
+  const unit = UNITS.find((u) => shown(u) < 1000 * 10 ** u[2]) ?? UNITS[UNITS.length - 1]
+  return `${shown(unit) / 10 ** unit[2]} ${unit[0]}`
 }
 
 /** Seconds as `m:ss` (hours as `h:mm:ss`), for a sound's caption. */

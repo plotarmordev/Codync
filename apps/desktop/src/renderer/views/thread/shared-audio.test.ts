@@ -44,7 +44,7 @@ test('a card that goes while its sound loads plays nothing', async () => {
   loads[0](new Uint8Array([1]))
   await tap
   assert.deepEqual(log, [])
-  assert.ok(!audio.playing)
+  assert.equal(audio.snapshot.phase, 'idle')
 })
 
 test('a sound that fails to load fails the card, and the next tap loads it again', async () => {

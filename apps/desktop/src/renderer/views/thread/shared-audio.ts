@@ -54,8 +54,6 @@ export class SharedAudio {
     return { phase: this.phase, elapsed: this.elapsed, duration: this.duration }
   }
 
-  get playing() { return this.phase === 'playing' }
-
   /** Settles once this tap's pause, play or failure is done. */
   async toggle() {
     if (this.phase === 'playing') return this.sound?.pause()

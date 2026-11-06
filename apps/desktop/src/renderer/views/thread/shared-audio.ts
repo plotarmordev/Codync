@@ -108,10 +108,12 @@ export class SharedAudio {
     await this.sound.play()
   }
 
-  /** Drops the player so the next tap fetches and decodes again. */
+  /** Drops the player and its clock, so a failure shows no stale progress and the next tap fetches and decodes again. */
   private drop() {
     const sound = this.sound
     this.sound = null
+    this.elapsed = 0
+    this.duration = 0
     sound?.pause()
     sound?.dispose()
   }

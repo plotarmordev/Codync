@@ -89,3 +89,13 @@ test('a loaded sound shows its clock and resets at the end', async () => {
   events().ended()
   assert.deepEqual(audio.snapshot, { phase: 'idle', elapsed: 0, duration: 48 })
 })
+
+test('a sound that fails mid-play drops its progress with the player', async () => {
+  const { audio, loads, events } = setup()
+  const tap = audio.toggle()
+  loads[0](new Uint8Array([1]))
+  await tap
+  events().time(7, 48)
+  events().failed()
+  assert.deepEqual(audio.snapshot, { phase: 'failed', elapsed: 0, duration: 0 })
+})

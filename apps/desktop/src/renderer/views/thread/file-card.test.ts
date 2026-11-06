@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SharedFile } from '@shared/models'
 import type { DownloadState } from '../../store/file-downloads.ts'
-import { byteCount, cardActions, cardDetail, clock } from './file-card.ts'
+import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock } from './file-card.ts'
 import type { AudioSnapshot } from './shared-audio.ts'
 
 const file = (size: number): SharedFile => ({ id: 'f1', name: 'venue-floor-plan.pdf', size, sha256: 'a'.repeat(64) })
@@ -61,4 +61,21 @@ test("a card's first action is a voice note's play (also after a failure), then 
   assert.deepEqual(titles({ audio: audio('playing', 7, 48), toggle: noop }), ['Pause', 'Download'])
   assert.deepEqual(titles({ view: noop, state: { kind: 'downloading', received: 1 } }), ['View', 'Cancel download'])
   assert.deepEqual(titles({}), ['Download'])
+})
+
+test("picking Download from a voice note's menu by keyboard never plays it", () => {
+  const card = (key: string, shiftKey: boolean, menuOpen: boolean) => cardKeyAction({ key, shiftKey }, menuOpen)
+  assert.equal(card('F10', true, false), 'menu')
+  for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) assert.equal(card(key, false, true), undefined, key)
+  assert.equal(card(' ', false, true), undefined)
+  assert.equal(card('Enter', false, false), 'first')
+  assert.equal(card(' ', false, false), 'first')
+  assert.equal(card('ContextMenu', false, false), 'menu')
+  assert.equal(card('F10', false, false), undefined)
+})
+
+test("a click on a card's name or caption runs its first action; one on its own buttons only theirs", () => {
+  const inside = (button: object | null) => ({ closest: (selector: string) => (selector === 'button' ? button : null) })
+  assert.equal(clickRunsFirstAction(inside(null)), true)
+  assert.equal(clickRunsFirstAction(inside({})), false)
 })

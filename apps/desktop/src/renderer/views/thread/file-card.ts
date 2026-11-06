@@ -52,6 +52,22 @@ export function cardActions({ state, audio, toggle, view, download }: {
   ]
 }
 
+/**
+ * What a key on a focused card does. Nothing while its menu is open: focus stays on the card, so Enter would
+ * otherwise run the first action as well as the menu's highlighted one.
+ */
+export function cardKeyAction(key: { key: string; shiftKey: boolean }, menuOpen: boolean): 'first' | 'menu' | undefined {
+  if (menuOpen) return undefined
+  if (key.key === 'Enter' || key.key === ' ') return 'first'
+  if (key.key === 'ContextMenu' || (key.shiftKey && key.key === 'F10')) return 'menu'
+  return undefined
+}
+
+/** Whether a click on a card runs its first action: anywhere but its own buttons, which run theirs. */
+export function clickRunsFirstAction(target: { closest(selector: string): unknown }) {
+  return !target.closest('button')
+}
+
 /** The line under a shared file's name: its size, the download's progress, or what went wrong. */
 export function downloadDetail(state: DownloadState | undefined, file: SharedFile) {
   switch (state?.kind) {

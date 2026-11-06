@@ -7,7 +7,7 @@ import { Spinner } from '../../components/Controls'
 import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { AttachmentImage, AttachmentViewer, attachmentSymbol, type ImageSource } from './Attachments'
-import { cardActions, cardDetail, downloadAction } from './file-card'
+import { cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, downloadAction } from './file-card'
 import type { AudioSnapshot } from './shared-audio'
 import { useSharedAudio } from './use-shared-audio'
 import './attachments.css'
@@ -40,16 +40,18 @@ function FileCard({ entry, file, audio, toggle, icon }: { entry: Entry; file: Sh
   const actions = () => cardActions({ state, audio, toggle, view: showsAsImage(file) ? () => setViewing(true) : undefined, download })
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return
-    if (e.key === 'Enter' || e.key === ' ') actions()[0].action()
-    else if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+    const action = cardKeyAction(e, menu.open)
+    if (!action) return
+    e.preventDefault()
+    if (action === 'first') actions()[0].action()
+    else {
       const { left, bottom } = e.currentTarget.getBoundingClientRect()
       menu.openAt({ x: left, y: bottom })
-    } else return
-    e.preventDefault()
+    }
   }
   return <>
     <div className="file-card" role="button" tabIndex={0} aria-label={`${file.name}, ${detail}`}
-      onClick={(e) => e.target === e.currentTarget && actions()[0].action()} onKeyDown={onKeyDown} onContextMenu={menu.onContextMenu}>
+      onClick={(e) => clickRunsFirstAction(e.target as Element) && actions()[0].action()} onKeyDown={onKeyDown} onContextMenu={menu.onContextMenu}>
       <VStack gap={12} aria-hidden>
         {showsAsImage(file) ? <button className="file-card-image" tabIndex={-1} onClick={() => setViewing(true)}>
           <AttachmentImage source={image} fit="thumbnail" />

@@ -47,22 +47,21 @@ import kotlinx.coroutines.launch
     val download = state.fileDownloads[file.id]
     val busy = download is FileDownloadState.Downloading
     val caption = detail(file, download, player, translate)
-    val play = player?.let { audio -> { scope.launch { audio.toggle() }; Unit } }
+    val play = { player?.let { scope.launch { it.toggle() } }; Unit }
     val save = { if (busy) store.cancelFile(file.id) else store.saveFile(entry.id, entry.botId, file) }
     val view = if (file.showsAsImage) ({ viewing = true }) else null
     Column(Modifier.fillMaxWidth().clip(RoundedRectangle(16.dp)).background(Palette.bubbleAgent)
         .clearAndSetSemantics {
             contentDescription = "${file.name}, $caption"
             customActions = listOfNotNull(
-                player?.let { audio -> CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) {
-                    scope.launch { audio.toggle() }; true } },
+                player?.let { audio -> CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true } },
                 CustomAccessibilityAction(translate(if (busy) "Cancel download" else "Download")) { save(); true },
                 view?.let { open -> CustomAccessibilityAction(translate("View")) { open(); true } })
             onClick(label = when {
                 view != null -> translate("View")
                 player != null -> translate(if (player.phase == AudioPhase.Playing) "Pause" else "Play")
                 else -> translate(if (busy) "Cancel download" else "Download")
-            }) { (view ?: play ?: save)(); true }
+            }) { (view ?: player?.let { play } ?: save)(); true }
         }.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (file.showsAsImage) SharedImage(file, entry.id, 720, state, store, Modifier.sizeIn(maxHeight = 280.dp)
             .clip(RoundedRectangle(10.dp)).plainButton { viewing = true })
@@ -73,9 +72,9 @@ import kotlinx.coroutines.launch
 }
 
 @Composable private fun FileRow(file: SharedFile, download: FileDownloadState?, audio: SharedAudio?, caption: String,
-    save: () -> Unit, play: (() -> Unit)?) {
+    save: () -> Unit, play: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (audio != null) SharedAudioButton(audio, play!!) else Symbol(AttachmentIcon.symbol(file.name), size = 24.dp, tint = Palette.secondary)
+        if (audio != null) SharedAudioButton(audio, play) else Symbol(AttachmentIcon.symbol(file.name), size = 24.dp, tint = Palette.secondary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(file.name, style = Type.subheadline.semibold, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(caption, style = Type.caption2, color = if (audio?.phase == AudioPhase.Failed) Palette.danger else Palette.secondary)
@@ -88,12 +87,11 @@ import kotlinx.coroutines.launch
 }
 
 /** The thin bar under the caption: how much of a loaded voice note has played, read again about four times a second
- *  while it plays (not at all when the system removes animations). */
+ *  while it plays. */
 @Composable private fun AudioProgress(audio: SharedAudio) {
-    val still = reduceMotion()
-    LaunchedEffect(audio, audio.phase, still) {
+    LaunchedEffect(audio, audio.phase) {
         audio.syncElapsed()
-        while (!still && audio.phase == AudioPhase.Playing) {
+        while (audio.phase == AudioPhase.Playing) {
             delay(250)
             audio.syncElapsed()
         }

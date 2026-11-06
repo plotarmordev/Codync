@@ -1,11 +1,12 @@
 import type { SharedFile } from '@shared/models'
+import type { MenuItem } from '../../components/Overlay'
 import type { DownloadState } from '../../store/file-downloads'
 import type { AudioSnapshot } from './shared-audio'
 
-/** A byte count the way Apple's `ByteCountFormatter(.file)` writes it: decimal units, no needless zeros. */
 /** Each unit: its name, its size in bytes, and the decimal places it shows (as the terminal UI's `file_size`). */
 const UNITS: [name: string, size: number, places: number][] = [['KB', 1e3, 0], ['MB', 1e6, 1], ['GB', 1e9, 2], ['TB', 1e12, 2], ['PB', 1e15, 2]]
 
+/** A byte count the way Apple's `ByteCountFormatter(.file)` writes it: decimal units, no needless zeros. */
 export function byteCount(bytes: number) {
   if (bytes <= 0) return 'Zero KB'
   if (bytes < 1000) return `${bytes} ${bytes === 1 ? 'byte' : 'bytes'}`
@@ -33,6 +34,22 @@ export function clock(seconds: number) {
 /** What the download button does now (also the Library's file rows). */
 export function downloadAction(state: DownloadState | undefined) {
   return state?.kind === 'downloading' ? 'Cancel download' : state?.kind === 'failed' ? 'Retry download' : state?.kind === 'saved' ? 'Save again' : 'Download'
+}
+
+/** A card's actions, the first one what a click or Enter does: a voice note's play or pause, a picture's view, then the download's. */
+export function cardActions({ state, audio, toggle, view, download }: {
+  state: DownloadState | undefined
+  audio?: AudioSnapshot
+  toggle?: () => void
+  view?: () => void
+  download: () => void
+}): MenuItem[] {
+  const playing = audio?.phase === 'playing'
+  return [
+    ...(toggle ? [{ title: playing ? 'Pause' : 'Play', icon: playing ? 'pause.circle' : 'play.circle', action: toggle }] : []),
+    ...(view ? [{ title: 'View', icon: 'eye', action: view }] : []),
+    { title: downloadAction(state), icon: state?.kind === 'downloading' ? 'xmark' : 'arrow.down.to.line', action: download },
+  ]
 }
 
 /** The line under a shared file's name: its size, the download's progress, or what went wrong. */

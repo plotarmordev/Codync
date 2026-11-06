@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SharedFile } from '@shared/models'
 import type { DownloadState } from '../../store/file-downloads.ts'
-import { byteCount, cardDetail, clock } from './file-card.ts'
+import { byteCount, cardActions, cardDetail, clock } from './file-card.ts'
 import type { AudioSnapshot } from './shared-audio.ts'
 
 const file = (size: number): SharedFile => ({ id: 'f1', name: 'venue-floor-plan.pdf', size, sha256: 'a'.repeat(64) })
@@ -52,4 +52,13 @@ test('a card without a loaded sound or download keeps the file detail', () => {
   assert.equal(cardDetail(undefined, file(380030), audio('loading')), '380 KB')
   const saved: DownloadState = { kind: 'saved' }
   assert.equal(cardDetail(saved, file(380030), audio('idle')), '380 KB · Saved')
+})
+
+test("a card's first action is a voice note's play (also after a failure), then a picture's view, then the download", () => {
+  const noop = () => {}
+  const titles = (args: Partial<Parameters<typeof cardActions>[0]>) => cardActions({ state: undefined, download: noop, ...args }).map((a) => a.title)
+  assert.deepEqual(titles({ audio: audio('failed'), toggle: noop }), ['Play', 'Download'])
+  assert.deepEqual(titles({ audio: audio('playing', 7, 48), toggle: noop }), ['Pause', 'Download'])
+  assert.deepEqual(titles({ view: noop, state: { kind: 'downloading', received: 1 } }), ['View', 'Cancel download'])
+  assert.deepEqual(titles({}), ['Download'])
 })

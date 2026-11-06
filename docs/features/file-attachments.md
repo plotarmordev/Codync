@@ -79,8 +79,11 @@ read leaves the placeholder. While a sound loads its button shows a spinner; onc
 its caption reads elapsed / total time over a progress bar. A sound that can't be read
 or decoded goes back to play and its caption reads "Couldn't play. Tap to retry." (click
 on desktop), with no dialog; the next tap reads it again. Every client shows sizes as
-Apple's `ByteCountFormatter` does (decimal units), and screen readers get one element
-per card, with play and download as its actions. The terminal UI shows only the card.
+Apple's `ByteCountFormatter` does (decimal units, rounded half up from the byte count),
+and screen readers get one element per card, with play, view and download as its
+actions. On desktop the card is one keyboard stop: Enter or Space does its first action
+(play, view, else download), and its menu (right-click, Shift-F10 or VoiceOver's Show
+menu) lists them all. The terminal UI shows only the card.
 
 This feature adds no previews of other file types, folder packaging, background
 transfers, persistent resume or Watch UI. Existing bots do not publish workspace files

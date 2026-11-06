@@ -1519,5 +1519,12 @@
   "Code {code} copied. Paste it on the sign-in page, then Enter checks. Ctrl+X cancels.": "代码 {code} 已复制。粘贴到登录页后，按 Enter 检查。Ctrl+X 取消。",
   "Sign in instead of using a saved token": "改用登录，不再用已存的 token",
   "↵ sign in instead of the token": "↵ 改用登录，不再用 token",
-  "Code {code} copied: paste it at {url}, then Enter checks. Ctrl+X cancels.": "代码 {code} 已复制：到 {url} 粘贴后，按 Enter 检查。Ctrl+X 取消。"
+  "Code {code} copied: paste it at {url}, then Enter checks. Ctrl+X cancels.": "代码 {code} 已复制：到 {url} 粘贴后，按 Enter 检查。Ctrl+X 取消。",
+  "{received} of {size}": "{size} 中的 {received}",
+  "Cancel download": "取消下载",
+  "Couldn't play. Tap to retry.": "无法播放。轻点重试。",
+  "Download": "下载",
+  "Downloaded": "已下载",
+  "Tap to retry.": "轻点重试。",
+  "View": "查看"
 }

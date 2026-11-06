@@ -1519,5 +1519,12 @@
   "Code {code} copied. Paste it on the sign-in page, then Enter checks. Ctrl+X cancels.": "Código {code} copiado. Cole na página de login e depois pressione Enter para verificar. Ctrl+X cancela.",
   "Sign in instead of using a saved token": "Entrar em vez de usar um token salvo",
   "↵ sign in instead of the token": "↵ entrar em vez de usar o token",
-  "Code {code} copied: paste it at {url}, then Enter checks. Ctrl+X cancels.": "Código {code} copiado: cole em {url} e depois pressione Enter para verificar. Ctrl+X cancela."
+  "Code {code} copied: paste it at {url}, then Enter checks. Ctrl+X cancels.": "Código {code} copiado: cole em {url} e depois pressione Enter para verificar. Ctrl+X cancela.",
+  "{received} of {size}": "{received} de {size}",
+  "Cancel download": "Cancelar download",
+  "Couldn't play. Tap to retry.": "Não foi possível reproduzir. Toque para tentar de novo.",
+  "Download": "Baixar",
+  "Downloaded": "Baixado",
+  "Tap to retry.": "Toque para tentar de novo.",
+  "View": "Ver"
 }

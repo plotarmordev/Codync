@@ -27,7 +27,7 @@ class SharedAudioTest {
     }
 
     private val speaker = Speaker()
-    private val fetch = CompletableDeferred<File>()
+    private var fetch = CompletableDeferred<File>()
     private var loads = 0
     private val audio = SharedAudio(load = { loads++; fetch.await() },
         open = { _, stopped -> speaker.ended = stopped; speaker.log += "open"; speaker })
@@ -65,16 +65,15 @@ class SharedAudioTest {
         assertEquals(AudioPhase.Failed, audio.phase)
         assertEquals(1, loads)
 
-        val retry = CompletableDeferred<File>()
-        var opens = 0
-        val again = SharedAudio(load = { retry.await() }, open = { _, _ -> opens++; speaker })
-        val second = launch { again.toggle() }
+        fetch = CompletableDeferred()
+        val retry = launch { audio.toggle() }
         yield()
-        assertEquals(AudioPhase.Loading, again.phase)
-        retry.complete(File("note.m4a"))
-        second.join()
-        assertEquals(1, opens)
-        assertEquals(AudioPhase.Playing, again.phase)
+        assertEquals(AudioPhase.Loading, audio.phase)
+        assertEquals(2, loads)
+        fetch.complete(File("note.m4a"))
+        retry.join()
+        assertEquals(listOf("open", "start"), speaker.log)
+        assertEquals(AudioPhase.Playing, audio.phase)
     }
 
     @Test fun `a sound that can't start fails the card`() = runBlocking {

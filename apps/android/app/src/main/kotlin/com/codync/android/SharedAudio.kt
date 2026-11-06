@@ -5,6 +5,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -159,13 +160,16 @@ private class MediaSound(private val manager: AudioManager, file: File, private 
     return audio
 }
 
-/** A voice note's play/pause/loading, in place of its file icon. */
+/** A voice note's play/pause/loading, in place of its file icon: a 48 dp target over the icon's 24 dp slot, so the
+ *  name lines up with the other file cards. */
 @Composable internal fun SharedAudioButton(audio: SharedAudio, tapped: () -> Unit) {
-    Box(Modifier.size(48.dp).plainButton(action = tapped), contentAlignment = Alignment.Center) {
-        when (audio.phase) {
-            AudioPhase.Loading -> Spinner(24.dp, color = Palette.text)
-            AudioPhase.Playing -> Symbol("pause.circle", size = 24.dp, tint = Palette.text)
-            else -> Symbol("play.circle", size = 24.dp, tint = Palette.text)
+    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.requiredSize(48.dp).plainButton(action = tapped), contentAlignment = Alignment.Center) {
+            when (audio.phase) {
+                AudioPhase.Loading -> Spinner(24.dp, color = Palette.text)
+                AudioPhase.Playing -> Symbol("pause.circle", size = 24.dp, tint = Palette.text)
+                else -> Symbol("play.circle", size = 24.dp, tint = Palette.text)
+            }
         }
     }
 }

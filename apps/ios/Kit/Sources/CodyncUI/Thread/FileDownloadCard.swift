@@ -47,6 +47,7 @@ struct FileDownloadCard: View {
         HStack(spacing: 12) {
             if file.showsAsAudio { playButton } else {
                 Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
+                    .frame(width: 24)
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(file.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(2)
@@ -62,7 +63,8 @@ struct FileDownloadCard: View {
         }
     }
 
-    /// A voice note's play/pause (a spinner while it loads), in place of its file icon.
+    /// A voice note's play/pause (a spinner while it loads), in place of its file icon. The 44 pt hit area overflows
+    /// the 24 pt glyph's slot, so the name lines up with the other file cards.
     private var playButton: some View {
         Button(action: play) {
             Group {
@@ -76,6 +78,7 @@ struct FileDownloadCard: View {
             }
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
+            .padding(-10)
         }
         .buttonStyle(.plain)
     }

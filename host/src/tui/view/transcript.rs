@@ -414,11 +414,33 @@ pub(super) fn user_line(e: &Entry) -> String {
     [e.text(), files.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join("  ")
 }
 
+/// A file's size as the apps show it (Apple's `ByteCountFormatter`, `.file`): decimal units, KB whole, MB to one
+/// decimal place, larger to two, trailing zeros dropped.
 pub(in crate::tui) fn file_size(bytes: u64) -> String {
+    const UNITS: [(&str, u32); 5] = [("KB", 0), ("MB", 1), ("GB", 2), ("TB", 2), ("PB", 2)];
+    // In hundredths, tenths or wholes of unit `i`, rounded half up.
+    let rounded = |i: usize| {
+        let step = 1000_u64.pow(i as u32 + 1) / 10_u64.pow(UNITS[i].1);
+        (bytes + step / 2) / step
+    };
     match bytes {
-        0..1024 => format!("{bytes} B"),
-        1024..1_048_576 => format!("{} KB", bytes / 1024),
-        _ => format!("{}.{} MB", bytes / 1_048_576, bytes % 1_048_576 * 10 / 1_048_576),
+        0 => "Zero KB".into(),
+        1 => "1 byte".into(),
+        2..1000 => format!("{bytes} bytes"),
+        _ => {
+            // A size that rounds to 1000 of a unit reads as 1 of the next.
+            let mut i = 0;
+            while i + 1 < UNITS.len() && rounded(i) >= 1000 * 10_u64.pow(UNITS[i].1) {
+                i += 1;
+            }
+            let (unit, places) = UNITS[i];
+            let scale = 10_u64.pow(places);
+            let fraction = format!("{:0width$}", rounded(i) % scale, width = places as usize);
+            match fraction.trim_end_matches('0') {
+                "" => format!("{} {unit}", rounded(i) / scale),
+                fraction => format!("{}.{fraction} {unit}", rounded(i) / scale),
+            }
+        }
     }
 }
 

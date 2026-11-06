@@ -201,3 +201,26 @@ async fn a_calls_conversation_takes_what_the_host_sent_beyond_the_loaded_chat() 
     );
     assert_eq!(call_lines(&app, &bot, &line), ["voice → bot: check git", "Mika: Clean."]);
 }
+
+#[test]
+fn file_sizes_read_as_the_apps_show_them() {
+    for (bytes, shown) in [
+        (0, "Zero KB"),
+        (1, "1 byte"),
+        (43, "43 bytes"),
+        (999, "999 bytes"),
+        (1_000, "1 KB"),
+        (1_499, "1 KB"),
+        (1_500, "2 KB"),
+        (380_030, "380 KB"),
+        (999_500, "1 MB"),
+        (1_049_999, "1 MB"),
+        (1_050_000, "1.1 MB"),
+        (12_345_678, "12.3 MB"),
+        (999_995_000, "1 GB"),
+        (1_005_000_000, "1.01 GB"),
+        (1_234_567_890_123, "1.23 TB"),
+    ] {
+        assert_eq!(file_size(bytes), shown, "{bytes} bytes");
+    }
+}

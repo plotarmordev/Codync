@@ -67,3 +67,28 @@
 .file-card-detail {
   overflow-wrap: anywhere;
 }
+
+/* The sound's clock made visible: a thin bar that fills left to right. */
+.file-card-progress {
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 1.5px;
+  background: color-mix(in srgb, var(--tertiary) 30%, transparent);
+  overflow: hidden;
+}
+.file-card-progress > div {
+  height: 100%;
+  border-radius: 1.5px;
+  background: var(--text);
+  transition: width 0.2s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-card-progress > div { transition: none; }
+}
+/* Keeps the voice note's row height while its sound loads. */
+.file-card-loading {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+}

@@ -5,6 +5,7 @@ import { ModalHeader, Sheet, SheetPage } from '../../components/Overlay'
 import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { useStoreRef } from '../../store/context'
+import { byteCount } from './file-card'
 import './attachments.css'
 
 /** The symbol for a file by its extension. */
@@ -16,18 +17,6 @@ export function attachmentSymbol(name: string) {
   if (['mov', 'mp4', 'm4v'].includes(ext)) return 'film'
   if (isAudioName(name)) return 'waveform'
   return 'doc'
-}
-
-export function byteCount(bytes: number) {
-  if (bytes < 1000) return `${bytes} bytes`
-  const units = ['KB', 'MB', 'GB']
-  let value = bytes / 1000
-  let unit = 0
-  while (value >= 1000 && unit < units.length - 1) {
-    value /= 1000
-    unit++
-  }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
 /** Files sent with a message: images as pictures (click for full size), other files as cards. */

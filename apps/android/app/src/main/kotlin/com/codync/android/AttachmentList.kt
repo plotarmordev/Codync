@@ -119,3 +119,29 @@ internal object AttachmentIcon {
         }
     }
 }
+
+/**
+ * A file size the way `ByteCountFormatter(.file)` writes it: powers of 1000, no decimals for KB, one for MB, two for GB,
+ * the trailing `.0` dropped, and a size that rounds up to 1000 of a unit shown in the next one.
+ */
+fun formatBytes(size: Long): String {
+    if (size == 0L) return "Zero KB"
+    if (size < 1000) return if (size == 1L) "1 byte" else "$size bytes"
+    val units = listOf("KB", "MB", "GB", "TB")
+    var value = size / 1000.0
+    var unit = 0
+    while (unit < units.lastIndex && round(value, if (unit == 0) 0 else unit.coerceAtMost(2)) >= 1000) {
+        value /= 1000
+        unit++
+    }
+    val shown = round(value, if (unit == 0) 0 else unit.coerceAtMost(2))
+    return "${trim(shown)} ${units[unit]}"
+}
+
+private fun round(value: Double, decimals: Int): Double {
+    val scale = Math.pow(10.0, decimals.toDouble())
+    return Math.floor(value * scale + 0.5) / scale
+}
+
+private fun trim(value: Double): String =
+    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()

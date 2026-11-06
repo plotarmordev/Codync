@@ -6,63 +6,118 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.codync.android.core.Entry
 import com.codync.android.core.SharedFile
 import com.codync.android.design.*
+import com.kyant.shapes.Capsule
 import com.kyant.shapes.RoundedRectangle
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** A file a bot shared, as iOS `FileDownloadCard`: an image shows itself (tap for full size), a voice note plays, then its
- *  name and size, and a button to download (or cancel). */
+ *  name and size, and a button to download (or cancel). One accessibility element: `<name>, <caption>` plus the actions. */
 @Composable internal fun FileDownloadCard(entry: Entry, file: SharedFile, state: AppState, store: AppStore) {
     var viewing by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxWidth().clip(RoundedRectangle(16.dp)).background(Palette.bubbleAgent).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val player = if (file.showsAsAudio) rememberSharedAudio(entry, file, store) else null
+    val scope = rememberCoroutineScope()
+    val translate = translator()
+    val download = state.fileDownloads[file.id]
+    val busy = download is FileDownloadState.Downloading
+    val caption = detail(file, download, player, translate)
+    val play = player?.let { audio -> { scope.launch { audio.toggle() }; Unit } }
+    val save = { if (busy) store.cancelFile(file.id) else store.saveFile(entry.id, entry.botId, file) }
+    val view = if (file.showsAsImage) ({ viewing = true }) else null
+    Column(Modifier.fillMaxWidth().clip(RoundedRectangle(16.dp)).background(Palette.bubbleAgent)
+        .clearAndSetSemantics {
+            contentDescription = "${file.name}, $caption"
+            customActions = listOfNotNull(
+                player?.let { audio -> CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) {
+                    scope.launch { audio.toggle() }; true } },
+                CustomAccessibilityAction(translate(if (busy) "Cancel download" else "Download")) { save(); true },
+                view?.let { open -> CustomAccessibilityAction(translate("View")) { open(); true } })
+            onClick(label = when {
+                view != null -> translate("View")
+                player != null -> translate(if (player.phase == AudioPhase.Playing) "Pause" else "Play")
+                else -> translate(if (busy) "Cancel download" else "Download")
+            }) { (view ?: play ?: save)(); true }
+        }.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (file.showsAsImage) SharedImage(file, entry.id, 720, state, store, Modifier.sizeIn(maxHeight = 280.dp)
-            .clip(RoundedRectangle(10.dp)).plainButton { viewing = true }.semantics { contentDescription = file.name })
-        FileRow(entry, file, state, store)
+            .clip(RoundedRectangle(10.dp)).plainButton { viewing = true })
+        FileRow(file, download, player, caption, save, play)
     }
+
     SharedImageSheet(file.takeIf { viewing }, entry.id, state, store) { viewing = false }
 }
 
-@Composable private fun FileRow(entry: Entry, file: SharedFile, state: AppState, store: AppStore) {
-    val download = state.fileDownloads[file.id]
-    val busy = download is FileDownloadState.Downloading
+@Composable private fun FileRow(file: SharedFile, download: FileDownloadState?, audio: SharedAudio?, caption: String,
+    save: () -> Unit, play: (() -> Unit)?) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (file.showsAsAudio) SharedAudioButton(entry, file, store) else Symbol(AttachmentIcon.symbol(file.name), size = 24.dp, tint = Palette.secondary)
+        if (audio != null) SharedAudioButton(audio, play!!) else Symbol(AttachmentIcon.symbol(file.name), size = 24.dp, tint = Palette.secondary)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(file.name, style = Type.subheadline.semibold, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(detail(file, download), style = Type.caption2, color = Palette.secondary)
+            Text(caption, style = Type.caption2, color = if (audio?.phase == AudioPhase.Failed) Palette.danger else Palette.secondary)
+            if (audio != null && audio.duration > 0.0) AudioProgress(audio)
         }
-        Box(Modifier.size(36.dp).plainButton { if (busy) store.cancelFile(file.id) else store.saveFile(entry.id, entry.botId, file) }
-            .semantics { contentDescription = (if (busy) "Cancel download " else "Download ") + file.name }, contentAlignment = Alignment.Center) {
-            Symbol(if (busy) "xmark" else "arrow.down.to.line", size = 20.dp, tint = Palette.text)
+        Box(Modifier.size(48.dp).plainButton(action = save), contentAlignment = Alignment.Center) {
+            Symbol(if (download is FileDownloadState.Downloading) "xmark" else "arrow.down.to.line", size = 20.dp, tint = Palette.text)
         }
     }
 }
 
-/** A shared file's size, or how its download goes. */
-internal fun detail(file: SharedFile, download: FileDownloadState?): String {
+/** The thin bar under the caption: how much of a loaded voice note has played, read again about four times a second
+ *  while it plays (not at all when the system removes animations). */
+@Composable private fun AudioProgress(audio: SharedAudio) {
+    val still = reduceMotion()
+    LaunchedEffect(audio, audio.phase, still) {
+        audio.syncElapsed()
+        while (!still && audio.phase == AudioPhase.Playing) {
+            delay(250)
+            audio.syncElapsed()
+        }
+    }
+    Box(Modifier.fillMaxWidth().height(3.dp).clip(Capsule()).background(Palette.tertiary)) {
+        Box(Modifier.fillMaxWidth((audio.elapsed / audio.duration).toFloat().coerceIn(0f, 1f)).height(3.dp).clip(Capsule()).background(Palette.text))
+    }
+}
+
+/** Seconds as `m:ss` (`h:mm:ss` past an hour). */
+internal fun clock(seconds: Double): String {
+    val total = seconds.roundToInt()
+    return if (total >= 3600) "%d:%02d:%02d".format(total / 3600, total / 60 % 60, total % 60) else "%d:%02d".format(total / 60, total % 60)
+}
+
+/** A shared file's caption: a player failure, then how its download goes, then the sound's progress, then its size. */
+internal fun detail(file: SharedFile, download: FileDownloadState?, audio: SharedAudio? = null, tr: (String) -> String = { it }): String {
+    if (audio?.phase == AudioPhase.Failed) return tr("Couldn't play. Tap to retry.")
     val size = formatBytes(file.size)
+    val progress = audio?.takeIf { it.duration > 0.0 }?.let { "${clock(it.elapsed)} / ${clock(it.duration)}" }
     return when (download) {
-        is FileDownloadState.Downloading -> "${formatBytes(download.received)} of $size"
-        is FileDownloadState.Failed -> "${download.message} Tap to retry."
-        FileDownloadState.Saved -> "$size · Downloaded"
-        null -> size
+        is FileDownloadState.Downloading -> tr("{received} of {size}").replace("{received}", formatBytes(download.received)).replace("{size}", size)
+        is FileDownloadState.Failed -> "${download.message} ${tr("Tap to retry.")}"
+        FileDownloadState.Saved -> progress?.let { "$it · ${tr("Downloaded")}" } ?: "$size · ${tr("Downloaded")}"
+        null -> progress ?: size
     }
 }

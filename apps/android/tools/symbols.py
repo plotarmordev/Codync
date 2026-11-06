@@ -81,7 +81,7 @@ MAP = {
     "doc.on.clipboard": "content_paste",
     "doc.on.clipboard.fill": "content_paste+",
     "doc.on.doc": "content_copy",
-    "doc.richtext": "article",
+    "doc.richtext": "newspaper",
     "doc.text": "description",
     "doc.zipper": "folder_zip",
     "ellipsis": "more_horiz",

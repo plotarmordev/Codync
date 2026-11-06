@@ -40,14 +40,13 @@ final class SharedAudio {
             return
         case .idle, .failed:
             state = .loading
-            defer { if state == .loading { state = .idle } }
         case .paused:
             break
         }
         let started = generation
         do {
             let player = try await prepared(file, entryId: entryId, model: model)
-            guard generation == started else { return }
+            guard generation == started else { state = .idle; return }
             // Heard with the ringer off too.
             let session = AVAudioSession.sharedInstance()
             if session.category != .playAndRecord {
@@ -73,23 +72,17 @@ final class SharedAudio {
         finish()
     }
 
-    /// Paused, stopped, ended or failed: other apps' audio may pick up again.
-    private func releaseSession() {
-        guard ownsSession else { return }
-        ownsSession = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-    }
-
-    /// `stop()`'s tail: the generation bump is what unloads; what stays loaded can play again.
-    private func finish() {
-        elapsed = 0
+    private func pause() {
+        guard player != nil else { state = .idle; return }
+        elapsed = player?.currentTime ?? 0
+        player?.pause()
         stopClock()
-        state = .idle
+        state = .paused
         releaseSession()
     }
 
-    /// Played to its end: back to the start, its length still known so the card keeps showing it.
-    private func ended() {
+    /// Stopped or played to its end: back to the start, its length still known so the card keeps showing it.
+    private func finish() {
         elapsed = 0
         stopClock()
         state = .idle
@@ -106,12 +99,19 @@ final class SharedAudio {
         releaseSession()
     }
 
+    /// Paused, stopped, ended or failed: other apps' audio may pick up again.
+    private func releaseSession() {
+        guard ownsSession else { return }
+        ownsSession = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
     private func prepared(_ file: SharedFile, entryId: String, model: BotStore) async throws -> AVAudioPlayer {
         if let player { return player }
         guard let data = await load(model, file, entryId) else { throw CocoaError(.fileReadUnknown) }
         let player = try AVAudioPlayer(data: data)
         duration = player.duration
-        let done = PlayDone { [weak self] in Task { @MainActor in self?.ended() } }
+        let done = PlayDone { [weak self] in Task { @MainActor in self?.finish() } }
         player.delegate = done
         (self.player, self.done) = (player, done)
         return player

@@ -75,8 +75,12 @@ Android and desktop, tap/click for full size. A sound file (`mp3`, `m4a`, `wav`,
 voice note) up to 20 MB gets a play/pause button in place of its icon. For either the
 client reads the whole file into memory through the same `readFile` chunks, checks size
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
-read leaves the placeholder, a failed sound read says it couldn't play. The terminal UI
-shows only the card.
+read leaves the placeholder. While a sound loads its button shows a spinner; once loaded
+its caption reads elapsed / total time over a progress bar. A sound that can't be read
+or decoded goes back to play and its caption reads "Couldn't play. Tap to retry." (click
+on desktop), with no dialog; the next tap reads it again. Every client shows sizes as
+Apple's `ByteCountFormatter` does (decimal units), and screen readers get one element
+per card, with play and download as its actions. The terminal UI shows only the card.
 
 This feature adds no previews of other file types, folder packaging, background
 transfers, persistent resume or Watch UI. Existing bots do not publish workspace files

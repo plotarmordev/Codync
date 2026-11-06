@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.codync.android.core.*
 import com.codync.android.design.*
 import com.kyant.shapes.RoundedRectangle
+import java.math.BigDecimal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -121,27 +122,23 @@ internal object AttachmentIcon {
 }
 
 /**
- * A file size the way `ByteCountFormatter(.file)` writes it: powers of 1000, no decimals for KB, one for MB, two for GB,
- * the trailing `.0` dropped, and a size that rounds up to 1000 of a unit shown in the next one.
+ * A file size the way `ByteCountFormatter(.file)` writes it: powers of 1000, no decimals for KB, one for MB, two for GB
+ * and up, trailing zeros dropped, and a size that rounds up to 1000 of a unit shown in the next one.
  */
 fun formatBytes(size: Long): String {
     if (size == 0L) return "Zero KB"
     if (size < 1000) return if (size == 1L) "1 byte" else "$size bytes"
-    val units = listOf("KB", "MB", "GB", "TB")
-    var value = size / 1000.0
-    var unit = 0
-    while (unit < units.lastIndex && round(value, if (unit == 0) 0 else unit.coerceAtMost(2)) >= 1000) {
-        value /= 1000
-        unit++
-    }
-    val shown = round(value, if (unit == 0) 0 else unit.coerceAtMost(2))
-    return "${trim(shown)} ${units[unit]}"
+    // The size in the smallest place the unit shows, rounded half up from the whole bytes: a scaled Double can sit
+    // just under a half (1.005 is 1.00499… as a double) and round down where Apple's formatter rounds up.
+    fun shown(unit: ByteUnit) = (size + unit.step / 2) / unit.step
+    val unit = ByteUnit.entries.firstOrNull { shown(it) < 1000 * it.places } ?: ByteUnit.entries.last()
+    return "${BigDecimal(shown(unit)).divide(BigDecimal(unit.places)).stripTrailingZeros().toPlainString()} ${unit.name}"
 }
 
-private fun round(value: Double, decimals: Int): Double {
-    val scale = Math.pow(10.0, decimals.toDouble())
-    return Math.floor(value * scale + 0.5) / scale
-}
+/** A size unit: its bytes, and 10 to the decimal places it shows. */
+private enum class ByteUnit(bytes: Long, val places: Long) {
+    KB(1_000, 1), MB(1_000_000, 10), GB(1_000_000_000, 100), TB(1_000_000_000_000, 100), PB(1_000_000_000_000_000, 100);
 
-private fun trim(value: Double): String =
-    if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()
+    /** Bytes in the smallest place the unit shows. */
+    val step = bytes / places
+}

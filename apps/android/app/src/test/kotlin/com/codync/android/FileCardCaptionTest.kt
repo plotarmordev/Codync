@@ -67,7 +67,9 @@ class FileCardCaptionTest {
             1_000L to "1 KB", 1_499L to "1 KB", 1_500L to "2 KB", 47_600L to "48 KB",
             64_400L to "64 KB", 380_030L to "380 KB", 999_500L to "1 MB", 1_049_999L to "1 MB",
             1_050_000L to "1.1 MB", 1_234_567L to "1.2 MB", 12_345_678L to "12.3 MB",
-            1_000_000_000L to "1 GB", 1_234_567_890L to "1.23 GB")
+            2_550_000L to "2.6 MB", 16_650_000L to "16.7 MB", 999_995_000L to "1 GB",
+            1_000_000_000L to "1 GB", 1_005_000_000L to "1.01 GB", 1_234_567_890L to "1.23 GB",
+            1_255_000_000L to "1.26 GB", 999_999_999_999L to "1 TB", 1_234_567_890_123L to "1.23 TB")
         for ((size, shown) in cases) assertEquals("$size", shown, formatBytes(size))
     }
 }

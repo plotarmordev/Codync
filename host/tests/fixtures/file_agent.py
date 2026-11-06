@@ -31,7 +31,7 @@ def prompt(message):
             for path in ['missing', '.', 'oversized']:
                 results.append(request('tools/call', {'name':'send_file', 'arguments':{'path':path}}))
         else:
-            paths = ['binary.dat', '.hidden', 'empty', 'report.pdf']
+            paths = ['note.m4a'] if 'voice-note' in text else ['binary.dat', '.hidden', 'empty', 'report.pdf']
             for path in paths:
                 results.append(request('tools/call', {'name':'send_file', 'arguments':{'path':path}}))
         Path(session['cwd'], 'file-results.json').write_text(json.dumps(results))

@@ -192,7 +192,7 @@ async fn rejected(path: &std::path::Path) {
 }
 
 #[tokio::test]
-async fn groups_routines_and_delegated_turns_cannot_publish_files() {
+async fn groups_and_delegated_turns_cannot_publish_files() {
     let host = Host::start().await;
     let agent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/file_agent.py");
     let created = host.call("createBot", json!({"name":"Recipient", "backend":"custom", "cwd":host.home, "command":common::python_agent(&agent), "connectors":[], "notify":false})).await;
@@ -202,16 +202,6 @@ async fn groups_routines_and_delegated_turns_cannot_publish_files() {
     host.call("send", json!({"botId":group["bot"]["id"],"text":"share-files"})).await;
     rejected(&results_path).await;
     host.call("stop", json!({"botId":group["bot"]["id"]})).await;
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    let _ = std::fs::remove_file(&results_path);
-    let routine = host
-        .call(
-            "saveRoutine",
-            json!({"botId":bot,"name":"Files","instruction":"share-files","triggers":[{"type":"webhook"}]}),
-        )
-        .await;
-    host.call("runRoutine", json!({"botId":bot,"id":routine["routine"]["id"]})).await;
-    rejected(&results_path).await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     std::fs::remove_file(&results_path).unwrap();
     let caller_dir = host.home.join("caller");
@@ -225,6 +215,27 @@ async fn groups_routines_and_delegated_turns_cannot_publish_files() {
     rejected(&results_path).await;
     let history = host.call("history", json!({"botId":bot})).await;
     assert!(history["entries"].as_array().unwrap().iter().all(|entry| entry["data"]["files"].is_null()));
+}
+
+#[tokio::test]
+async fn a_routine_run_shares_a_voice_note_in_the_bots_own_chat() {
+    use base64::Engine as _;
+    let host = Host::start().await;
+    let note = b"\0\0\0\x18ftypM4A voice".to_vec();
+    std::fs::write(host.home.join("note.m4a"), &note).unwrap();
+    let agent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/file_agent.py");
+    let created = host.call("createBot", json!({"name":"Reporter", "backend":"custom", "cwd":host.home, "command":common::python_agent(&agent), "connectors":[], "notify":false})).await;
+    let bot = created["bot"]["id"].as_str().unwrap();
+    let routine = json!({"botId":bot,"name":"Briefing","instruction":"voice-note","triggers":[{"type":"webhook"}]});
+    let routine = host.call("saveRoutine", routine).await;
+    host.call("runRoutine", json!({"botId":bot,"id":routine["routine"]["id"]})).await;
+    let entries = ready(&host, bot, 1).await;
+    let shared = entries.iter().find(|e| e["data"]["files"].is_array()).unwrap();
+    assert_eq!(shared["data"]["files"][0]["name"], "note.m4a");
+    let read = host
+        .call("readFile", json!({"entryId":shared["id"],"fileId":shared["data"]["files"][0]["id"],"offset":0}))
+        .await;
+    assert_eq!(base64::engine::general_purpose::STANDARD.decode(read["data"].as_str().unwrap()).unwrap(), note);
 }
 
 #[tokio::test]

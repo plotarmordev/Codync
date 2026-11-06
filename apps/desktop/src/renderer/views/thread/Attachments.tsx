@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { isImageName, type Attachment, type SharedFile } from '@shared/models'
+import { isAudioName, isImageName, type Attachment, type SharedFile } from '@shared/models'
 import { Icon } from '../../components/Icon'
 import { ModalHeader, Sheet, SheetPage } from '../../components/Overlay'
 import { HStack, VStack } from '../../components/Stack'
@@ -10,11 +10,11 @@ import './attachments.css'
 /** The symbol for a file by its extension. */
 export function attachmentSymbol(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() ?? ''
-  if (['png', 'jpg', 'jpeg', 'heic', 'gif', 'webp', 'tiff', 'bmp'].includes(ext)) return 'photo'
+  if (isImageName(name)) return 'photo'
   if (ext === 'pdf') return 'doc.richtext'
   if (['zip', 'gz', 'tar', '7z'].includes(ext)) return 'doc.zipper'
   if (['mov', 'mp4', 'm4v'].includes(ext)) return 'film'
-  if (['mp3', 'm4a', 'wav', 'aac'].includes(ext)) return 'waveform'
+  if (isAudioName(name)) return 'waveform'
   return 'doc'
 }
 

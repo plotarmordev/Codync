@@ -101,12 +101,18 @@ private data class EntryFields(
     val isImage: Boolean get() = isImageName(name)
 }
 
-private fun isImageName(name: String) = name.substringAfterLast('.', "").lowercase() in listOf("png", "jpg", "jpeg", "heic", "gif", "webp", "tiff", "bmp")
+fun isImageName(name: String) = name.substringAfterLast('.', "").lowercase() in listOf("png", "jpg", "jpeg", "heic", "gif", "webp", "tiff", "bmp")
+fun isAudioName(name: String) = name.substringAfterLast('.', "").lowercase() in listOf("mp3", "m4a", "wav", "aac")
+
+/** The largest shared file the phone fetches whole to show (an image) or play (a sound). */
+private const val INLINE_BYTES = 20L * 1024 * 1024
 
 /** A file a bot shared: immutable on the computer, checked against its SHA-256 once downloaded. */
 @Serializable data class SharedFile(val id: String, val name: String, val size: Long, val sha256: String) {
-    /** An image small enough to show in the chat (the phone fetches all of it). */
-    val showsAsImage: Boolean get() = isImageName(name) && size <= 20L * 1024 * 1024
+    /** An image small enough to show in the chat. */
+    val showsAsImage: Boolean get() = isImageName(name) && size <= INLINE_BYTES
+    /** A voice note or other sound small enough to play in the chat. */
+    val showsAsAudio: Boolean get() = isAudioName(name) && size <= INLINE_BYTES
 
     /** Before any of it is read: a name that can't leave its folder and a hash to check. */
     fun validate() {

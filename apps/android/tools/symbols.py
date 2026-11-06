@@ -140,6 +140,7 @@ MAP = {
     "option": "keyboard_option_key",
     "paintbrush": "brush",
     "paintpalette": "palette",
+    "pause.circle": "pause_circle",
     "pause.fill": "pause+",
     "pencil": "edit",
     "person.2": "group",

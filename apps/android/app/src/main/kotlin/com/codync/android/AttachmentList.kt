@@ -84,7 +84,7 @@ import kotlinx.coroutines.withContext
 
 /** An image a bot shared, like `AttachmentImage`. */
 @Composable internal fun SharedImage(file: SharedFile, entryId: String, maxPixels: Int, state: AppState, store: AppStore, modifier: Modifier) =
-    RemoteImage(file.id, maxPixels, state, modifier, ContentScale.Fit) { store.sharedImage(entryId, file) }
+    RemoteImage(file.id, maxPixels, state, modifier, ContentScale.Fit) { store.sharedFile(entryId, file) }
 
 /** A picture `load` fetches from the computer into the cache (iOS `AttachmentImage`); a placeholder until then. */
 @Composable private fun RemoteImage(id: String, maxPixels: Int, state: AppState, modifier: Modifier, scale: ContentScale, load: suspend () -> java.io.File) {
@@ -107,12 +107,15 @@ import kotlinx.coroutines.withContext
 
 /** The symbol for a file by its extension. */
 internal object AttachmentIcon {
-    fun symbol(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
-        "png", "jpg", "jpeg", "heic", "gif", "webp", "tiff", "bmp" -> "photo"
-        "pdf" -> "doc.richtext"
-        "zip", "gz", "tar", "7z" -> "doc.zipper"
-        "mov", "mp4", "m4v" -> "film"
-        "mp3", "m4a", "wav", "aac" -> "waveform"
-        else -> "doc"
+    fun symbol(name: String): String {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return when {
+            isImageName(name) -> "photo"
+            ext == "pdf" -> "doc.richtext"
+            ext in listOf("zip", "gz", "tar", "7z") -> "doc.zipper"
+            ext in listOf("mov", "mp4", "m4v") -> "film"
+            isAudioName(name) -> "waveform"
+            else -> "doc"
+        }
     }
 }

@@ -1,5 +1,6 @@
 //! Artifacts through real ACP/MCP and the apps' API: publish, card, update in a reply to the card, read, rename, the live
-//! `artifact` events, a routine's artifact (no card), the chat's Library, and what deleting the bot removes.
+//! `artifact` events, a routine's artifact card, a room's artifact (no card), the chat's Library, and what deleting the
+//! bot removes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
@@ -140,32 +141,20 @@ async fn bots_publish_update_and_the_apps_read_and_rename_artifacts() {
     let items = library_until(&host, bot, |items| items.len() == 3).await;
     assert_eq!((items[0]["kind"].as_str(), items[0]["file"]["name"].as_str()), (Some("file"), Some("notes.txt")));
 
-    // A routine's artifact joins the Library without a card, and its answer says so.
+    // A routine run posts its artifact's card in the bot's own chat, like a turn of its own.
     let routine =
         json!({"botId": bot, "name": "Report", "instruction": "make-artifact", "triggers": [{"type": "webhook"}]});
     let routine = host.call("saveRoutine", routine).await;
     host.call("runRoutine", json!({"botId": bot, "id": routine["routine"]["id"]})).await;
-    let items = library_until(&host, bot, |items| items.iter().filter(|i| i["kind"] == "artifact").count() == 2).await;
-    let made = items.iter().find(|i| i["artifact"]["title"] == "Weekly report").unwrap();
-    assert!(made["artifact"]["entryId"].is_null(), "nothing to reply to: {made}");
-    let answered = tokio::time::timeout(Duration::from_secs(30), async {
-        loop {
-            let made = std::fs::read_to_string(cwd.join("artifact-results.json")).ok();
-            let answer = made
-                .and_then(|made| serde_json::from_str::<Vec<Value>>(&made).ok())
-                .and_then(|made| serde_json::from_str::<Value>(made.first()?["content"][0]["text"].as_str()?).ok());
-            if let Some(answer) = answer.filter(|answer| answer["card"].is_string()) {
-                return answer;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+    let items = library_until(&host, bot, |items| {
+        items.iter().any(|i| i["artifact"]["title"] == "Weekly report" && i["artifact"]["entryId"].is_string())
     })
-    .await
-    .unwrap();
-    assert!(answered["card"].as_str().unwrap().starts_with("not posted"), "{answered}");
+    .await;
+    let made = items.iter().find(|i| i["artifact"]["title"] == "Weekly report").unwrap();
+    // The bot's own chat holds the run's card.
     let history = host.call("history", json!({"botId": bot})).await;
-    let cards = history["entries"].as_array().unwrap().iter().filter(|e| e["data"]["artifact"].is_object()).count();
-    assert_eq!(cards, 2, "the routine's artifact has no card");
+    let card = history["entries"].as_array().unwrap().iter().find(|e| e["id"] == made["artifact"]["entryId"]).unwrap();
+    assert_eq!(card["data"]["artifact"]["id"], made["artifact"]["id"], "{card}");
 
     // Deleting the bot deletes its artifacts.
     host.call("deleteBot", json!({"botId": bot})).await;
@@ -182,6 +171,43 @@ async fn bots_publish_update_and_the_apps_read_and_rename_artifacts() {
         .query_row("SELECT count(*) FROM kv WHERE k GLOB ?1", [format!("artifact.{bot}.*")], |row| row.get(0))
         .unwrap();
     assert_eq!(rows, 0, "nor do their details");
+}
+
+#[tokio::test]
+async fn an_artifact_published_in_a_room_has_no_card() {
+    let host = Host::start().await;
+    let cwd = host.home.join("workspace");
+    std::fs::create_dir_all(&cwd).unwrap();
+    let agent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/artifact_agent.py");
+    let created = host.call("createBot", json!({"name":"Artifacts", "backend":"custom", "cwd":cwd, "command":common::python_agent(&agent), "connectors":[], "notify":false})).await;
+    let bot = created["bot"]["id"].as_str().unwrap();
+    let group = host.call("createBot", json!({"name": "Room", "kind": "group", "members": [bot]})).await;
+    let group = group["bot"]["id"].as_str().unwrap();
+
+    host.call("send", json!({"botId": group, "text": "make-artifact"})).await;
+    // The artifact joins the bot's Library with no card to reply to, and its answer tells the bot so.
+    let items = library_until(&host, bot, |items| !items.is_empty()).await;
+    assert!(items[0]["artifact"]["entryId"].is_null(), "{}", items[0]);
+    let answered = tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let made = std::fs::read_to_string(cwd.join("artifact-results.json")).ok();
+            let answer = made
+                .and_then(|made| serde_json::from_str::<Vec<Value>>(&made).ok())
+                .and_then(|made| serde_json::from_str::<Value>(made.first()?["content"][0]["text"].as_str()?).ok());
+            if let Some(answer) = answer {
+                return answer;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(answered["card"].as_str().unwrap().starts_with("not posted"), "{answered}");
+    for chat in [bot, group] {
+        let history = host.call("history", json!({"botId": chat})).await;
+        let cards = history["entries"].as_array().unwrap().iter().filter(|e| e["data"]["artifact"].is_object()).count();
+        assert_eq!(cards, 0, "no card in {chat}");
+    }
 }
 
 async fn library(host: &Host, bot: &str) -> Vec<Value> {

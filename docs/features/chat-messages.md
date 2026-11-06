@@ -23,8 +23,9 @@ it has no pointer tooltip or link-opening action.
   reply; a files-only turn uses its filename for the completion summary. See
   [file attachments](file-attachments.md#files-from-a-bot). Artifact cards (`publish_artifact`) are final entries the
   same way; see [artifacts](artifacts.md).
-- Group room turns, bot requests (`message_bot`) and routines reject `send_message` and `send_file`: their reply
-  is the turn's last text, as before (`chat/group.rs`, `chat/team.rs`, `routines`).
+- Group room turns, bot requests (`message_bot`) and routines reject `send_message`: their reply is the turn's last
+  text, as before (`chat/group.rs`, `chat/team.rs`, `routines`). Rooms and requests also reject `send_file` and
+  artifact cards; a routine run posts them in the bot's own chat, where the run's notice and result are.
 - Between turns, work the agent goes on with in the background (a subagent's result) can still `send_message`
   (`send_between_turns`): a final entry in the bot's main lane, numbered with its latest turn, plus a *done* push;
   refused when the user stopped the last turn. `send_file` and `publish_artifact` need a running turn, and say to

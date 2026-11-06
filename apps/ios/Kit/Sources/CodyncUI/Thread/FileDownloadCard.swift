@@ -7,6 +7,7 @@ struct FileDownloadCard: View {
     let file: SharedFile
     @Environment(BotStore.self) private var model
     @State private var viewing = false
+    @State private var audio = SharedAudio()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -16,6 +17,7 @@ struct FileDownloadCard: View {
         .padding(14)
         .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 16))
         .codyncSheet(isPresented: $viewing) { AttachmentViewer(shared: file, entryId: entry.id) }
+        .onDisappear { audio.stop() }
     }
 
     /// The picture itself; tap for full size.
@@ -32,7 +34,9 @@ struct FileDownloadCard: View {
     private var row: some View {
         let state = model.fileDownloads.states[file.id]
         return HStack(spacing: 12) {
-            Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
+            if file.showsAsAudio { playButton } else {
+                Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
+            }
             VStack(alignment: .leading, spacing: 3) {
                 Text(file.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(2)
                 Text(Self.detail(state, size: file.size)).font(.caption2).foregroundStyle(Palette.secondary)
@@ -50,6 +54,19 @@ struct FileDownloadCard: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(busy(state) ? "Cancel download" : "Download") \(file.name)")
         }
+    }
+
+    /// A voice note's play/pause, in place of its file icon.
+    private var playButton: some View {
+        Button {
+            Task { await audio.toggle(file, entryId: entry.id, model: model) }
+        } label: {
+            Image(systemName: audio.playing ? "pause.circle" : "play.circle")
+                .font(.system(size: 24)).foregroundStyle(Palette.text)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(audio.playing ? "Pause" : "Play") \(file.name)")
     }
 
     private func busy(_ state: FileDownloads.State?) -> Bool {

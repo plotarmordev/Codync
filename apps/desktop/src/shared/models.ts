@@ -238,8 +238,16 @@ export interface SharedFile extends Attachment { sha256: string }
 export const isImageName = (name: string) =>
   ['png', 'jpg', 'jpeg', 'heic', 'gif', 'webp', 'tiff', 'bmp'].includes(name.split('.').pop()?.toLowerCase() ?? '')
 
-/** A shared image small enough to show in the chat (the whole file is fetched for it). */
-export const showsAsImage = (file: SharedFile) => isImageName(file.name) && file.size <= 20 * 1024 * 1024
+export const isAudioName = (name: string) => ['mp3', 'm4a', 'wav', 'aac'].includes(name.split('.').pop()?.toLowerCase() ?? '')
+
+/** The largest shared file a chat fetches whole to show (an image) or play (a sound). */
+const INLINE_BYTES = 20 * 1024 * 1024
+
+/** A shared image small enough to show in the chat. */
+export const showsAsImage = (file: SharedFile) => isImageName(file.name) && file.size <= INLINE_BYTES
+
+/** A shared voice note or other sound small enough to play in the chat. */
+export const showsAsAudio = (file: SharedFile) => isAudioName(file.name) && file.size <= INLINE_BYTES
 
 export interface ConnectionRequest {
   [key: string]: unknown

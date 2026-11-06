@@ -78,12 +78,14 @@ impl Actor {
         });
     }
 
+    /// Files and artifact cards go to the bot's own chat: its own turns and routine runs, not a room or a bot request.
+    pub(super) fn shares_files(&self) -> bool {
+        self.active_group.is_none() && self.active_request.is_none()
+    }
+
     fn can_send_file(&self) -> Result<i64> {
         ensure!(!self.stop_requested, "turn is stopping");
-        ensure!(
-            self.active_group.is_none() && self.active_request.is_none() && self.active_routine.is_none(),
-            "send_file and artifact cards are only available in the bot's own chat"
-        );
+        ensure!(self.shares_files(), "send_file and artifact cards are only available in the bot's own chat");
         self.turn.ok_or_else(|| anyhow!("no turn is running: between turns, tell the user with send_message"))
     }
 

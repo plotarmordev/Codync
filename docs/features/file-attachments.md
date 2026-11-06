@@ -35,11 +35,11 @@ Files travel in both directions: users attach inputs, and bots explicitly share 
 
 ## Files from a bot
 
-In its own chat, a bot calls the built-in chat MCP tool
+In its own chat, including a routine run, a bot calls the built-in chat MCP tool
 `send_file {path, name?}`. Paths may be absolute or relative to its working directory.
 The optional name is a display filename without folders. Any regular file type is
 accepted, including binary, hidden, extensionless and empty files, up to 100 MiB.
-Directories and special files are refused. Group, routine and delegated turns cannot
+Directories and special files are refused. Group and delegated turns cannot
 publish files.
 
 The host streams a snapshot into `~/.codync/bots/<bot>/files/<fileId>` and records
@@ -71,10 +71,12 @@ files. Retry starts from zero. Account/computer retirement cancels its transfers
 Downloads use bounded memory and check size and SHA-256 before save/export.
 
 An image file (by extension) up to 20 MB also shows inline above its card on iPhone,
-Android and desktop, tap/click for full size. For it the client reads the whole file
-into memory through the same `readFile` chunks, checks size and SHA-256, and keeps it
-in the sent-attachment cache under its file id; a failed read leaves the placeholder.
-The terminal UI shows only the card.
+Android and desktop, tap/click for full size. A sound file (`mp3`, `m4a`, `wav`, `aac`, a
+voice note) up to 20 MB gets a play/pause button in place of its icon. For either the
+client reads the whole file into memory through the same `readFile` chunks, checks size
+and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
+read leaves the placeholder, a failed sound read says it couldn't play. The terminal UI
+shows only the card.
 
 This feature adds no previews of other file types, folder packaging, background
 transfers, persistent resume or Watch UI. Existing bots do not publish workspace files

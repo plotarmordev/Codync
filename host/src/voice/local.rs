@@ -2,7 +2,7 @@
 //! host's own process (Metal on the Mac's GPU). It loads on first use and stays loaded, so audio
 //! never leaves the computer and no key is needed. Macs only.
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, bail};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -59,8 +59,9 @@ fn samples(wav: &[u8]) -> Vec<f32> {
 
 #[cfg(target_os = "macos")]
 mod engine {
-    use super::{Context, Path, Result, anyhow};
+    use super::{Path, Result};
     use crate::LockExt;
+    use anyhow::{Context, anyhow};
     use std::sync::Mutex;
     use transcribe_cpp::{Model, RunOptions, Session};
 

@@ -61,8 +61,8 @@ window takes the speech helper; it doesn't stop on a pause. On the iPhone the pi
 was recognized so far. The desktop island's message field has the same mic and pill.
 
 A `chevron.up` beside the composer's mic picks dictation's engine, kept on the device apart from the
-call engine (`dictationEngine`): **On device** (the above), or **OpenAI** / **Gemini** on the user's
-own key. With a provider, the mic first checks that the computer holds its key (`voiceStatus`; no key
+call engine (`dictationEngine`): **On device** (the above), **OpenAI** / **Gemini** on the user's own
+key, or **This computer** (`local`). With a provider, the mic first checks that the computer holds its key (`voiceStatus`; no key
 opens Voice chat settings before anything is recorded), then records; the pill (and its time) appears only once
 the microphone is open, so nothing said before it is lost; nothing is typed while recording. The
 pill's stop turns the pill into "Transcribing…" and the whole recording goes through
@@ -72,8 +72,18 @@ channel message each on the iPhone; under the host's 2 MB request body on the de
 time, joined in order; a tail under half a second stays with the piece before, and the first piece
 that fails fails the dictation. Under half a second of audio in all is dropped. Sending a message,
 starting a call or switching chats drops a dictation still recording or transcribing. The
-recording's length counts toward the provider's minutes this month. The island's mic stays
-on-device (its window doesn't reach the host).
+recording's length counts toward the provider's minutes this month.
+
+**This computer** records the same way, and `voiceTranscribe` with `provider: "local"` has the host
+transcribe on its own model (`host/src/voice/local.rs`): whisper.cpp's `whisper-server` with Whisper
+large-v3-turbo (`<data dir>/speech/ggml-large-v3-turbo.bin`), started on loopback on first use and kept
+loaded; the prompt is the host's transcription hint, the names hint and a Chinese line that keeps
+Chinese speech from drifting into English. A piece whose loudest 100 ms stays under -45 dBFS gives no
+text without reaching the model (Whisper makes up "Thank you." for silence). No key, no minutes, no network call out. `voiceStatus`'s
+`local: {ready, message}` says whether it can run; before recording, the mic checks it and, if not
+ready, shows `message` (what to install) as the dictation's failure. It's a dictation engine only,
+never a call engine. Why this model and runtime:
+[local dictation model](../investigations/local-dictation-model-2026-11.md).
 
 - Desktop (`views/thread/dictation.ts`, the model, tested with a stub platform; the helper,
   microphone and host wired in `dictation-platform.ts`; pieces in `dictation-pieces.ts`; menu in

@@ -146,7 +146,7 @@ private struct PDFViewer: UIViewRepresentable {
 
 /// WebKit's `<video>` for a WebM file, which AVFoundation can't play; `failed` runs when WebKit can't decode it either,
 /// so the sheet shows its notice instead of a broken player.
-private struct WebMPlayer: UIViewRepresentable {
+struct WebMPlayer: UIViewRepresentable {
     let url: URL
     let failed: @MainActor () -> Void
 

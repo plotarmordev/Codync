@@ -22,10 +22,12 @@ export interface VoiceStatus {
   providers: { provider: VoiceProvider; configured: boolean; defaults?: VoiceDefaults | null }[]
 }
 
-/** Whether the computer's own speech model can transcribe dictation; `message` says what to install. */
+/** Whether the computer's linked speech server can transcribe dictation; `message` says what to do when it can't. */
 export interface LocalDictation {
   ready: boolean
   message: string | null
+  /** The linked speech server's address; hosts before `server` omit it. */
+  server?: string | null
 }
 
 export interface VoiceModels {
@@ -170,7 +172,7 @@ export async function voiceStatus(c: HostClient) {
   return status
 }
 
-/** Whether the computer transcribes dictation itself; hosts before `localDictation` are told to update. */
+/** The linked speech server and whether dictation can use it; hosts before `localDictation` are told to update. */
 export async function localDictation(c: HostClient): Promise<LocalDictation> {
   try {
     return await c.call<LocalDictation>('localDictation')
@@ -182,6 +184,9 @@ export async function localDictation(c: HostClient): Promise<LocalDictation> {
 
 /** Checks the key with the provider before the computer keeps it; an empty key removes it. */
 export const setVoiceKey = (c: HostClient, p: VoiceProvider, key: string) => c.call<VoiceStatus>('setVoiceKey', { provider: p, key }, 30_000)
+
+/** Links the speech server at `url` after the computer checks it with a test transcription; empty unlinks. Loopback-only, like `setVoiceKey`. */
+export const setSpeechServer = (c: HostClient, url: string) => c.call<LocalDictation>('setSpeechServer', { url }, 30_000)
 
 /** A short-lived credential for one call's audio session. */
 export const voiceSession = async (c: HostClient, p: VoiceProvider, model: string, voice: string) =>

@@ -333,34 +333,106 @@ function ProviderVoiceSettings({ provider, dictationOnly = false }: { provider: 
 }
 
 /**
- * Dictation on the computer's own speech model: no key, no models to pick, nothing billed. The
- * footer says what to install while the model isn't there (hosts before it say to update), or why
- * the check couldn't run; it checks again when the computer (re)connects.
+ * Dictation on the computer's linked speech server: no key, no models to pick, nothing billed.
+ * Loopback (Codync on that computer itself) links and unlinks the server; elsewhere the card
+ * shows the link or the host's message. The check runs again when the computer (re)connects;
+ * its errors and link errors show in the footer / result line like the key entry's.
  */
 function LocalDictationSettings() {
   const store = useStore()
   useModel(store)
   const online = store.connection.kind === 'online'
+  /** The computer's answer while it hasn't given one yet. */
+  const [local, setLocal] = useState<voice.LocalDictation | null>(null)
   const [note, setNote] = useState<string | null>(null)
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
+  const canLink = store.client?.transport instanceof LoopbackTransport
+
+  const show = (l: voice.LocalDictation) => {
+    setLocal(l)
+    setNote(l.ready ? null : l.message)
+  }
+
   useEffect(() => {
     let cancelled = false
     void (async () => {
       const client = liveClient(store)
       if (!client) return setNote(`Not connected to ${store.hostName}.`)
       try {
-        const local = await voice.localDictation(client)
-        if (!cancelled) setNote(local.ready ? null : local.message)
+        const l = await voice.localDictation(client)
+        if (!cancelled) show(l)
       } catch (e) {
         if (!cancelled) setNote(errorText(e))
       }
     })()
     return () => void (cancelled = true)
   }, [online])
+
+  /** The computer tries a transcription on the address before it keeps it; an empty one unlinks. */
+  const link = (address: string) => {
+    const client = liveClient(store)
+    if (busy || !client) return
+    setBusy(true)
+    setFailure(null)
+    voice
+      .setSpeechServer(client, address)
+      .then((l) => {
+        show(l)
+        setUrl('')
+      })
+      .catch((e: unknown) => setFailure(errorText(e)))
+      .finally(() => setBusy(false))
+  }
+
   return (
     <CardSection title="This computer" footer={note ?? undefined}>
-      <Text size="footnote" tone="secondary">
-        Your computer transcribes what you say in English with its own speech model; the audio never leaves your computer.
-      </Text>
+      {[
+        <Text key="body" size="footnote" tone="secondary">
+          Your speech model transcribes what you say. Codync sends the audio only to the speech server you link on your computer or your own network, so it never leaves your computers.
+        </Text>,
+        ...(local?.server
+          ? [
+              <ValueRow key="server" label="Speech server" detail={`Linked on ${store.hostName}`}>
+                <Text truncate title={local.server}>{local.server}</Text>
+                {canLink ? busy ? <Spinner /> : <IconButton title="Unlink" icon="trash" onClick={() => link('')} /> : null}
+              </ValueRow>,
+            ]
+          : []),
+        ...(canLink && local !== null && !local.ready
+          ? [
+              <VStack key="link" gap={8}>
+                <HStack gap={8} className="settings-row">
+                  <input
+                    type="text"
+                    aria-label="Speech server address"
+                    placeholder="http://127.0.0.1:8080/v1/audio/transcriptions"
+                    value={url}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="settings-key-input"
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && url.trim() && link(url.trim())}
+                  />
+                  {busy ? (
+                    <Spinner />
+                  ) : (
+                    <Button onClick={() => link(url.trim())} disabled={!url.trim()}>
+                      Link
+                    </Button>
+                  )}
+                </HStack>
+                <Reveal show={failure !== null}>
+                  <HStack as="span" gap={5} className="settings-key-result failed">
+                    <Icon name="exclamationmark.circle.fill" size={10} />
+                    {failure}
+                  </HStack>
+                </Reveal>
+              </VStack>,
+            ]
+          : []),
+      ]}
     </CardSection>
   )
 }

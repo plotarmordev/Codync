@@ -14,7 +14,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 檔案卡片的按鈕更好點，檔案大小與 iPhone 和電腦版一致；使用 TalkBack 時每張卡片只需滑一次。
 - Bot 用語音回覆時，播放器會直接出現在那則訊息的泡泡頂端，文字在下方。
 - 聽寫多了「這台電腦」引擎（英文）：由你的 Mac 用自己的語音模型轉成文字，不需要金鑰，聲音不會離開你的電腦。
-- 機器人分享的 Markdown、文字、程式碼、CSV、JSON 與 PDF 檔案，點一下就能在 App 內開啟閱讀，也能直接下載。
+- 機器人分享的 Markdown、文字、程式碼、CSV、JSON 與 PDF 檔案，點一下就能在 App 內開啟閱讀；影片（MP4、MOV、M4V、WebM）也能直接在 App 內播放，下載按鈕一樣都在。
 
 ### en-US
 - Voice notes show a spinner while they load, then the time played, their length and a progress bar.
@@ -22,4 +22,4 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - File card buttons are easier to tap, file sizes match the iPhone and desktop apps, and TalkBack reads each card as one item.
 - When a bot speaks its reply, the voice note plays at the top of that message's bubble, with the text under it.
 - Dictation has a new engine for English, This computer: your Mac transcribes what you say with its own speech model, with no key, and the audio never leaves your computer.
-- Markdown, text, code, CSV, JSON and PDF files a bot shares open right in the app with a tap, with Download still at hand.
+- Markdown, text, code, CSV, JSON and PDF files a bot shares open right in the app with a tap, and shared videos (MP4, MOV, M4V, WebM) play there, with Download still at hand.

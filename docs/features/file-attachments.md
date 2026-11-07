@@ -62,7 +62,7 @@ clients need Control access. It returns `{data: <base64>, size}` in chunks of at
 384 KiB over loopback, SSH, direct encrypted and relay transports.
 
 Updated clients show a filename, size, file icon and download action. File extension
-only selects the icon; it never restricts saving or changes bytes. Desktop uses its
+only selects the icon and the in-app viewer below; it never restricts saving or changes bytes. Desktop uses its
 native Save dialog, iPhone hands the verified temporary file to the native share
 sheet (including Save to Files), and the terminal's selected-message `f` action saves
 to Downloads without replacing existing files. Progress and errors appear alongside
@@ -77,6 +77,18 @@ client reads the whole file into memory through the same `readFile` chunks, chec
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
 read leaves the placeholder, a failed sound read says it couldn't play. The terminal UI
 shows only the card.
+
+Markdown (`md`, `markdown`), plain text and code (`txt`, `log`, `csv`, `tsv`, `json`,
+`jsonl`, `xml`, `yaml`, `yml`, `toml`, `ini`, `html`, `css`, `sql`, `sh` and common source
+extensions) and PDF files open in a viewer sheet on iPhone, Android and desktop: tap or
+click the card (or the Library row). Markdown renders with the chat's Markdown renderer,
+text shows monospaced and selectable, PDF uses the platform's PDF view (PDFKit, Android
+`PdfRenderer`, desktop: see `FileViewer.tsx`). The viewer header keeps Download. It reads the
+file through the same verified, cached path as images, up to 512 KB for Markdown and text
+and 20 MB for PDF; a bigger file, text that isn't UTF-8, or a failed read shows a message
+instead, and Download still works. The type choice and limits live in the model
+(`SharedFile.preview`, `filePreview` on desktop) and are tested on each client. The
+terminal UI saves files to Downloads and opens none.
 
 This feature adds no previews of other file types, folder packaging, background
 transfers, persistent resume or Watch UI. Existing bots do not publish workspace files

@@ -44,6 +44,25 @@ class VoiceEnginesTest {
         assertEquals("61", prefs.values["callUsage.openai.2026-10"])
     }
 
+    @Test fun thisComputerIsADictationEngineOnlyAndSaysWhatItNeeds() {
+        assertEquals(listOf(DictationEngine.Cloud(VoiceProvider.OpenAI), DictationEngine.Cloud(VoiceProvider.Gemini), DictationEngine.Local),
+            DictationEngine.engines)
+        assertNull(DictationEngine.of(null)); assertNull(DictationEngine.of("gone")); assertNull(DictationEngine.of("device"))
+        assertEquals(DictationEngine.Local, DictationEngine.of("local"))
+        val prefs = Prefs(); val choices = prefs.choices
+        assertNull(choices.dictation)
+        choices.dictation = DictationEngine.Local; assertEquals("local", choices.dictation?.id)
+        choices.dictation = null; assertNull(choices.dictation)
+        val status = WireJson.decodeFromString(VoiceStatus.serializer(),
+            """{"providers":[],"local":{"ready":false,"message":"Install a speech model."}}""")
+        assertFalse(status.localReady()); assertEquals("Install a speech model.", status.localMessage())
+        val old = WireJson.decodeFromString(VoiceStatus.serializer(), """{"providers":[]}""")
+        assertFalse(old.localReady()); assertEquals("Update Codync on your computer to dictate with its own speech model.", old.localMessage())
+        assertTrue(WireJson.decodeFromString(VoiceStatus.serializer(), """{"providers":[],"local":{"ready":true}}""").localReady())
+        DictationEngine.Local.addUsage(choices, 61)
+        assertTrue(prefs.values.keys.none { it.startsWith("callUsage.") })
+    }
+
     @Test fun aCallTakesAnotherEngineOnlyWhenWhatItsEngineIsBuiltFromChanges() {
         val choices = Prefs().choices; val gemini = VoiceProvider.Gemini
         assertEquals(choices.engineChoice(null, ""), choices.engineChoice(null, ""))

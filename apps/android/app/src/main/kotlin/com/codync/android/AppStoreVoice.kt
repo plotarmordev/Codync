@@ -97,7 +97,7 @@ private fun AppStore.begin(call: VoiceBinding, provider: VoiceProvider?) {
                 val transcribe = choices.model(provider, VoiceChoices.Model.Transcribe)
                 val speech = choices.model(provider, VoiceChoices.Model.Speech)
                 CloudSpeechEngine(contextScope, provider, settings, mic(), AndroidClipPlayer, CloudSpeechEngine.Speech(
-                    transcribe = { inReadersScript(voiceTranscribe(provider, transcribe, it)) },
+                    transcribe = { inReadersScript(voiceTranscribe(provider.id, transcribe, it)) },
                     synthesize = { voiceSpeak(provider, speech, voice, it) },
                     send = { sendFromCall(call, it) }))
             }
@@ -272,9 +272,9 @@ internal suspend fun AppStore.voiceSession(provider: VoiceProvider, model: Strin
     hostCall("voiceSession", body("provider" to provider.id, "model" to model, "voice" to voice), 30_000).jsonObject["credential"]
         ?.jsonPrimitive?.contentOrNull ?: throw IOException("${provider.title} didn't start the call.")
 
-/** Speech to text for one utterance (a WAV file), with the computer's key. */
-internal suspend fun AppStore.voiceTranscribe(provider: VoiceProvider, model: String, wav: ByteArray): String =
-    hostCall("voiceTranscribe", body("provider" to provider.id, "model" to model, "audio" to Base64.getEncoder().encodeToString(wav)), 60_000)
+/** Speech to text for one utterance (a WAV file): a provider on the computer's key, or `local` for its own speech model. */
+internal suspend fun AppStore.voiceTranscribe(provider: String, model: String, wav: ByteArray): String =
+    hostCall("voiceTranscribe", body("provider" to provider, "model" to model, "audio" to Base64.getEncoder().encodeToString(wav)), 60_000)
         .jsonObject["text"]?.jsonPrimitive?.contentOrNull.orEmpty()
 
 /** Text to speech for a stretch of a reply: the audio and its format (`aac` or `wav`). */

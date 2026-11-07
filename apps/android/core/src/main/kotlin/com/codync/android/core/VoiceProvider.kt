@@ -25,13 +25,52 @@ enum class VoiceProvider(val id: String, val title: String, val keyPage: String,
     companion object { fun of(id: String?): VoiceProvider? = entries.firstOrNull { it.id == id } }
 }
 
+/** What transcribes dictation into the message box: a provider on the user's own key, or the computer itself. */
+sealed interface DictationEngine {
+    val id: String
+    val title: String
+    /** The model `voiceTranscribe` asks for: the provider's speech-to-text model, none on the computer's own model. */
+    fun model(choices: VoiceChoices): String
+    /** The month's minutes for a recording: providers bill their own, the computer's own model counts none. */
+    fun addUsage(choices: VoiceChoices, seconds: Long, month: YearMonth = YearMonth.now())
+
+    data class Cloud(val provider: VoiceProvider) : DictationEngine {
+        override val id get() = provider.id
+        override val title get() = provider.title
+        override fun model(choices: VoiceChoices) = choices.model(provider, VoiceChoices.Model.Transcribe)
+        override fun addUsage(choices: VoiceChoices, seconds: Long, month: YearMonth) = choices.addUsage(provider, seconds, month)
+    }
+
+    /** The computer's own speech model (host `local`): no key, no usage. */
+    data object Local : DictationEngine {
+        override val id get() = "local"
+        override val title get() = "This computer"
+        override fun model(choices: VoiceChoices) = ""
+        override fun addUsage(choices: VoiceChoices, seconds: Long, month: YearMonth) { }
+    }
+
+    companion object {
+        /** Every engine beside "On device", in menu order. `Local` is dictation-only: call pickers iterate [VoiceProvider]. */
+        val engines: List<DictationEngine> = VoiceProvider.entries.map(::Cloud) + Local
+        fun of(id: String?): DictationEngine? = engines.firstOrNull { it.id == id }
+    }
+}
+
 /** The provider's newest model for each voice mode, as the computer last found them. */
 @Serializable data class VoiceDefaults(val realtime: String, val transcribe: String, val speech: String)
 
-@Serializable data class VoiceStatus(val providers: List<ProviderStatus> = emptyList()) {
+@Serializable data class VoiceStatus(val providers: List<ProviderStatus> = emptyList(),
+    /** The computer's own speech model; absent on computers that predate it. */
+    val local: LocalStatus? = null) {
     /** `provider` stays a string so a provider added by a newer computer doesn't break the list. */
     @Serializable data class ProviderStatus(val provider: String, val configured: Boolean = false, val defaults: VoiceDefaults? = null)
+    /** Whether the computer can transcribe dictation itself; if not, [message] says what it needs. */
+    @Serializable data class LocalStatus(val ready: Boolean = false, val message: String? = null)
     fun configured(provider: VoiceProvider): Boolean = providers.any { it.provider == provider.id && it.configured }
+    /** What dictation with [DictationEngine.Local] needs: the computer's speech model, or a new enough Codync there. */
+    fun localMessage(): String = local?.takeUnless { it.ready }?.message
+        ?: if (local == null) "Update Codync on your computer to dictate with its own speech model." else "This computer can't transcribe dictation yet."
+    fun localReady(): Boolean = local?.ready == true
 }
 
 /** The models the computer's key can use, per voice mode. */
@@ -49,9 +88,9 @@ class VoiceChoices(private val read: (String) -> String?, private val write: (St
         get() = VoiceProvider.of(read("callEngine"))
         set(value) = write("callEngine", value?.id)
 
-    /** What the message box's dictation uses: on-device speech (null) or a provider on the user's key (iOS `dictationEngine`). */
-    var dictation: VoiceProvider?
-        get() = VoiceProvider.of(read("dictationEngine"))
+    /** What the message box's dictation uses: on-device speech (null), a provider on the user's key, or this computer (iOS `dictationEngine`). */
+    var dictation: DictationEngine?
+        get() = DictationEngine.of(read("dictationEngine"))
         set(value) = write("dictationEngine", value?.id)
 
     fun defaults(provider: VoiceProvider): VoiceDefaults = read("callDefaults.${provider.id}")

@@ -77,16 +77,7 @@ async fn route(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value) -> Resul
     if method == "icons" {
         return Ok(serde_json::to_value(crate::icons::snapshot(&hub.store)?)?);
     }
-    if method.contains("onnector")
-        || method.starts_with("composio")
-        || method == "setComposioKey"
-        || method.starts_with("credential")
-        // Only signing in reads the vault; other computer tools work without a keyring.
-        || (method == "computerCall" && b["name"] == "type_login")
-        || method.starts_with("voice")
-        || method == "setVoiceKey"
-        || matches!(method, "agentAuth" | "agentAuthenticate" | "setAgentEnv")
-    {
+    if needs_vault(method, &b) {
         market::vault::unlock(hub.clone()).await?;
     }
     if method == "readFile" {
@@ -112,5 +103,34 @@ async fn route(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value) -> Resul
     match remote::call(hub, caller, method, b).await? {
         ControlFlow::Break(v) => Ok(v),
         ControlFlow::Continue(_) => Err(UnknownMethod.into()),
+    }
+}
+
+/// Whether `method` reads keys from the vault, so it unlocks the keyring first. `voiceStatus` unlocks
+/// it itself, and dictation on this computer's own model has no key: both work without a keyring.
+fn needs_vault(method: &str, b: &Value) -> bool {
+    method.contains("onnector")
+        || method.starts_with("composio")
+        || method == "setComposioKey"
+        || method.starts_with("credential")
+        // Only signing in reads the vault; other computer tools work without a keyring.
+        || (method == "computerCall" && b["name"] == "type_login")
+        || (method.starts_with("voice") && method != "voiceStatus" && !(method == "voiceTranscribe" && b["provider"] == "local"))
+        || method == "setVoiceKey"
+        || matches!(method, "agentAuth" | "agentAuthenticate" | "setAgentEnv")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn only_methods_that_read_keys_need_the_vault() {
+        assert!(!needs_vault("voiceStatus", &json!({})));
+        assert!(!needs_vault("voiceTranscribe", &json!({"provider": "local"})));
+        assert!(needs_vault("voiceTranscribe", &json!({"provider": "openai"})));
+        assert!(needs_vault("voiceSession", &json!({"provider": "local"})));
+        assert!(needs_vault("setVoiceKey", &json!({})));
     }
 }

@@ -15,6 +15,11 @@ fn test_cloud_key() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(key.as_bytes())
 }
 
+/// A client for the test host: it's on loopback, so never through a proxy the environment names.
+pub fn client() -> reqwest::Client {
+    reqwest::Client::builder().no_proxy().build().expect("HTTP client")
+}
+
 /// Runs `codync-host serve` for `home` until it answers: the process and its base URL. A port
 /// picked here is only free for a moment; when something else takes it before the host binds, the
 /// host exits and this starts it again on another one.
@@ -59,7 +64,7 @@ fn not_started(log: &Path, last: &str) -> String {
 /// Whether `base` is this home's host: on a reused port another test's host answers `/health` too.
 pub async fn ready(base: &str, home: &Path) -> Result<(), String> {
     let token = std::fs::read_to_string(home.join("token")).map_err(|e| format!("no token yet: {e}"))?;
-    let res = reqwest::Client::new()
+    let res = client()
         .get(format!("{base}/events?since=0&client=test"))
         .bearer_auth(token.trim())
         .timeout(Duration::from_secs(1))
@@ -105,7 +110,7 @@ pub fn python_agent(script: &Path) -> String {
 /// the newest row per id. Reads until the stream goes quiet.
 pub async fn snapshot(base: &str, token: &str) -> serde_json::Value {
     use futures::StreamExt as _;
-    let res = reqwest::Client::new()
+    let res = client()
         .get(format!("{base}/events?since=0&client=test"))
         .bearer_auth(token)
         .send()

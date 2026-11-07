@@ -3,7 +3,7 @@
 //! call gets a short-lived credential minted here and then streams audio to the
 //! provider directly, so audio never crosses the channel or the relay.
 
-mod local;
+pub mod local;
 
 use crate::market::vault;
 use crate::store::Store;
@@ -201,9 +201,14 @@ async fn mint(p: Provider, key: &str, model: &str, voice: &str) -> Result<String
         .ok_or_else(|| anyhow!("{} sent no session credential.", p.name()))
 }
 
-/// Which providers have a key here, with their default models.
-pub fn status(store: &Store) -> Result<Value> {
-    let keys = load(store)?;
+/// Which providers have a key here, with their default models, and whether this computer's own model
+/// can transcribe. With the keyring locked the keys can't be read: providers show as not configured
+/// (adding a key then says why), while dictation on this computer, which needs no key, still works.
+pub fn status(store: &Store) -> Value {
+    let keys = load(store).unwrap_or_else(|error| {
+        tracing::warn!(%error, "voice keys unreadable");
+        Keys::default()
+    });
     let providers: Vec<Value> = Provider::ALL
         .iter()
         .map(|&p| {
@@ -211,7 +216,7 @@ pub fn status(store: &Store) -> Result<Value> {
             json!({"provider": p.id(), "configured": !keys.get(p).is_empty(), "defaults": defaults})
         })
         .collect();
-    Ok(json!({"providers": providers, "local": local::status()}))
+    json!({"providers": providers, "local": local::status()})
 }
 
 /// Checks the key with the provider (one credential mint), then keeps it. An empty key removes it.
@@ -234,7 +239,7 @@ pub async fn set_key(store: &Store, p: Provider, key: &str) -> Result<Value> {
         // A new key may see newer models; the daily refresh would only get there tomorrow.
         let _ = models(store, p).await;
     }
-    status(store)
+    Ok(status(store))
 }
 
 /// A credential for a call starting now.
@@ -545,6 +550,7 @@ fn wav(pcm: &[u8], rate: u32) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LockExt;
 
     fn ids(p: Provider, ids: &[&str]) -> (Vec<String>, Vec<String>, Vec<String>) {
         let models: Vec<Model> = ids
@@ -647,5 +653,16 @@ mod tests {
         assert!(checked("").is_err());
         assert!(Provider::parse("openai").is_ok());
         assert!(Provider::parse("anthropic").is_err());
+    }
+
+    #[test]
+    fn a_locked_keyring_still_reports_this_computers_model() {
+        let store = Store::open(std::path::Path::new(":memory:")).unwrap();
+        vault::write(&store, SLOT, r#"{"openai":"sk-test"}"#).unwrap();
+        assert_eq!(status(&store)["providers"][0]["configured"], true);
+        *store.secret_key.locked() = None;
+        let locked = status(&store);
+        assert_eq!(locked["providers"][0]["configured"], false);
+        assert!(locked["local"]["ready"].is_boolean());
     }
 }

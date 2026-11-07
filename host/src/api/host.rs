@@ -28,7 +28,11 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
             tokio::task::spawn_blocking(move || crate::update::request_install(port, force)).await??;
             json!({"scheduled": true})
         }
-        "voiceStatus" => crate::voice::status(&hub.store)?,
+        "voiceStatus" => {
+            // A locked keyring shows in `status` as unreadable keys; this computer's own model still reports.
+            let _ = crate::market::vault::unlock(hub.clone()).await;
+            crate::voice::status(&hub.store)
+        }
         "setVoiceKey" => {
             let provider = crate::voice::Provider::parse(str_arg(&b, "provider")?)?;
             crate::voice::set_key(&hub.store, provider, b["key"].as_str().unwrap_or_default()).await?

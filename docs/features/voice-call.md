@@ -79,7 +79,9 @@ transcribe on its own model (`host/src/voice/local.rs`): whisper.cpp's `whisper-
 large-v3-turbo (`<data dir>/speech/ggml-large-v3-turbo.bin`), started on loopback on first use and kept
 loaded; the prompt is the host's transcription hint, the names hint and a Chinese line that keeps
 Chinese speech from drifting into English. A piece whose loudest 100 ms stays under -45 dBFS gives no
-text without reaching the model (Whisper makes up "Thank you." for silence). No key, no minutes, no network call out. `voiceStatus`'s
+text without reaching the model (Whisper makes up "Thank you." for silence). No key, no minutes, no network call out: the
+host reaches the server without any proxy the environment names, stops it when it shuts down, and neither
+`voiceStatus` nor this transcription needs the keyring (with it locked, providers show as not configured). `voiceStatus`'s
 `local: {ready, message}` says whether it can run; before recording, the mic checks it and, if not
 ready, shows `message` (what to install) as the dictation's failure. It's a dictation engine only,
 never a call engine. Why this model and runtime:

@@ -6,7 +6,8 @@ use super::{TRANSCRIBE_HINT, multipart, names_hint, spoken_names};
 use crate::store::Store;
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -32,11 +33,11 @@ fn model_path() -> PathBuf {
     crate::service::data_dir().join("speech").join(MODEL)
 }
 
-/// What's missing for dictation on this computer, as the user should read it.
-fn missing() -> Option<String> {
-    let model = model_path();
-    let server = crate::agent::backends::on_path(SERVER);
-    if server && model.is_file() {
+/// What's missing for dictation on this computer, as the user should read it: `server` is whether
+/// `whisper-server` is on the PATH, `model` where the model file belongs.
+fn missing(server: bool, model: &Path) -> Option<String> {
+    let has_model = model.is_file();
+    if server && has_model {
         return None;
     }
     let mut steps = Vec::new();
@@ -47,16 +48,30 @@ fn missing() -> Option<String> {
             format!("install whisper.cpp so {SERVER} is on the PATH")
         });
     }
-    if !model.is_file() {
+    if !has_model {
         steps.push(format!("download {MODEL_URL} to {}", model.display()));
     }
     Some(format!("This computer's speech model isn't installed. To dictate with it, {}.", steps.join(", then ")))
 }
 
+fn missing_here() -> Option<String> {
+    missing(crate::agent::backends::on_path(SERVER), &model_path())
+}
+
 /// `{ready, message}` for `voiceStatus`: whether dictation on this computer can run, and if not, what to install.
 pub fn status() -> Value {
-    let message = missing();
+    let message = missing_here();
     json!({"ready": message.is_none(), "message": message})
+}
+
+/// Stops the speech server, if it runs, and waits for it to exit: the host calls this as it shuts
+/// down, since a static's child is never dropped (so `kill_on_drop` never fires) when the process exits.
+pub async fn stop() {
+    if let Some((mut child, _)) = RUNNING.lock().await.take()
+        && let Err(error) = child.kill().await
+    {
+        tracing::warn!(%error, "couldn't stop the speech server");
+    }
 }
 
 /// The server's port, starting it (and waiting for the model to load) when it isn't running.
@@ -67,7 +82,7 @@ async fn port() -> Result<u16> {
     {
         return Ok(*port);
     }
-    if let Some(message) = missing() {
+    if let Some(message) = missing_here() {
         bail!(message);
     }
     // A free loopback port: the OS picks one, and the server takes it over once this listener closes.
@@ -97,6 +112,19 @@ async fn port() -> Result<u16> {
     Ok(port)
 }
 
+/// The client that talks to the speech server: never through a proxy (`HTTP_PROXY` would get the
+/// recording) and never redirected off this computer.
+fn loopback() -> &'static reqwest::Client {
+    static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+        reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("TLS setup failed: install the ca-certificates package")
+    });
+    &CLIENT
+}
+
 /// Speech to text for one utterance (a 16 kHz mono WAV), on this computer.
 pub async fn transcribe(store: &Store, wav: &[u8]) -> Result<Value> {
     if !voiced(wav) {
@@ -105,7 +133,7 @@ pub async fn transcribe(store: &Store, wav: &[u8]) -> Result<Value> {
     let port = port().await?;
     let prompt = format!("{TRANSCRIBE_HINT} {} {CHINESE_HINT}", names_hint(&spoken_names(store)));
     let (boundary, body) = multipart(&[("prompt", &prompt), ("temperature", "0"), ("response_format", "json")], wav);
-    let res = crate::http()
+    let res = loopback()
         .post(format!("http://127.0.0.1:{port}/inference"))
         .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
         .body(body)
@@ -162,10 +190,20 @@ mod tests {
     }
 
     #[test]
-    fn without_the_model_it_says_what_to_install() {
-        let status = status();
-        assert_eq!(status["ready"], false);
-        let message = status["message"].as_str().unwrap();
-        assert!(message.contains(MODEL_URL) && message.contains(&model_path().display().to_string()), "{message}");
+    fn it_says_what_to_install_until_both_are_there() {
+        let dir = std::env::temp_dir().join(format!("codync-speech-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let model = dir.join(MODEL);
+        let neither = missing(false, &model).unwrap();
+        assert!(neither.contains("install whisper.cpp") && neither.contains(MODEL_URL), "{neither}");
+        let no_model = missing(true, &model).unwrap();
+        assert!(
+            !no_model.contains("install whisper.cpp") && no_model.contains(&model.display().to_string()),
+            "{no_model}"
+        );
+        std::fs::write(&model, b"").unwrap();
+        assert!(!missing(false, &model).unwrap().contains(MODEL_URL));
+        assert_eq!(missing(true, &model), None);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

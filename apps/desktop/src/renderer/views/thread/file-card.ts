@@ -68,9 +68,20 @@ export function cardKeyAction(key: { key: string; shiftKey: boolean }, menuOpen:
   return undefined
 }
 
-/** Whether a click on a card runs its first action: anywhere but its own buttons, which run theirs. */
+/** Seconds an arrow key moves a voice note's playhead, as VoiceOver's adjust does on the phones. */
+const SEEK_STEP = 5
+
+/** Where an arrow key on a focused voice note moves its playhead (seconds), or undefined for any other key or a sound not loaded yet. */
+export function seekKeyTarget(key: string, audio: AudioSnapshot | undefined) {
+  if (!audio || audio.duration <= 0) return undefined
+  if (key === 'ArrowRight') return audio.elapsed + SEEK_STEP
+  if (key === 'ArrowLeft') return audio.elapsed - SEEK_STEP
+  return undefined
+}
+
+/** Whether a click on a card runs its first action: anywhere but its own buttons and the voice note's bar, which run theirs. */
 export function clickRunsFirstAction(target: { closest(selector: string): unknown }) {
-  return !target.closest('button')
+  return !target.closest('button, input')
 }
 
 /** The line under a shared file's name: its size, the download's progress, or what went wrong. */

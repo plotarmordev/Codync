@@ -32,6 +32,7 @@ struct FileDownloadCard: View {
             }
             Button(busy ? L10n.tr("Cancel download") : L10n.tr("Download"), action: self.download)
         }
+        .audioSeekAdjustable(file.showsAsAudio ? audio : nil)
     }
 
     /// The picture itself; tap for full size.
@@ -71,7 +72,7 @@ struct FileDownloadCard: View {
 
     /// The position in the sound, once its length is known.
     private var progress: some View {
-        AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 1).padding(.top, 3)
+        AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 1, seek: audio.seek).padding(.top, 3)
     }
 
     private func play() {
@@ -128,21 +129,41 @@ struct AudioPlayButton: View {
     }
 }
 
-/// How far a shared sound has played: a thin bar filling left to right.
+/// How far a shared sound has played: a 4 pt bar filling left to right. Tap or drag it to move there; its touch
+/// area runs 20 pt over and under the bar without taking up layout, as the play button's does.
 struct AudioProgress: View {
     let elapsed: TimeInterval
     let duration: TimeInterval
+    let seek: (TimeInterval) -> Void
 
     var body: some View {
-        Capsule()
-            .fill(Palette.tertiary)
-            .frame(height: 2.5)
-            .overlay(alignment: .leading) {
-                GeometryReader { proxy in
-                    Capsule().fill(Palette.text)
-                        .frame(width: proxy.size.width * min(1, elapsed / max(1, duration)))
-                }
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Palette.tertiary)
+                Capsule().fill(Palette.text).frame(width: proxy.size.width * min(1, elapsed / max(1, duration)))
             }
+            .frame(height: 4)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                seek(duration * min(max(drag.location.x / proxy.size.width, 0), 1))
+            })
+        }
+        .frame(height: 44)
+        .padding(.vertical, -20)
+    }
+}
+
+extension View {
+    /// VoiceOver's swipe up or down on a voice note moves it five seconds; another file's card isn't adjustable.
+    @ViewBuilder func audioSeekAdjustable(_ audio: SharedAudio?) -> some View {
+        if let audio {
+            accessibilityAdjustableAction { direction in
+                audio.seek(to: audio.elapsed + (direction == .increment ? 5 : -5))
+            }
+        } else {
+            self
+        }
     }
 }
 

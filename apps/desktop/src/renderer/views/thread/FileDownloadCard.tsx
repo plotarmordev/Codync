@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { filePreview, showsAsAudio, showsAsImage, type Entry, type SharedFile } from '@shared/models'
+import { filePreview } from '@shared/file-preview'
+import { showsAsAudio, showsAsImage, type Entry, type SharedFile } from '@shared/models'
 import { useStore } from '../../store/context'
 import { Icon } from '../../components/Icon'
 import { AnchoredMenu, IconButtonBase, useContextMenu } from '../../components/Overlay'

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Artifact, LibraryItem } from '@shared/artifacts'
-import { filePreview, isImageName, type Attachment, type SharedFile } from '@shared/models'
+import { filePreview } from '@shared/file-preview'
+import { isImageName, type Attachment, type SharedFile } from '@shared/models'
 import { DropdownMenu, IconButton } from '../../components/Controls'
 import { Icon } from '../../components/Icon'
 import { HStack, VStack } from '../../components/Stack'

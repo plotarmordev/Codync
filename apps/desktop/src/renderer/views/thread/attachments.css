@@ -106,10 +106,15 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.file-viewer-pdf {
+.file-viewer-pdf,
+.file-viewer-video {
   flex: 1;
   min-height: 0;
   border: none;
+}
+.file-viewer-video {
+  width: 100%;
+  background: #000;
 }
 
 /* The sound's clock made visible: a thin bar that fills left to right. */

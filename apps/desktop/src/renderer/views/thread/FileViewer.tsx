@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { filePreview, opensInline, type FilePreview, type SharedFile } from '@shared/models'
+import { byteLimit, filePreview, isVideoData, opensInline, type FilePreview } from '@shared/file-preview'
+import type { SharedFile } from '@shared/models'
 import { IconButton } from '../../components/Controls'
 import { ModalHeader, Sheet, SheetPage } from '../../components/Overlay'
 import { Text } from '../../components/Text'
@@ -9,7 +10,7 @@ import { downloadAction, downloadDetail } from './file-card'
 import { MarkdownText } from './Markdown'
 import './attachments.css'
 
-/** A shared Markdown, text or PDF file open inside the app, from its card or its Library row. */
+/** A shared Markdown, text, PDF or video file open inside the app, from its card or its Library row. */
 export function FileViewer({ entryId, file, close }: { entryId: string; file: SharedFile | null; close: () => void }) {
   const store = useStore()
   const state = file ? store.fileDownloads.states.get(file.id) : undefined
@@ -41,9 +42,11 @@ type Opened =
   | { kind: 'loading' }
   | { kind: 'big' }
   | { kind: 'notText' }
+  | { kind: 'notVideo' }
   | { kind: 'failed' }
   | { kind: 'text'; text: string }
   | { kind: 'pdf'; url: string }
+  | { kind: 'video'; url: string }
 
 function FileBody({ entryId, file, preview }: { entryId: string; file: SharedFile; preview: FilePreview }) {
   const store = useStore()
@@ -59,6 +62,11 @@ function FileBody({ entryId, file, preview }: { entryId: string; file: SharedFil
       if (preview.kind === 'pdf') {
         url = URL.createObjectURL(new Blob([data as BlobPart], { type: 'application/pdf' }))
         return setOpened({ kind: 'pdf', url })
+      }
+      if (preview.kind === 'video') {
+        if (!isVideoData(data)) return setOpened({ kind: 'notVideo' })
+        url = URL.createObjectURL(new Blob([data as BlobPart]))
+        return setOpened({ kind: 'video', url })
       }
       try {
         setOpened({ kind: 'text', text: new TextDecoder('utf-8', { fatal: true }).decode(data) })
@@ -84,10 +92,14 @@ function FileBody({ entryId, file, preview }: { entryId: string; file: SharedFil
       return note(tr('This file is too big to open here (over {limit}). Download it to open it in another app.').replace('{limit}', byteLimit(preview.maxBytes)))
     case 'notText':
       return note(tr('This file isn\'t UTF-8 text. Download it to open it in another app.'))
+    case 'notVideo':
+      return note(tr('This video can\'t play here. Download it to open it in another app.'))
     case 'failed':
       return note(tr('Couldn\'t open the file.'))
     case 'pdf':
       return <iframe className="file-viewer-pdf" title={file.name} src={opened.url} />
+    case 'video':
+      return <video className="file-viewer-video" title={file.name} src={opened.url} controls autoPlay onError={() => setOpened({ kind: 'notVideo' })} />
     case 'text':
       return preview.kind === 'markdown' ? (
         <div className="file-viewer-scroll"><MarkdownText text={opened.text} /></div>
@@ -96,6 +108,3 @@ function FileBody({ entryId, file, preview }: { entryId: string; file: SharedFil
       )
   }
 }
-
-/** A kind's limit as people read it: "512 KB", "20 MB". */
-const byteLimit = (bytes: number) => (bytes >= 1024 * 1024 ? `${bytes / (1024 * 1024)} MB` : `${bytes / 1024} KB`)

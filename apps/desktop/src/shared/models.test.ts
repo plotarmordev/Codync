@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { draftOf, filePreview, isChat, isReplyable, normalizeBot, opensInline, quoteOf, voiceNoteOf, type Entry, type SharedFile } from './models.ts'
+import { draftOf, isChat, isReplyable, normalizeBot, quoteOf, voiceNoteOf, type Entry, type SharedFile } from './models.ts'
 
 test('a bot keeps its Fast mode through the settings draft', () => {
   const bot = normalizeBot({ id: 'b', backend: 'codex', fastMode: true })
@@ -63,30 +63,6 @@ test('a quote names who wrote it and falls back to file names', () => {
   assert.equal(quoteOf(message('agent', { text: 'yo', final: true })).author, 'b')
   assert.equal(quoteOf(message('user', { text: '', attachments: [{ id: 'a', name: 'a.png', size: 1 }, { id: 'c', name: 'c.pdf', size: 1 }] })).text, 'a.png, c.pdf')
   assert.equal(quoteOf(message('user', { text: 'x'.repeat(900) })).text.length, 500)
-})
-
-const shared = (name: string, size = 1): SharedFile => ({ id: 'f', name, size, sha256: '0'.repeat(64) })
-
-test('a shared Markdown, text or PDF file names its preview kind and byte limit', () => {
-  assert.deepEqual(filePreview(shared('notes.md')), { kind: 'markdown', maxBytes: 512 * 1024 })
-  assert.deepEqual(filePreview(shared('report.markdown')), { kind: 'markdown', maxBytes: 512 * 1024 })
-  assert.deepEqual(filePreview(shared('server.log')), { kind: 'text', maxBytes: 512 * 1024 })
-  assert.deepEqual(filePreview(shared('spec.pdf')), { kind: 'pdf', maxBytes: 20 * 1024 * 1024 })
-})
-
-test('the preview kind ignores the extension\'s case and misses other files', () => {
-  assert.equal(filePreview(shared('NOTES.MD'))?.kind, 'markdown')
-  for (const name of ['Shot.PNG', 'memo', 'md', 'report.constructor', 'x.__proto__', 'a.toString']) {
-    assert.equal(filePreview(shared(name)), null, name)
-  }
-})
-
-test('a file at its limit opens inside the app; one byte over does not', () => {
-  for (const [name, limit] of [['a.md', 512 * 1024], ['a.csv', 512 * 1024], ['a.pdf', 20 * 1024 * 1024]] as const) {
-    assert.equal(opensInline(shared(name, limit)), true, name)
-    assert.equal(opensInline(shared(name, limit + 1)), false, name)
-  }
-  assert.equal(opensInline(shared('build.zip')), false)
 })
 
 test("a message's voice note plays in its bubble; a voice note on its own, or a file that isn't a sound, keeps its card", () => {

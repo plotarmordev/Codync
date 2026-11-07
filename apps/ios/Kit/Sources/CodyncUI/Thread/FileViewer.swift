@@ -2,6 +2,7 @@ import AVKit
 import CodyncKit
 import PDFKit
 import SwiftUI
+import WebKit
 
 /// A shared file opened in its chat's file viewer.
 struct FileViewerTarget: Identifiable {
@@ -22,7 +23,7 @@ struct FileViewer: View {
 
     private enum Content {
         case loading, failed, tooBig, notUTF8, notVideo
-        case markdown([MarkdownBlocks.Block]), text([Substring]), pdf(Data), video(AVPlayer)
+        case markdown([MarkdownBlocks.Block]), text([Substring]), pdf(Data), video(AVPlayer), webM(URL)
     }
 
     var body: some View {
@@ -75,6 +76,8 @@ struct FileViewer: View {
             PDFViewer(data: data)
         case .video(let player):
             VideoPlayer(player: player).background(.black)
+        case .webM(let url):
+            WebMPlayer(url: url) { content = .notVideo }
         }
     }
 
@@ -99,7 +102,7 @@ struct FileViewer: View {
         case .pdf:
             content = .pdf(data)
         case .video:
-            content = await video(data).map(Content.video) ?? .notVideo
+            content = await video(data) ?? .notVideo
         case .markdown, .text:
             guard let source = String(data: data, encoding: .utf8) else { content = .notUTF8; return }
             content = await Task.detached {
@@ -108,17 +111,22 @@ struct FileViewer: View {
         }
     }
 
-    /// A player for `data` when its bytes are a video AVFoundation plays. AVFoundation picks the format by the file's
-    /// extension, so the checked bytes go to a temporary file with the file's own extension (one per file id).
-    private func video(_ data: Data) async -> AVPlayer? {
-        guard SharedFile.isVideo(data) else { return nil }
+    /// The player for `data`'s container, nil when it isn't a video this phone plays. AVFoundation picks the format by
+    /// the file's extension, so the checked bytes go to a temporary file with the file's own extension (one per file id).
+    private func video(_ data: Data) async -> Content? {
+        guard let container = SharedFile.VideoContainer(data) else { return nil }
         let url = URL.temporaryDirectory.appending(path: "codync-video-\(file.id)").appendingPathExtension((file.name as NSString).pathExtension)
         guard (try? data.write(to: url, options: .atomic)) != nil else { return nil }
-        let asset = AVURLAsset(url: url)
-        guard (try? await asset.load(.isPlayable)) == true else { return nil }
-        let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
-        player.play()
-        return player
+        switch container {
+        case .webM:
+            return .webM(url)
+        case .isoMedia:
+            let asset = AVURLAsset(url: url)
+            guard (try? await asset.load(.isPlayable)) == true else { return nil }
+            let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+            player.play()
+            return .video(player)
+        }
     }
 }
 
@@ -134,4 +142,40 @@ private struct PDFViewer: UIViewRepresentable {
     }
 
     func updateUIView(_ view: PDFView, context: Context) {}
+}
+
+/// WebKit's `<video>` for a WebM file, which AVFoundation can't play; `failed` runs when WebKit can't decode it either,
+/// so the sheet shows its notice instead of a broken player.
+private struct WebMPlayer: UIViewRepresentable {
+    let url: URL
+    let failed: @MainActor () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(failed: failed) }
+
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.userContentController.add(context.coordinator, name: "failed")
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.isOpaque = false
+        view.backgroundColor = .black
+        view.scrollView.isScrollEnabled = false
+        view.loadHTMLString("""
+            <meta name="viewport" content="width=device-width">
+            <body style="margin:0;background:#000">
+            <video src="\(url.absoluteString)" controls autoplay playsinline style="width:100vw;height:100vh"
+                onerror="webkit.messageHandlers.failed.postMessage(0)"></video>
+            """, baseURL: url.deletingLastPathComponent())
+        return view
+    }
+
+    func updateUIView(_ view: WKWebView, context: Context) {}
+
+    @MainActor final class Coordinator: NSObject, WKScriptMessageHandler {
+        let failed: @MainActor () -> Void
+        init(failed: @escaping @MainActor () -> Void) { self.failed = failed }
+
+        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) { failed() }
+    }
 }

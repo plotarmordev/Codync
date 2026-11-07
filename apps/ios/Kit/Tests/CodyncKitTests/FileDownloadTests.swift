@@ -64,13 +64,17 @@ private func metadata(_ data: Data, name: String = "file.bin") -> SharedFile {
     #expect(!file("archive.zip", 1).opensInline)
 }
 
-@Test func aVideoIsCheckedByItsBytesNotItsName() {
+@Test func aVideoIsCheckedByItsBytesNotItsName() throws {
+    let fixture = { (name: String) in
+        try Data(contentsOf: #require(Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures")))
+    }
+    for name in ["vp8.webm", "vp9.webm"] { #expect(try SharedFile.VideoContainer(fixture(name)) == .webM, "\(name)") }
+    #expect(try SharedFile.VideoContainer(fixture("h264.mp4")) == .isoMedia)
     let box = { (type: String) in Data([0, 0, 0, 0x20]) + Data(type.utf8) + Data("isom".utf8) }
-    for type in ["ftyp", "moov", "mdat", "wide"] { #expect(SharedFile.isVideo(box(type)), "\(type)") }
-    #expect(SharedFile.isVideo(Data([0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81])))
-    #expect(!SharedFile.isVideo(Data("PK\u{3}\u{4}zip renamed .mp4".utf8)))
-    #expect(!SharedFile.isVideo(Data("plain text".utf8)))
-    #expect(!SharedFile.isVideo(Data([0, 0, 0, 0x20, 0x66])))
+    for type in ["moov", "mdat", "wide"] { #expect(SharedFile.VideoContainer(box(type)) == .isoMedia, "\(type)") }
+    #expect(SharedFile.VideoContainer(Data("PK\u{3}\u{4}zip renamed .mp4".utf8)) == nil)
+    #expect(SharedFile.VideoContainer(Data("plain text".utf8)) == nil)
+    #expect(SharedFile.VideoContainer(Data([0, 0, 0, 0x20, 0x66])) == nil)
 }
 
 @Test func generatedFileFailuresRemovePartialBytes() async throws {

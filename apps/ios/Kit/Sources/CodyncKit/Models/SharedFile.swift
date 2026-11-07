@@ -51,13 +51,25 @@ public struct SharedFile: Codable, Hashable, Sendable, Identifiable {
     /// Small enough to open inside the app.
     public var opensInline: Bool { preview.map { size <= $0.maxBytes } ?? false }
 
-    /// Whether `data` starts like a video container, whatever the file is called: an ISO media file (MP4, MOV,
-    /// M4V) with its `ftyp` box or an older QuickTime file's first `moov`/`mdat`/`wide` atom, or Matroska/WebM.
-    public static func isVideo(_ data: Data) -> Bool {
-        let head = [UInt8](data.prefix(8))
-        guard head.count == 8 else { return false }
-        return head.starts(with: [0x1A, 0x45, 0xDF, 0xA3])
-            || ["ftyp", "moov", "mdat", "wide"].contains(String(decoding: head[4...], as: UTF8.self))
+    /// A video's container, read from its bytes whatever the file is called. They pick the player: AVFoundation plays
+    /// ISO media but not WebM, which WebKit plays.
+    public enum VideoContainer: Sendable {
+        /// MP4, MOV or M4V: an ISO media file's `ftyp` box or an older QuickTime file's first `moov`/`mdat`/`wide` atom.
+        case isoMedia
+        /// Matroska/WebM's EBML header.
+        case webM
+
+        public init?(_ data: Data) {
+            let head = [UInt8](data.prefix(8))
+            guard head.count == 8 else { return nil }
+            if head.starts(with: [0x1A, 0x45, 0xDF, 0xA3]) {
+                self = .webM
+            } else if ["ftyp", "moov", "mdat", "wide"].contains(String(decoding: head[4...], as: UTF8.self)) {
+                self = .isoMedia
+            } else {
+                return nil
+            }
+        }
     }
 
     public func validate() throws {

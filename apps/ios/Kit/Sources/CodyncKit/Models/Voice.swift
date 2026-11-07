@@ -69,6 +69,35 @@ public enum VoiceProvider: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// What transcribes dictation into the message box: a provider on the user's own key, or this
+/// computer's own speech model (`voiceTranscribe` with provider "local"; no key, no minutes).
+/// Dictation only: never a call engine. `nil` in the `dictationEngine` pref stays on-device.
+public enum DictationEngine: Equatable, Sendable {
+    case provider(VoiceProvider)
+    case local
+
+    /// The `dictationEngine` pref's value ("device" / absent means no engine: on-device speech).
+    public init?(pref: String) {
+        if pref == "local" { self = .local }
+        else if let provider = VoiceProvider(rawValue: pref) { self = .provider(provider) }
+        else { return nil }
+    }
+
+    public var pref: String {
+        switch self {
+        case .provider(let provider): provider.rawValue
+        case .local: "local"
+        }
+    }
+
+    public var name: String {
+        switch self {
+        case .provider(let provider): provider.name
+        case .local: "This computer"
+        }
+    }
+}
+
 /// The provider's newest model for each voice mode, as the computer last found them.
 public struct VoiceDefaults: Codable, Sendable, Equatable {
     public var realtime: String
@@ -90,7 +119,27 @@ public struct VoiceStatus: Decodable, Sendable {
         public var defaults: VoiceDefaults?
     }
 
+    /// The computer's own speech model, for "This computer" dictation. Missing from hosts before it.
+    public struct Local: Decodable, Sendable {
+        public var ready: Bool
+        /// Why it isn't ready (what to install), when it isn't.
+        public var message: String?
+    }
+
     public var providers: [Provider]
+    public var local: Local?
+
+    /// What an older host that doesn't report `local` says when "This computer" is picked.
+    public static let localUpdateMessage = "Update Codync on your computer to dictate with its own speech model."
+
+    /// Whether "This computer" can transcribe, and why not when it can't.
+    public var localDictation: (ready: Bool, reason: String) {
+        switch local {
+        case .some(let local) where local.ready: (true, "")
+        case .some(let local): (false, local.message ?? Self.localUpdateMessage)
+        case .none: (false, Self.localUpdateMessage)
+        }
+    }
 
     public func configured(_ provider: VoiceProvider) -> Bool {
         providers.first { $0.provider == provider }?.configured == true
@@ -133,10 +182,11 @@ public extension HostClient {
         try await call("voiceModels", ["provider": provider.rawValue], timeout: 30)
     }
 
-    /// Speech to text for one utterance (a WAV file), with the computer's key.
-    func voiceTranscribe(_ provider: VoiceProvider, model: String, wav: Data) async throws -> String {
+    /// Speech to text for one utterance (a WAV file). `provider` is a provider's raw value, or
+    /// "local" for the computer's own speech model (no key, no model to pick).
+    func voiceTranscribe(provider: String, model: String, wav: Data) async throws -> String {
         struct Text: Decodable { var text: String }
-        let t: Text = try await call("voiceTranscribe", ["provider": provider.rawValue, "model": model,
+        let t: Text = try await call("voiceTranscribe", ["provider": provider, "model": model,
                                                           "audio": wav.base64EncodedString()], timeout: 60)
         return t.text
     }

@@ -60,8 +60,9 @@ private struct Offline: LocalizedError {
     var errorDescription: String? { "The computer is offline." }
 }
 
-/// Dictation with OpenAI picked, the computer's answers and the microphone in the test's hands, and a store to dictate through.
-@MainActor private func dictating(hasKey: @escaping @MainActor () async throws -> Bool = { true },
+/// Dictation with an engine picked, the computer's answers and the microphone in the test's hands, and a store to dictate through.
+@MainActor private func dictating(picked: DictationEngine? = .provider(.openAI),
+                                  check: @escaping @MainActor () async throws -> DictationGate = { .open },
                                   transcript: Pending<String> = Pending(), mic: Mic = Mic(),
                                   _ body: (Dictation, BotStore) async -> Void) async {
     let suite = "DictationTests.\(UUID().uuidString)"
@@ -71,8 +72,8 @@ private struct Offline: LocalizedError {
         throw HostError.unreachable
     }
     defer { store.retire() }
-    let service = DictationService(picked: { .openAI },
-                                   hasKey: { _, _ in try await hasKey() },
+    let service = DictationService(picked: { picked },
+                                   check: { _, _ in try await check() },
                                    allowMic: { true },
                                    openMic: { _, heard in
                                        mic.heard = heard
@@ -167,21 +168,21 @@ private extension Dictation {
 
 /// Without the provider's key on the computer it opens settings, and never opens the microphone.
 @MainActor @Test func dictatingWithoutAKeyRequestsSettings() async {
-    let key = Pending<Bool>(), mic = Mic()
-    await dictating(hasKey: { try await key.call() }, mic: mic) { dictation, store in
+    let key = Pending<DictationGate>(), mic = Mic()
+    await dictating(check: { try await key.call() }, mic: mic) { dictation, store in
         let starting = Task { await dictation.start(after: "", model: store) { _ in } }
         #expect(await key.asked())
-        key.answer(false)
+        key.answer(.needsKey)
         await starting.value
         #expect(dictation.failure == nil && dictation.needsKey)
         #expect(!dictation.listening && mic.heard == nil)
     }
 }
 
-/// With the computer out of reach the key check says why, and no recording starts.
+/// With the computer out of reach the readiness check says why, and no recording starts.
 @MainActor @Test func anUnreachableComputerSaysWhy() async {
-    let key = Pending<Bool>(), mic = Mic()
-    await dictating(hasKey: { try await key.call() }, mic: mic) { dictation, store in
+    let key = Pending<DictationGate>(), mic = Mic()
+    await dictating(check: { try await key.call() }, mic: mic) { dictation, store in
         let starting = Task { await dictation.start(after: "", model: store) { _ in } }
         #expect(await key.asked())
         key.fail(Offline())
@@ -191,15 +192,105 @@ private extension Dictation {
     }
 }
 
-/// A stop while the key check is on its way wins, whatever the check says: no recording starts and nothing is reported.
+/// A stop while the readiness check is on its way wins, whatever the check says: no recording
+/// starts and nothing is reported.
 @MainActor @Test(arguments: [true, false]) func aStopWhileTheKeyIsCheckedWins(checkAnswers: Bool) async {
-    let key = Pending<Bool>(), mic = Mic()
-    await dictating(hasKey: { try await key.call() }, mic: mic) { dictation, store in
+    let key = Pending<DictationGate>(), mic = Mic()
+    await dictating(check: { try await key.call() }, mic: mic) { dictation, store in
         let starting = Task { await dictation.start(after: "", model: store) { _ in } }
         #expect(await key.asked())
         dictation.stop()
-        if checkAnswers { key.answer(true) } else { key.fail(Offline()) }
+        if checkAnswers { key.answer(.open) } else { key.fail(Offline()) }
         await starting.value
         #expect(!dictation.listening && mic.heard == nil && dictation.failure == nil)
     }
+}
+
+/// "This computer" without its speech model installed says what the computer reported, as a
+/// dictation failure — not the missing-key settings prompt — and never opens the microphone.
+@MainActor @Test func localDictationWithoutTheModelSaysWhy() async {
+    let mic = Mic()
+    await dictating(picked: .local, check: { .blocked("Install the Whisper model in Codync on your Mac.") }, mic: mic) { dictation, store in
+        await dictation.start(after: "", model: store) { _ in }
+        #expect(dictation.failure == "Install the Whisper model in Codync on your Mac.")
+        #expect(!dictation.needsKey && !dictation.listening && mic.heard == nil)
+    }
+}
+
+/// A "This computer" recording is transcribed by the host's own speech model: `voiceStatus` says
+/// it's ready, the pieces go out with provider "local" and no model, and no usage minutes are
+/// counted for any provider.
+@MainActor @Test func aLocalRecordingIsTranscribedOnTheComputer() async throws {
+    let suite = "DictationTests.\(UUID().uuidString)"
+    let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let remote = FakeRemote(.ready(.direct))
+    await remote.setCanned("voiceStatus", #"{"providers":[],"local":{"ready":true,"message":null}}"#)
+    await remote.setCanned("voiceTranscribe", #"{"text":"heard on this computer"}"#)
+    let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in remote }
+    defer { store.retire() }
+    store.setActive(true)
+    #expect(await until { await remote.subscribed })
+    await remote.emit(botEvent("b1", name: "Bot", rev: 1))
+    #expect(await until { store.connection == .online })
+
+    // The live service's transcription path, with the test's microphone.
+    let mic = Mic()
+    var service = DictationService.live
+    service.picked = { .local }
+    service.allowMic = { true }
+    service.openMic = { _, heard in
+        mic.heard = heard
+        return true
+    }
+    let dictation = Dictation(service: service)
+    var box = ""
+    await dictation.start(after: "", model: store) { box = $0(box) }
+    #expect(dictation.listening, "failure: \(dictation.failure ?? "none")")
+    mic.heard?(Data(count: Dictation.minBytes), 0.5)
+    #expect(await until { dictation.level > 0 })
+    dictation.finish()
+    #expect(await until { box == "heard on this computer" }, "failure: \(dictation.failure ?? "none")")
+
+    #expect(await remote.calls.contains("voiceStatus"))
+    #expect(await until { await remote.calls.contains("voiceTranscribe") })
+    let calls = await remote.calls
+    let providers = await remote.bodies("provider"), models = await remote.bodies("model")
+    #expect(calls.enumerated().contains { calls[$0.offset] == "voiceTranscribe"
+        && providers[$0.offset] == "local" && models[$0.offset] == "" })
+
+    let usage = UserDefaults.standard.dictionaryRepresentation().keys.filter { $0.hasPrefix("callUsage.") }
+    defer { usage.forEach(UserDefaults.standard.removeObject(forKey:)) }
+    #expect(usage.isEmpty)
+}
+
+/// The pref's value maps to the engine: "local" is "This computer" (dictation only, never a call
+/// engine), a provider's raw value is its engine, and "device" / unknown stays on-device.
+@MainActor @Test func theDictationEnginePrefMapsEngines() {
+    defer { UserDefaults.standard.removeObject(forKey: VoiceSettings.dictationEngineKey) }
+    #expect(DictationEngine(pref: "local") == .local)
+    #expect(DictationEngine(pref: "local")?.name == "This computer")
+    #expect(DictationEngine(pref: "openai") == .provider(.openAI))
+    #expect(DictationEngine(pref: "device") == nil && DictationEngine(pref: "bogus") == nil)
+
+    UserDefaults.standard.set("local", forKey: VoiceSettings.dictationEngineKey)
+    #expect(VoiceSettings.dictationEngine == .local)
+    UserDefaults.standard.set("gemini", forKey: VoiceSettings.dictationEngineKey)
+    #expect(VoiceSettings.dictationEngine == .provider(.gemini))
+    UserDefaults.standard.removeObject(forKey: VoiceSettings.dictationEngineKey)
+    #expect(VoiceSettings.dictationEngine == nil)
+
+    // Local is not a `VoiceProvider`: nothing that iterates call engines can pick it up.
+    #expect(VoiceProvider(rawValue: "local") == nil)
+    #expect(VoiceProvider.allCases.allSatisfy { DictationEngine.provider($0) != .local })
+}
+
+/// `local` in voiceStatus decodes, and an old host without it reads as "update your computer".
+@MainActor @Test func localStatusDecodesAndDefaultsToAnUpdateNote() throws {
+    let new = try JSONDecoder().decode(VoiceStatus.self, from: Data(#"{"providers":[],"local":{"ready":false,"message":"Install the model."}}"#.utf8))
+    #expect(new.localDictation == (false, "Install the model."))
+    let ready = try JSONDecoder().decode(VoiceStatus.self, from: Data(#"{"providers":[],"local":{"ready":true}}"#.utf8))
+    #expect(ready.localDictation.ready)
+    let old = try JSONDecoder().decode(VoiceStatus.self, from: Data(#"{"providers":[]}"#.utf8))
+    #expect(old.localDictation == (false, VoiceStatus.localUpdateMessage))
 }

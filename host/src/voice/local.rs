@@ -19,6 +19,11 @@ const TRANSCRIBE_TIMEOUT: Duration = Duration::from_mins(2);
 /// Whisper drifts into English on Chinese speech with an English-only prompt; a Chinese line keeps it
 /// in the speaker's language, and in Traditional script (the phones convert to the reader's).
 const CHINESE_HINT: &str = "請保留說話者的語言與繁體中文。";
+/// Whisper makes up words ("Thank you.") for silence; a recording whose loudest 100 ms stays under
+/// this RMS (-45 dBFS; room noise is about -60, speech -30 to -10) has no speech to transcribe.
+const SPEECH_RMS: u64 = 184;
+/// 100 ms at 16 kHz.
+const WINDOW: usize = 1600;
 
 /// The running server and its port.
 static RUNNING: Mutex<Option<(Child, u16)>> = Mutex::const_new(None);
@@ -94,6 +99,9 @@ async fn port() -> Result<u16> {
 
 /// Speech to text for one utterance (a 16 kHz mono WAV), on this computer.
 pub async fn transcribe(store: &Store, wav: &[u8]) -> Result<Value> {
+    if !voiced(wav) {
+        return Ok(json!({"text": ""}));
+    }
     let port = port().await?;
     let prompt = format!("{TRANSCRIBE_HINT} {} {CHINESE_HINT}", names_hint(&spoken_names(store)));
     let (boundary, body) = multipart(&[("prompt", &prompt), ("temperature", "0"), ("response_format", "json")], wav);
@@ -116,6 +124,19 @@ fn spoken(text: &str) -> String {
     if marker(text) { String::new() } else { text.to_owned() }
 }
 
+/// Whether any 100 ms of a 16 kHz 16-bit WAV is loud enough to be speech.
+fn voiced(wav: &[u8]) -> bool {
+    let Some(start) = wav.windows(4).position(|w| w == b"data").map(|i| i + 8) else {
+        return true;
+    };
+    let samples: Vec<i16> =
+        wav[start.min(wav.len())..].as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes(*b)).collect();
+    samples.chunks(WINDOW).any(|w| {
+        let energy: u64 = w.iter().map(|&s| u64::from(s.unsigned_abs()).pow(2)).sum();
+        energy >= SPEECH_RMS.pow(2) * w.len() as u64
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,6 +146,19 @@ mod tests {
         assert_eq!(spoken(" [BLANK_AUDIO]\n"), "");
         assert_eq!(spoken("(music)"), "");
         assert_eq!(spoken(" Run cargo test (twice).\n"), "Run cargo test (twice).");
+    }
+
+    #[test]
+    fn silence_and_room_noise_are_not_sent_to_the_model() {
+        let wav = |level: i16| {
+            super::super::wav(
+                &(0..16_000).flat_map(|i| if i % 2 == 0 { level } else { -level }.to_le_bytes()).collect::<Vec<u8>>(),
+                16_000,
+            )
+        };
+        assert!(!voiced(&wav(0)));
+        assert!(!voiced(&wav(30)));
+        assert!(voiced(&wav(3_000)));
     }
 
     #[test]

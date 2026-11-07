@@ -122,6 +122,7 @@ public struct ThreadView: View {
                         // In a group, the bot whose agent failed.
                         addFallback: { details = DetailsRequest(botId: e.data.author ?? e.botId) },
                         openArtifact: { openArtifact = ArtifactTarget(botId: e.botId, id: $0.id, title: $0.title) },
+                        openFile: { openFile = $0 },
                         openCall: { openCall = e })
                     .equatable()
             }

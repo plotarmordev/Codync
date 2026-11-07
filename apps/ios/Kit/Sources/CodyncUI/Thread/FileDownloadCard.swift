@@ -5,6 +5,8 @@ import UIKit
 struct FileDownloadCard: View {
     let entry: Entry
     let file: SharedFile
+    /// Opens a readable file in the chat's viewer; nil where the card stands alone.
+    var openFile: ((FileViewerTarget) -> Void)?
     @Environment(BotStore.self) private var model
     @State private var viewing = false
     @State private var audio = SharedAudio()
@@ -34,12 +36,14 @@ struct FileDownloadCard: View {
     private var row: some View {
         let state = model.fileDownloads.states[file.id]
         return HStack(spacing: 12) {
-            if file.showsAsAudio { playButton } else {
-                Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(file.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(2)
-                Text(Self.detail(state, size: file.size)).font(.caption2).foregroundStyle(Palette.secondary)
+            if file.preview != nil {
+                Button { openFile?(FileViewerTarget(file: file, entryId: entry.id, botId: entry.botId)) } label: {
+                    label(state)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.tr("Open {name}").replacingOccurrences(of: "{name}", with: file.name))
+            } else {
+                label(state)
             }
             Spacer(minLength: 0)
             Button {
@@ -53,6 +57,19 @@ struct FileDownloadCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("\(busy(state) ? "Cancel download" : "Download") \(file.name)")
+        }
+    }
+
+    /// Its icon (or a voice note's play button) and name; tap opens the viewer for readable files.
+    private func label(_ state: FileDownloads.State?) -> some View {
+        HStack(spacing: 12) {
+            if file.showsAsAudio { playButton } else {
+                Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
+            }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(file.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(2)
+                Text(Self.detail(state, size: file.size)).font(.caption2).foregroundStyle(Palette.secondary)
+            }
         }
     }
 

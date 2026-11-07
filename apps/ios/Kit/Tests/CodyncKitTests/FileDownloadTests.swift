@@ -44,6 +44,24 @@ private func metadata(_ data: Data, name: String = "file.bin") -> SharedFile {
     await #expect(throws: FileDownloadError.self) { try await FileDownload().data(client: client, entryId: "entry", file: bad) }
 }
 
+@Test func sharedFilePreviewFollowsTheExtension() {
+    let file = { SharedFile(id: "id", name: $0, size: 0, sha256: String(repeating: "0", count: 64)) }
+    #expect(file("notes.md").preview == .markdown)
+    #expect(file("notes.MARKDOWN").preview == .markdown)
+    #expect(file("main.swift").preview == .text)
+    #expect(file("report.pdf").preview == .pdf)
+    #expect(file("archive.zip").preview == nil)
+}
+
+@Test func sharedFileOpensInlineUpToItsKindsLimit() {
+    let file = { SharedFile(id: "id", name: $0, size: $1, sha256: String(repeating: "0", count: 64)) }
+    for (name, limit) in [("notes.md", Int64(512 * 1024)), ("data.csv", Int64(512 * 1024)), ("report.pdf", Int64(20 * 1024 * 1024))] {
+        #expect(file(name, limit).opensInline, "\(name)")
+        #expect(!file(name, limit + 1).opensInline, "\(name)")
+    }
+    #expect(!file("archive.zip", 1).opensInline)
+}
+
 @Test func generatedFileFailuresRemovePartialBytes() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }

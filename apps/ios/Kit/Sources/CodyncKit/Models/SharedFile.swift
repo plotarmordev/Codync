@@ -21,6 +21,35 @@ public struct SharedFile: Codable, Hashable, Sendable, Identifiable {
     /// A voice note or other sound small enough to play in the chat.
     public var showsAsAudio: Bool { Attachment.isAudio(name) && size <= Self.inlineBytes }
 
+    /// A kind of file the phone opens in place: Markdown, text/code or a PDF. Images and sounds keep
+    /// their own previews, so they never get one here.
+    public enum FilePreview: Sendable {
+        case markdown, text, pdf
+
+        /// The largest file the viewer fetches; a bigger one still opens, with a notice instead.
+        public var maxBytes: Int64 {
+            switch self {
+            case .markdown, .text: 512 * 1024
+            case .pdf: SharedFile.inlineBytes
+            }
+        }
+    }
+
+    /// A readable file's viewer kind, by extension like `Attachment.isImage`; nil for anything else.
+    public var preview: FilePreview? {
+        switch (name as NSString).pathExtension.lowercased() {
+        case "md", "markdown": .markdown
+        case "txt", "log", "csv", "tsv", "json", "jsonl", "xml", "yaml", "yml", "toml", "ini",
+             "swift", "kt", "kts", "java", "js", "jsx", "ts", "tsx", "py", "rb", "go", "rs",
+             "c", "h", "cpp", "hpp", "cs", "sh", "sql", "html", "css": .text
+        case "pdf": .pdf
+        default: nil
+        }
+    }
+
+    /// Small enough to open inside the app.
+    public var opensInline: Bool { preview.map { size <= $0.maxBytes } ?? false }
+
     public func validate() throws {
         guard size >= 0, size <= 100 * 1024 * 1024,
               sha256.count == 64, sha256.allSatisfy({ "0123456789abcdef".contains($0) }),

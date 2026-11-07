@@ -419,7 +419,7 @@ fn multipart(fields: &[(&str, &str)], wav: &[u8]) -> (String, Vec<u8>) {
 pub async fn transcribe_with(store: &Store, provider: &str, model: &str, audio: &str) -> Result<Value> {
     if provider == "local" {
         let wav = STANDARD.decode(audio).map_err(|_| anyhow!("audio must be base64"))?;
-        return local::transcribe(store, &wav).await;
+        return local::transcribe(&wav).await;
     }
     transcribe(store, Provider::parse(provider)?, model, audio).await
 }

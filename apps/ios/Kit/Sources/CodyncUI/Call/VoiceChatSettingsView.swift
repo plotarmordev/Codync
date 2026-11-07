@@ -361,7 +361,7 @@ private struct LocalDictationSettings: View {
     @State private var error: String?
 
     private var footer: String {
-        var text = "Your computer transcribes what you say with its own speech model; the audio never leaves your computer."
+        var text = "Your computer transcribes what you say in English with its own speech model; the audio never leaves your computer."
         if let local, !local.ready { text += " " + local.reason }
         if let error { text += " " + error }
         return text

@@ -99,11 +99,11 @@ async fn local_dictation_stays_on_this_computer_and_stops_with_the_host() {
     }
 
     let mut host = Host::start().await;
-    let before = host.call("voiceStatus", json!({})).await;
-    assert_eq!(before["local"]["ready"], false, "{before}");
+    let before = host.call("localDictation", json!({})).await;
+    assert_eq!(before["ready"], false, "{before}");
     std::fs::create_dir_all(host.home.join("speech")).unwrap();
     std::fs::write(host.home.join("speech/ggml-large-v3-turbo.bin"), b"").unwrap();
-    assert_eq!(host.call("voiceStatus", json!({})).await["local"]["ready"], true);
+    assert_eq!(host.call("localDictation", json!({})).await["ready"], true);
 
     let said = host.call("voiceTranscribe", json!({"provider": "local", "model": "", "audio": speech()})).await;
     assert_eq!(said["text"], "Ask Builder to run cargo test.");

@@ -77,7 +77,17 @@ async fn route(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value) -> Resul
     if method == "icons" {
         return Ok(serde_json::to_value(crate::icons::snapshot(&hub.store)?)?);
     }
-    if needs_vault(method, &b) {
+    if method.contains("onnector")
+        || method.starts_with("composio")
+        || method == "setComposioKey"
+        || method.starts_with("credential")
+        // Only signing in reads the vault; other computer tools work without a keyring.
+        || (method == "computerCall" && b["name"] == "type_login")
+        // Dictation on this computer's own model (`localDictation`, local `voiceTranscribe`) has no key.
+        || (method.starts_with("voice") && !(method == "voiceTranscribe" && b["provider"] == "local"))
+        || method == "setVoiceKey"
+        || matches!(method, "agentAuth" | "agentAuthenticate" | "setAgentEnv")
+    {
         market::vault::unlock(hub.clone()).await?;
     }
     if method == "readFile" {
@@ -106,31 +116,39 @@ async fn route(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value) -> Resul
     }
 }
 
-/// Whether `method` reads keys from the vault, so it unlocks the keyring first. `voiceStatus` unlocks
-/// it itself, and dictation on this computer's own model has no key: both work without a keyring.
-fn needs_vault(method: &str, b: &Value) -> bool {
-    method.contains("onnector")
-        || method.starts_with("composio")
-        || method == "setComposioKey"
-        || method.starts_with("credential")
-        // Only signing in reads the vault; other computer tools work without a keyring.
-        || (method == "computerCall" && b["name"] == "type_login")
-        || (method.starts_with("voice") && method != "voiceStatus" && !(method == "voiceTranscribe" && b["provider"] == "local"))
-        || method == "setVoiceKey"
-        || matches!(method, "agentAuth" | "agentAuthenticate" | "setAgentEnv")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LockExt;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     use serde_json::json;
+    use std::time::Duration;
 
-    #[test]
-    fn only_methods_that_read_keys_need_the_vault() {
-        assert!(!needs_vault("voiceStatus", &json!({})));
-        assert!(!needs_vault("voiceTranscribe", &json!({"provider": "local"})));
-        assert!(needs_vault("voiceTranscribe", &json!({"provider": "openai"})));
-        assert!(needs_vault("voiceSession", &json!({"provider": "local"})));
-        assert!(needs_vault("setVoiceKey", &json!({})));
+    /// A host whose keyring read is still waiting (an unanswered unlock prompt).
+    fn hub_unlocking() -> (Arc<Hub>, tokio::sync::OwnedMutexGuard<()>) {
+        let dir = std::env::temp_dir().join(format!("codync-api-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = crate::store::Store::open(std::path::Path::new(":memory:")).unwrap();
+        *store.secret_key.locked() = None;
+        let identity = crate::remote::identity::Identity::load_or_create(&dir).unwrap();
+        let hub = Hub::new(store, "h".into(), identity, "t".into(), 0);
+        let reading = Arc::clone(&hub.store.vault_unlock).try_lock_owned().unwrap();
+        (hub, reading)
+    }
+
+    async fn call(hub: &Arc<Hub>, method: &str, b: Value) -> Option<Result<Value>> {
+        tokio::time::timeout(Duration::from_secs(2), dispatch(hub, &Caller::Local, method, b)).await.ok()
+    }
+
+    #[tokio::test]
+    async fn dictation_on_this_computer_never_waits_for_the_keyring() {
+        let (hub, _reading) = hub_unlocking();
+        let local = call(&hub, "localDictation", json!({})).await.expect("answered").unwrap();
+        assert!(local["ready"].is_boolean(), "{local}");
+        let silence = STANDARD.encode(crate::voice::wav(&[0; 3200], 16_000));
+        let said = call(&hub, "voiceTranscribe", json!({"provider": "local", "model": "", "audio": silence})).await;
+        assert_eq!(said.expect("answered").unwrap()["text"], "");
+        // Provider keys still come from the vault, so their checks wait for it.
+        assert!(call(&hub, "voiceStatus", json!({})).await.is_none());
     }
 }

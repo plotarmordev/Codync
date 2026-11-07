@@ -58,7 +58,7 @@ fn missing_here() -> Option<String> {
     missing(crate::agent::backends::on_path(SERVER), &model_path())
 }
 
-/// `{ready, message}` for `voiceStatus`: whether dictation on this computer can run, and if not, what to install.
+/// `{ready, message}` for `localDictation`: whether dictation on this computer can run, and if not, what to install.
 pub fn status() -> Value {
     let message = missing_here();
     json!({"ready": message.is_none(), "message": message})

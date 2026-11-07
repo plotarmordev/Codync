@@ -86,9 +86,9 @@ import kotlinx.coroutines.launch
     }
 }
 
-/** The thin bar under the caption: how much of a loaded voice note has played, read again about four times a second
- *  while it plays. */
-@Composable private fun AudioProgress(audio: SharedAudio) {
+/** The thin progress bar of a playing voice note, filled left to right, read again about four times a second while
+ *  it plays. */
+@Composable internal fun AudioProgress(audio: SharedAudio) {
     LaunchedEffect(audio, audio.phase) {
         audio.syncElapsed()
         while (audio.phase == AudioPhase.Playing) {

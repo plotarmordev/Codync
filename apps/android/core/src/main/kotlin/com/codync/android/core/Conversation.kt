@@ -33,6 +33,10 @@ data class Entry(
     val status: String? get() = data.text("status")
     /** Files the bot shared in this message. */
     val files: List<SharedFile> get() = data["files"]?.let { WireJson.decodeFromJsonElement<List<SharedFile>>(it) }.orEmpty()
+    /** The voice note playing at the top of this reply's bubble: only a host that flagged it and whose one file is a
+     *  sound; anything else (no flag, no file, a file too big or not audio) keeps the plain file card. */
+    val voiceNote: SharedFile? get() =
+        if (data["voiceNote"]?.jsonPrimitive?.booleanOrNull == true) files.firstOrNull()?.takeIf { it.showsAsAudio } else null
     /** The artifact a bot published in this message (an artifact card), read leniently: its text stands in for it. */
     val artifact: ArtifactCard? get() = (data["artifact"] as? JsonObject)?.let { runCatching { WireJson.decodeFromJsonElement<ArtifactCard>(it) }.getOrNull() }
     /** Of memory and context, only a fresh conversation gets a line: memory lives in the bot's memory settings, a

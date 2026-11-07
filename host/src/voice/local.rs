@@ -1,153 +1,235 @@
-//! Dictation on this computer: Underdog Bark 3.0, an English speech model, on transcribe.cpp in the
-//! host's own process (Metal on the Mac's GPU). It loads on first use and stays loaded, so audio
-//! never leaves the computer and no key is needed. Macs only.
+//! Dictation on the user's own speech model: a server they run that answers the `OpenAI`
+//! `/v1/audio/transcriptions` API (whisper.cpp's `whisper-server`, Speaches, …), on this computer or
+//! another of theirs on the same network. Audio goes only to loopback, private-network or
+//! Tailscale addresses, pinned at each request, so it never leaves the user's computers.
 
-use anyhow::{Result, bail};
+use super::{TRANSCRIBE_HINT, multipart, names_hint, spoken_names};
+use crate::store::Store;
+use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::net::{IpAddr, SocketAddr};
+use std::time::Duration;
+use url::Url;
 
-const MODEL: &str = "underdog-bark-3.0-Q8_0.gguf";
-/// Pinned to the conversion of Bark 3.0 made while it was CC BY 4.0 (Conway's later revisions are non-commercial).
-const MODEL_URL: &str = "https://huggingface.co/joshthomasdev/underdog-bark-3.0-gguf/resolve/cee1f12dfe250983ed4987f7b4a95f4577c2cb97/underdog-bark-3.0-Q8_0.gguf";
-/// The model was measured with this much silence before the speech; without it, a first word spoken
-/// right as the recording starts can be lost.
-const LEAD_IN: usize = 4_000;
-/// Bark writes "Yeah." or "Okay." for a short silence or faint room noise; a recording whose loudest
+const SERVER_KEY: &str = "speech-server";
+const TIMEOUT: Duration = Duration::from_mins(2);
+const NOT_LINKED: &str =
+    "No speech model is linked. Link a speech server you run in Codync on this computer: Voice chat, This computer.";
+/// Whisper writes "Thank you." or "you" for silence or faint room noise; a recording whose loudest
 /// 100 ms stays under this RMS (-45 dBFS; room noise is about -60, speech -30 to -10) has no speech.
 const SPEECH_RMS: f32 = 0.0056;
 /// 100 ms at 16 kHz.
 const WINDOW: u16 = 1_600;
 
-fn model_path() -> PathBuf {
-    crate::service::data_dir().join("speech").join(MODEL)
+fn server(store: &Store) -> Option<String> {
+    store.kv_get(SERVER_KEY).filter(|s| !s.is_empty())
 }
 
-/// What's missing for dictation on this computer, as the user should read it.
-fn missing(model: &Path) -> Option<String> {
-    if !cfg!(target_os = "macos") {
-        return Some("Dictation on this computer needs a Mac.".to_owned());
+/// `{ready, message, server}` for `localDictation`: the linked server, or what to do without one.
+pub fn status(store: &Store) -> Value {
+    let server = server(store);
+    json!({"ready": server.is_some(), "message": server.is_none().then_some(NOT_LINKED), "server": server})
+}
+
+/// `setSpeechServer`: links the server at `url` once it transcribes a short silence, or unlinks it
+/// when `url` is empty.
+pub async fn link(store: &Store, url: &str) -> Result<Value> {
+    let url = url.trim();
+    if url.is_empty() {
+        store.kv_delete(SERVER_KEY)?;
+    } else {
+        post(store, url, &super::wav(&[0; 16_000], 16_000)).await?;
+        store.kv_set(SERVER_KEY, url)?;
     }
-    (!model.is_file()).then(|| {
-        format!(
-            "This computer's speech model isn't installed. To dictate with it, download {MODEL_URL} to {}.",
-            model.display()
-        )
-    })
+    Ok(status(store))
 }
 
-/// `{ready, message}` for `localDictation`: whether dictation on this computer can run, and if not, what to install.
-pub fn status() -> Value {
-    let message = missing(&model_path());
-    json!({"ready": message.is_none(), "message": message})
-}
-
-/// Speech to text for one utterance (a 16 kHz mono 16-bit WAV), on this computer.
-pub async fn transcribe(wav: &[u8]) -> Result<Value> {
-    let model = model_path();
-    if let Some(message) = missing(&model) {
-        bail!(message);
-    }
-    let pcm = samples(wav);
-    if !voiced(&pcm) {
+/// Speech to text for one utterance (a 16 kHz mono 16-bit WAV) on the linked server.
+pub async fn transcribe(store: &Store, wav: &[u8]) -> Result<Value> {
+    let url = server(store).ok_or_else(|| anyhow!(NOT_LINKED))?;
+    if !voiced(wav) {
         return Ok(json!({"text": ""}));
     }
-    let text = tokio::task::spawn_blocking(move || engine::run(&model, &pcm)).await??;
-    Ok(json!({"text": text.trim()}))
+    let text = post(store, &url, wav).await?;
+    Ok(json!({"text": spoken(&text)}))
 }
 
-/// The WAV's samples as the model takes them: floats in [-1, 1], after `LEAD_IN` of silence.
-fn samples(wav: &[u8]) -> Vec<f32> {
-    let start = wav.windows(4).position(|w| w == b"data").map_or(wav.len(), |i| i + 8);
-    let mut pcm = vec![0.0; LEAD_IN];
-    pcm.extend(
-        wav[start.min(wav.len())..].as_chunks::<2>().0.iter().map(|b| f32::from(i16::from_le_bytes(*b)) / 32_768.0),
-    );
-    pcm
+/// One transcription request to the server at `url`; its transcript, or why it gave none.
+async fn post(store: &Store, url: &str, wav: &[u8]) -> Result<String> {
+    let parsed = Url::parse(url).map_err(|_| anyhow!("`{url}` isn't a web address"))?;
+    let client = pinned(&parsed).await?;
+    let prompt = format!("{TRANSCRIBE_HINT} {}", names_hint(&spoken_names(store)));
+    let (boundary, body) = multipart(&[("prompt", &prompt), ("temperature", "0"), ("response_format", "json")], wav);
+    let res = client
+        .post(parsed)
+        .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
+        .body(body)
+        .send()
+        .await
+        .map_err(|_| anyhow!("The speech server at {url} isn't answering. Check that it's running."))?;
+    if !res.status().is_success() {
+        bail!("The speech server at {url} answered {}. Check its address.", res.status());
+    }
+    let v: Value = res.json().await.unwrap_or_default();
+    v["text"]
+        .as_str()
+        .map(str::to_owned)
+        .with_context(|| format!("The speech server at {url} didn't answer with a transcript."))
 }
 
-/// Whether any 100 ms of the samples is loud enough to be speech (a shorter last window counts its
-/// missing samples as silence).
-fn voiced(pcm: &[f32]) -> bool {
-    let floor = SPEECH_RMS * SPEECH_RMS * f32::from(WINDOW);
-    pcm.chunks(usize::from(WINDOW)).any(|w| w.iter().map(|s| s * s).sum::<f32>() >= floor)
+/// A client that reaches `url`'s host only at the addresses checked here: each on this computer or
+/// its local network, with no proxy and no redirects, so a DNS change or a redirect can't send the
+/// audio elsewhere.
+async fn pinned(url: &Url) -> Result<reqwest::Client> {
+    if !matches!(url.scheme(), "http" | "https") {
+        bail!("the address must start with http:// or https://");
+    }
+    let host = url.host_str().context("the address has no host")?;
+    let port = url.port_or_known_default().unwrap_or(80);
+    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.trim_matches(['[', ']']), port)).await?.collect();
+    if addrs.is_empty() || !addrs.iter().all(|a| on_users_network(a.ip())) {
+        bail!("{host} isn't on this computer or its local network, so audio would leave your computers");
+    }
+    Ok(reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(TIMEOUT)
+        .resolve_to_addrs(host, &addrs)
+        .build()?)
 }
 
-#[cfg(target_os = "macos")]
-mod engine {
-    use super::{Path, Result};
-    use crate::LockExt;
-    use anyhow::{Context, anyhow};
-    use std::sync::Mutex;
-    use transcribe_cpp::{Model, RunOptions, Session};
-
-    /// The loaded model, kept for every later dictation (loading reads 740 MB).
-    static SESSION: Mutex<Option<Session>> = Mutex::new(None);
-
-    pub fn run(model: &Path, pcm: &[f32]) -> Result<String> {
-        let mut session = SESSION.locked();
-        if session.is_none() {
-            let loaded = Model::load(model).with_context(|| format!("couldn't load {}", model.display()))?;
-            *session = Some(loaded.session()?);
+/// Loopback, private (RFC 1918, IPv6 unique local), link-local, or Tailscale's 100.64.0.0/10.
+fn on_users_network(ip: IpAddr) -> bool {
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => {
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || (v4.octets()[0] == 100 && v4.octets()[1] & 0xc0 == 64)
         }
-        let session = session.as_mut().ok_or_else(|| anyhow!("speech model not loaded"))?;
-        Ok(session.run(pcm, &RunOptions::default())?.text)
+        IpAddr::V6(v6) => v6.is_loopback() || v6.is_unique_local() || v6.is_unicast_link_local(),
     }
 }
 
-#[cfg(not(target_os = "macos"))]
-mod engine {
-    use super::{Path, Result};
+/// Whether any 100 ms of the WAV's samples is loud enough to be speech (a shorter last window counts
+/// its missing samples as silence).
+fn voiced(wav: &[u8]) -> bool {
+    let start = wav.windows(4).position(|w| w == b"data").map_or(wav.len(), |i| i + 8).min(wav.len());
+    let floor = SPEECH_RMS * SPEECH_RMS * f32::from(WINDOW);
+    wav[start..]
+        .as_chunks::<2>()
+        .0
+        .chunks(usize::from(WINDOW))
+        .any(|w| w.iter().map(|b| f32::from(i16::from_le_bytes(*b)) / 32_768.0).map(|s| s * s).sum::<f32>() >= floor)
+}
 
-    pub fn run(_: &Path, _: &[f32]) -> Result<String> {
-        unreachable!("missing() turns dictation on this computer away off the Mac")
-    }
+/// The transcript without whisper.cpp's markers for silence and sounds (`[BLANK_AUDIO]`, `(music)`).
+fn spoken(text: &str) -> String {
+    let text = text.trim();
+    let marker = (text.starts_with('[') && text.ends_with(']')) || (text.starts_with('(') && text.ends_with(')'));
+    if marker { String::new() } else { text.to_owned() }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn samples_are_scaled_after_a_silent_lead_in() {
-        let wav = super::super::wav(&[0x00, 0x40, 0x00, 0x80, 0xff, 0x7f], 16_000);
-        let pcm = samples(&wav);
-        assert_eq!(pcm.len(), LEAD_IN + 3);
-        assert!(pcm[..LEAD_IN].iter().all(|&s| s == 0.0));
-        assert_eq!(&pcm[LEAD_IN..], &[0.5, -1.0, 32_767.0 / 32_768.0]);
+    fn memory_store() -> Store {
+        Store::open(std::path::Path::new(":memory:")).unwrap()
+    }
+
+    fn recording(pcm: &[i16]) -> Vec<u8> {
+        super::super::wav(&pcm.iter().flat_map(|s| s.to_le_bytes()).collect::<Vec<u8>>(), 16_000)
     }
 
     #[test]
     fn short_silence_and_room_noise_are_not_speech_but_quiet_words_are() {
-        let recording = |pcm: &[i16]| {
-            samples(&super::super::wav(&pcm.iter().flat_map(|s| s.to_le_bytes()).collect::<Vec<u8>>(), 16_000))
-        };
         // Room noise at -60 dBFS, and a word spoken quietly over it: 300 ms of a 200 Hz wave at -40 dBFS.
         let room: Vec<i16> = (0..16_000).map(|i| if i % 2 == 0 { 33 } else { -33 }).collect();
         let mut quiet_word = room.clone();
         for (i, s) in quiet_word[4_000..8_800].iter_mut().enumerate() {
             *s += if i / 40 % 2 == 0 { 320 } else { -320 };
         }
-        assert!(!voiced(&recording(&vec![0; 8_000])));
-        assert!(!voiced(&recording(&vec![0; 16_000])));
+        assert!(!voiced(&recording(&[0; 8_000])));
         assert!(!voiced(&recording(&room)));
         assert!(voiced(&recording(&quiet_word)));
     }
 
     #[test]
-    fn it_says_where_the_model_goes_until_it_is_there() {
-        let dir = std::env::temp_dir().join(format!("codync-speech-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let model = dir.join(MODEL);
-        let before = missing(&model).unwrap();
-        std::fs::write(&model, b"").unwrap();
-        let after = missing(&model);
-        std::fs::remove_dir_all(&dir).unwrap();
-        if cfg!(target_os = "macos") {
-            assert!(before.contains(MODEL_URL) && before.contains(&model.display().to_string()), "{before}");
-            assert_eq!(after, None);
-        } else {
-            assert_eq!(before, "Dictation on this computer needs a Mac.");
-            assert_eq!(after.as_deref(), Some(before.as_str()));
+    fn only_the_users_own_computers_can_hear_the_audio() {
+        let ip = |s: &str| s.parse::<IpAddr>().expect("test addresses are valid");
+        for own in [
+            "127.0.0.1",
+            "::1",
+            "192.168.1.20",
+            "10.0.0.5",
+            "172.16.3.4",
+            "169.254.1.1",
+            "100.101.102.103",
+            "fd7a:115c:a1e0::1",
+            "fe80::1",
+            "::ffff:192.168.1.20",
+        ] {
+            assert!(on_users_network(ip(own)), "{own}");
         }
+        for outside in ["8.8.8.8", "100.128.0.1", "172.32.0.1", "2606:4700::1111", "::ffff:8.8.8.8"] {
+            assert!(!on_users_network(ip(outside)), "{outside}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_server_out_on_the_internet_is_never_sent_audio() {
+        for url in [
+            "http://8.8.8.8/v1/audio/transcriptions",
+            "https://[2606:4700::1111]/inference",
+            "ftp://127.0.0.1/",
+            "not a url",
+        ] {
+            let store = memory_store();
+            let e = link(&store, url).await.expect_err(url);
+            assert!(server(&store).is_none(), "{url} linked: {e:#}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_linked_server_transcribes_and_unlinking_says_how_to_link_again() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/v1/audio/transcriptions", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut seen = Vec::new();
+                // The multipart body ends with its closing boundary.
+                while !seen.ends_with(b"--\r\n") {
+                    socket.read_buf(&mut seen).await.unwrap();
+                }
+                let body = r#"{"text":" Hello from my own model. "}"#;
+                let reply = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                socket.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        let store = memory_store();
+        assert_eq!(status(&store)["message"], NOT_LINKED);
+        assert!(transcribe(&store, &recording(&[0; 160])).await.is_err());
+
+        let linked = link(&store, &url).await.unwrap();
+        assert_eq!((linked["ready"].as_bool(), linked["server"].as_str()), (Some(true), Some(url.as_str())));
+        let speech: Vec<i16> = (0..8_000).map(|i| if i / 40 % 2 == 0 { 3_000 } else { -3_000 }).collect();
+        assert_eq!(transcribe(&store, &recording(&speech)).await.unwrap()["text"], "Hello from my own model.");
+        assert_eq!(transcribe(&store, &recording(&[0; 8_000])).await.unwrap()["text"], "");
+
+        let unlinked = link(&store, "").await.unwrap();
+        assert_eq!((unlinked["ready"].as_bool(), unlinked["message"].as_str()), (Some(false), Some(NOT_LINKED)));
+    }
+
+    #[test]
+    fn whisper_markers_are_not_speech() {
+        assert_eq!(spoken(" [BLANK_AUDIO] "), "");
+        assert_eq!(spoken("(music)"), "");
+        assert_eq!(spoken(" Ship it. "), "Ship it.");
     }
 }

@@ -83,7 +83,7 @@ async fn route(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value) -> Resul
         || method.starts_with("credential")
         // Only signing in reads the vault; other computer tools work without a keyring.
         || (method == "computerCall" && b["name"] == "type_login")
-        // Dictation on this computer's own model (`localDictation`, local `voiceTranscribe`) has no key.
+        // Dictation on the user's own speech server (`localDictation`, `setSpeechServer`, local `voiceTranscribe`) has no key.
         || (method.starts_with("voice") && !(method == "voiceTranscribe" && b["provider"] == "local"))
         || method == "setVoiceKey"
         || matches!(method, "agentAuth" | "agentAuthenticate" | "setAgentEnv")
@@ -144,6 +144,7 @@ mod tests {
     async fn dictation_on_this_computer_never_waits_for_the_keyring() {
         let (hub, _reading) = hub_unlocking();
         let local = call(&hub, "localDictation", json!({})).await.expect("answered").unwrap();
+        assert!(call(&hub, "setSpeechServer", json!({"url": ""})).await.is_some(), "linking waited for the keyring");
         assert!(local["ready"].is_boolean(), "{local}");
         let audio = STANDARD.encode(crate::voice::wav(&[0; 3200], 16_000));
         let said = call(&hub, "voiceTranscribe", json!({"provider": "local", "model": "", "audio": audio})).await;

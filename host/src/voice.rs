@@ -415,11 +415,11 @@ fn multipart(fields: &[(&str, &str)], wav: &[u8]) -> (String, Vec<u8>) {
     (boundary, body)
 }
 
-/// Speech to text on this computer's own model (`provider: "local"`), else on a provider's key.
+/// Speech to text on the user's own speech server (`provider: "local"`), else on a provider's key.
 pub async fn transcribe_with(store: &Store, provider: &str, model: &str, audio: &str) -> Result<Value> {
     if provider == "local" {
         let wav = STANDARD.decode(audio).map_err(|_| anyhow!("audio must be base64"))?;
-        return local::transcribe(&wav).await;
+        return local::transcribe(store, &wav).await;
     }
     transcribe(store, Provider::parse(provider)?, model, audio).await
 }

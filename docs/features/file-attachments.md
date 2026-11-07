@@ -106,8 +106,9 @@ card's icon or name, click the card, or tap the Library row; screen readers get 
 View action. Markdown renders with the chat's Markdown renderer,
 text shows monospaced and selectable, PDF uses the platform's PDF view (PDFKit, Android
 `PdfRenderer`, desktop: see `FileViewer.tsx`), and video plays in the platform's player (AVKit,
-Android `VideoView`, desktop `<video>`) once its first bytes prove it's a video container
-(`isVideo`/`isVideoData`: an ISO media `ftyp`/QuickTime atom or WebM's EBML header), whatever its name.
+Android `VideoView`, desktop `<video>`; WebM on iPhone plays in WebKit's `<video>`, since AVFoundation
+can't decode VP8/VP9) once its first bytes prove it's a video container (`VideoContainer`/`isVideoData`:
+an ISO media `ftyp`/QuickTime atom or WebM's EBML header), whatever its name.
 Long text and Markdown lay out lazily on the phones. The viewer header keeps Download. It reads the
 file through the same verified, cached path as images, up to 10 MB for Markdown and text
 and 25 MB for PDF and video; a bigger file, text that isn't UTF-8, a video that isn't one or

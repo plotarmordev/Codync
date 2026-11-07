@@ -79,7 +79,8 @@ transcribe on its own model (`host/src/voice/local.rs`): [Underdog Bark 3.0](htt
 by Conway Research (CC BY 4.0, English only), as the Q8_0 GGUF at
 `<data dir>/speech/underdog-bark-3.0-Q8_0.gguf`, run in the host's own process by
 [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) on Metal. It loads on first use and
-stays loaded. It takes no prompt and writes nothing for silence. Macs only: building the host on a Mac
+stays loaded. It takes no prompt; a recording that never gets louder than -45 dBFS is answered with no text
+without reaching the model, which would write "Yeah." for it. Macs only: building the host on a Mac
 needs `cmake` (transcribe.cpp compiles its ggml runtime). Other hosts answer that dictation on this
 computer needs a Mac. No key, no minutes, no network call out, and it never waits on the keyring.
 `localDictation` → `{ready, message}` says whether it can run (hosts before

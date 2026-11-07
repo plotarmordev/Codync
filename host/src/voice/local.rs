@@ -12,6 +12,11 @@ const MODEL_URL: &str = "https://huggingface.co/joshthomasdev/underdog-bark-3.0-
 /// The model was measured with this much silence before the speech; without it, a first word spoken
 /// right as the recording starts can be lost.
 const LEAD_IN: usize = 4_000;
+/// Bark writes "Yeah." or "Okay." for a short silence or faint room noise; a recording whose loudest
+/// 100 ms stays under this RMS (-45 dBFS; room noise is about -60, speech -30 to -10) has no speech.
+const SPEECH_RMS: f32 = 0.0056;
+/// 100 ms at 16 kHz.
+const WINDOW: usize = 1_600;
 
 fn model_path() -> PathBuf {
     crate::service::data_dir().join("speech").join(MODEL)
@@ -43,6 +48,9 @@ pub async fn transcribe(wav: &[u8]) -> Result<Value> {
         bail!(message);
     }
     let pcm = samples(wav);
+    if !voiced(&pcm) {
+        return Ok(json!({"text": ""}));
+    }
     let text = tokio::task::spawn_blocking(move || engine::run(&model, &pcm)).await??;
     Ok(json!({"text": text.trim()}))
 }
@@ -55,6 +63,11 @@ fn samples(wav: &[u8]) -> Vec<f32> {
         wav[start.min(wav.len())..].as_chunks::<2>().0.iter().map(|b| f32::from(i16::from_le_bytes(*b)) / 32_768.0),
     );
     pcm
+}
+
+/// Whether any 100 ms of the samples is loud enough to be speech.
+fn voiced(pcm: &[f32]) -> bool {
+    pcm.chunks(WINDOW).any(|w| w.iter().map(|s| s * s).sum::<f32>() >= SPEECH_RMS * SPEECH_RMS * w.len() as f32)
 }
 
 #[cfg(target_os = "macos")]
@@ -99,6 +112,23 @@ mod tests {
         assert_eq!(pcm.len(), LEAD_IN + 3);
         assert!(pcm[..LEAD_IN].iter().all(|&s| s == 0.0));
         assert_eq!(&pcm[LEAD_IN..], &[0.5, -1.0, 32_767.0 / 32_768.0]);
+    }
+
+    #[test]
+    fn short_silence_and_room_noise_are_not_speech_but_quiet_words_are() {
+        let recording = |pcm: &[i16]| {
+            samples(&super::super::wav(&pcm.iter().flat_map(|s| s.to_le_bytes()).collect::<Vec<u8>>(), 16_000))
+        };
+        // Room noise at -60 dBFS, and a word spoken quietly over it: 300 ms of a 200 Hz tone at -40 dBFS.
+        let room: Vec<i16> = (0..16_000).map(|i| if i % 2 == 0 { 33 } else { -33 }).collect();
+        let mut quiet_word = room.clone();
+        for (i, s) in quiet_word[4_000..8_800].iter_mut().enumerate() {
+            *s += (320.0 * (i as f32 * 200.0 * std::f32::consts::TAU / 16_000.0).sin()) as i16;
+        }
+        assert!(!voiced(&recording(&[0; 8_000])));
+        assert!(!voiced(&recording(&[0; 16_000])));
+        assert!(!voiced(&recording(&room)));
+        assert!(voiced(&recording(&quiet_word)));
     }
 
     #[test]

@@ -23,7 +23,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,6 +35,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.codync.android.core.FilePreview
 import com.codync.android.core.SharedFile
@@ -43,6 +47,9 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /** A shared file being opened in its viewer, and the message that shared it. */
 internal data class OpenFile(val entryId: String, val botId: String, val file: SharedFile)
@@ -80,15 +87,17 @@ private sealed interface Opened {
                 else utf8(source.readBytes())?.let(Opened::Text) ?: Opened.Message("This file isn't UTF-8 text. Download it to open it in another app.")
             }
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { Opened.Message("Couldn't open the file.") }
+        catch (_: Exception) { Opened.Message(FAILED) }
         awaitDispose { (value as? Opened.Pdf)?.document?.close() }
     }
-    when (val shown = opened) {
+    // A page that can't be drawn fails the whole file, like one that can't be read.
+    var pageFailed by remember(file.id) { mutableStateOf(false) }
+    when (val shown = if (pageFailed) Opened.Message(FAILED) else opened) {
         Opened.Loading -> Centered { Spinner(20.dp) }
         is Opened.Message -> Centered {
             Text(tr(shown.text).replace("{limit}", shown.limit), style = Type.subheadline, color = Palette.secondary, textAlign = TextAlign.Center)
         }
-        is Opened.Pdf -> PdfPages(shown.document)
+        is Opened.Pdf -> PdfPages(shown.document) { pageFailed = true }
         is Opened.Text -> Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
             if (preview == FilePreview.Markdown) MarkdownText(shown.text)
             else SelectionContainer { Text(shown.text, style = Type.footnote.monospaced, color = Palette.text) }
@@ -100,6 +109,7 @@ private sealed interface Opened {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) { content() }
 
 private const val TOO_BIG = "This file is too big to open here (over {limit}). Download it to open it in another app."
+private const val FAILED = "Couldn't open the file."
 
 /** A kind's limit as people read it: "512 KB", "20 MB". */
 private fun limit(preview: FilePreview) =
@@ -111,17 +121,34 @@ private fun utf8(bytes: ByteArray): String? = try {
         .decode(ByteBuffer.wrap(bytes)).toString()
 } catch (_: CharacterCodingException) { null }
 
-/** A PDF's pages, each drawn at the viewer's width as it scrolls into view. */
-@Composable private fun PdfPages(pdf: PdfFile) = BoxWithConstraints(Modifier.fillMaxSize()) {
+/** A PDF's pages, each drawn at the viewer's width as it scrolls into view; `failed` when one can't be drawn. */
+@Composable private fun PdfPages(pdf: PdfFile, failed: () -> Unit) = BoxWithConstraints(Modifier.fillMaxSize()) {
     val width = with(LocalDensity.current) { (maxWidth - 24.dp).roundToPx() }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(pdf.pageCount) { index ->
-            val page by produceState<Bitmap?>(null, pdf, index, width) { value = withContext(Dispatchers.IO) { pdf.render(index, width) } }
-            Box(Modifier.fillMaxWidth().aspectRatio(pdf.aspectRatio(index)).background(Color.White)) {
+            val page by produceState<Bitmap?>(null, pdf, index, width) {
+                value = try { withContext(Dispatchers.IO) { pdf.render(index, width) } }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { failed(); null }
+            }
+            Box(Modifier.fillMaxWidth().aspectRatio(max(pdf.aspectRatio(index), 1 / MAX_PAGE_HEIGHTS)).background(Color.White)) {
                 page?.let { Image(it.asImageBitmap(), contentDescription = "Page ${index + 1}", modifier = Modifier.fillMaxSize()) }
             }
         }
     }
+}
+
+/** The PDF sets its pages' shape, however extreme: a page shows at most this many widths tall… */
+private const val MAX_PAGE_HEIGHTS = 3f
+/** …and is drawn in at most this many pixels (16 MiB as ARGB_8888). */
+private const val MAX_PAGE_PIXELS = 4_000_000f
+
+/** The bitmap for a page `ratio` (width / height) shown `width` pixels wide: its own shape, shrunk to fit
+ * [MAX_PAGE_HEIGHTS] widths and [MAX_PAGE_PIXELS]. */
+internal fun pageBitmapSize(width: Int, ratio: Float): IntSize {
+    val height = min(width / ratio, width * MAX_PAGE_HEIGHTS)
+    val scale = min(1f, sqrt(MAX_PAGE_PIXELS / (height * ratio * height)))
+    return IntSize((height * ratio * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1))
 }
 
 /** Android's PDF renderer over one file: it draws one page at a time, so every use holds its lock. */
@@ -132,11 +159,12 @@ private class PdfFile(file: File) {
     val pageCount get() = ratios.size
     fun aspectRatio(index: Int) = ratios[index]
 
-    /** Page `index` drawn `width` pixels wide on white, or null once the viewer has closed. */
+    /** Page `index` drawn for a viewer `width` pixels wide on white, or null once the viewer has closed. */
     @Synchronized fun render(index: Int, width: Int): Bitmap? {
         if (closed) return null
+        val size = pageBitmapSize(width, ratios[index])
         return renderer.openPage(index).use { page ->
-            Bitmap.createBitmap(width, (width / ratios[index]).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888).apply {
+            Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888).apply {
                 eraseColor(AndroidColor.WHITE)
                 page.render(this, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
             }

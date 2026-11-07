@@ -5,6 +5,8 @@ import UIKit
 struct FileDownloadCard: View {
     let entry: Entry
     let file: SharedFile
+    /// Opens a readable file in the chat's viewer; nil where the card stands alone.
+    var openFile: ((FileViewerTarget) -> Void)?
     @Environment(BotStore.self) private var model
     @State private var viewing = false
     @State private var audio = SharedAudio()
@@ -29,6 +31,8 @@ struct FileDownloadCard: View {
             }
             if file.showsAsImage {
                 Button(L10n.tr("View")) { viewing = true }
+            } else if file.preview != nil {
+                Button(L10n.tr("View"), action: open)
             }
             Button(busy ? L10n.tr("Cancel download") : L10n.tr("Download"), action: self.download)
         }
@@ -45,6 +49,23 @@ struct FileDownloadCard: View {
 
     private func row(caption: String) -> some View {
         HStack(spacing: 12) {
+            if file.preview != nil {
+                Button(action: open) { label(caption: caption) }.buttonStyle(.plain)
+            } else {
+                label(caption: caption)
+            }
+            Spacer(minLength: 0)
+            Button(action: download) {
+                Image(systemName: busy ? "xmark" : "arrow.down.to.line")
+                    .font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// Its icon (or a voice note's play button) and name; tap opens the viewer for readable files.
+    private func label(caption: String) -> some View {
+        HStack(spacing: 12) {
             if file.showsAsAudio { playButton } else {
                 Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
                     .frame(width: 24)
@@ -54,12 +75,6 @@ struct FileDownloadCard: View {
                 Text(caption).font(.caption2).foregroundStyle(audio.state == .failed ? Palette.danger : Palette.secondary)
                 if audio.duration != nil { progress }
             }
-            Spacer(minLength: 0)
-            Button(action: download) {
-                Image(systemName: busy ? "xmark" : "arrow.down.to.line")
-                    .font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         }
     }
 
@@ -76,6 +91,10 @@ struct FileDownloadCard: View {
 
     private func play() {
         Task { await audio.toggle(file, entryId: entry.id, model: model) }
+    }
+
+    private func open() {
+        openFile?(FileViewerTarget(file: file, entryId: entry.id, botId: entry.botId))
     }
 
     private func download() {

@@ -41,7 +41,7 @@ export function downloadItem(state: DownloadState | undefined, download: () => v
   return { title: downloadAction(state), icon: state?.kind === 'downloading' ? 'xmark' : 'arrow.down.to.line', action: download }
 }
 
-/** A card's actions, the first one what a click or Enter does: a voice note's play or pause, a picture's view, then the download's. */
+/** A card's actions, the first one what a click or Enter does: a voice note's play or pause, a picture's or readable file's view, then the download's. */
 export function cardActions({ state, audio, toggle, view, download }: {
   state: DownloadState | undefined
   audio?: AudioSnapshot

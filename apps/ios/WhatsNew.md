@@ -12,9 +12,11 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - 無法播放的音訊會在卡片上顯示「無法播放」，點一下即可重試，不再跳出對話框。
 - 檔案卡片的按鈕更好點，Artifact 卡片與檔案卡片同寬；使用 VoiceOver 時每張卡片只需滑一次。
 - Bot 用語音回覆時，播放器會直接出現在那則訊息的泡泡頂端，文字在下方。
+- 機器人分享的 Markdown、文字、程式碼、CSV、JSON 與 PDF 檔案，點一下就能在 App 內開啟閱讀，也能直接下載。
 
 ### en-US
 - Voice notes show a spinner while they load, then the time played, their length and a progress bar.
 - A sound that can't play says so on its card; tap to try again, with no dialog.
 - File card buttons are easier to tap, artifact cards line up with file cards, and VoiceOver reads each card as one item.
 - When a bot speaks its reply, the voice note plays at the top of that message's bubble, with the text under it.
+- Markdown, text, code, CSV, JSON and PDF files a bot shares open right in the app with a tap, with Download still at hand.

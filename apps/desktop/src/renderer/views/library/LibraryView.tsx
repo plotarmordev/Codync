@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Artifact, LibraryItem } from '@shared/artifacts'
-import { isImageName, type Attachment, type SharedFile } from '@shared/models'
+import { filePreview, isImageName, type Attachment, type SharedFile } from '@shared/models'
 import { DropdownMenu, IconButton } from '../../components/Controls'
 import { Icon } from '../../components/Icon'
 import { HStack, VStack } from '../../components/Stack'
@@ -11,6 +11,7 @@ import { useScreenViewed } from '../../store/analytics'
 import { useStore } from '../../store/context'
 import { AttachmentImage, AttachmentViewer, attachmentSymbol } from '../thread/Attachments'
 import { byteCount, downloadAction, downloadDetail } from '../thread/file-card'
+import { FileViewer } from '../thread/FileViewer'
 import { artifactShareItems, renameArtifact, TitleField } from './ArtifactParts'
 
 /**
@@ -121,18 +122,28 @@ function ArtifactRow({ artifact, open, onError }: { artifact: Artifact; open: ()
   )
 }
 
-/** A file the bot shared: saved like its card in the chat. */
+/** A file the bot shared: preview kinds open the viewer on tap; the rest save like the card in the chat. */
 function FileRow({ entryId, file }: { entryId: string; file: SharedFile }) {
   const store = useStore()
+  const tr = useTr()
   const state = store.fileDownloads.states.get(file.id)
   const busy = state?.kind === 'downloading'
+  const [opening, setOpening] = useState(false)
+  const name = <Name name={file.name} detail={downloadDetail(state, file)} failed={state?.kind === 'failed'} />
   return (
-    <Row
-      leading={<Icon name={attachmentSymbol(file.name)} size={16} color="var(--secondary)" />}
-      trailing={<IconButton title={downloadAction(state)} icon={busy ? 'xmark' : 'arrow.down.to.line'} onClick={() => (busy ? store.fileDownloads.cancel(file.id) : void store.fileDownloads.save(store.client, entryId, file))} />}
-    >
-      <Name name={file.name} detail={downloadDetail(state, file)} failed={state?.kind === 'failed'} />
-    </Row>
+    <>
+      <Row
+        leading={<Icon name={attachmentSymbol(file.name)} size={16} color="var(--secondary)" />}
+        trailing={<IconButton title={downloadAction(state)} icon={busy ? 'xmark' : 'arrow.down.to.line'} onClick={() => (busy ? store.fileDownloads.cancel(file.id) : void store.fileDownloads.save(store.client, entryId, file))} />}
+      >
+        {filePreview(file) ? (
+          <button className="library-row-open" aria-label={tr('Open {name}').replace('{name}', file.name)} onClick={() => setOpening(true)}>{name}</button>
+        ) : (
+          name
+        )}
+      </Row>
+      <FileViewer entryId={entryId} file={opening ? file : null} close={() => setOpening(false)} />
+    </>
   )
 }
 

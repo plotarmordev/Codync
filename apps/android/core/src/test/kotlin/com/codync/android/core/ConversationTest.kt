@@ -114,4 +114,20 @@ class ConversationTest {
             assertFails<IllegalArgumentException> { Entry.decode(value) }
         }
     }
+
+    @Test fun `markdown, text and pdf files open inside the app and others only download`() {
+        fun preview(name: String) = SharedFile("f", name, 1, "a".repeat(64)).preview
+        assertEquals(FilePreview.Markdown, preview("NOTES.MD"))
+        for (name in listOf("a.txt", "data.csv", "x.json", "main.kt")) assertEquals(FilePreview.Text, preview(name))
+        assertEquals(FilePreview.Pdf, preview("report.pdf"))
+        for (name in listOf("photo.png", "voice.m4a", "build.zip", "README")) assertNull(preview(name))
+    }
+
+    @Test fun `a file over its kind's limit does not open inside the app`() {
+        for ((name, limit) in listOf("a.md" to 512L * 1024, "a.csv" to 512L * 1024, "a.pdf" to 20L * 1024 * 1024)) {
+            assertTrue(SharedFile("f", name, limit, "a".repeat(64)).opensInline)
+            assertFalse(SharedFile("f", name, limit + 1, "a".repeat(64)).opensInline)
+        }
+        assertFalse(SharedFile("f", "build.zip", 1, "a".repeat(64)).opensInline)
+    }
 }

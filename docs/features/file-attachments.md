@@ -62,7 +62,7 @@ clients need Control access. It returns `{data: <base64>, size}` in chunks of at
 384 KiB over loopback, SSH, direct encrypted and relay transports.
 
 Updated clients show a filename, size, file icon and download action. File extension
-only selects the icon; it never restricts saving or changes bytes. Desktop uses its
+only selects the icon and the in-app viewer below; it never restricts saving or changes bytes. Desktop uses its
 native Save dialog, iPhone hands the verified temporary file to the native share
 sheet (including Save to Files), and the terminal's selected-message `f` action saves
 to Downloads without replacing existing files. Progress and errors appear alongside
@@ -98,6 +98,19 @@ first play, the same "Couldn't play" caption) and the Markdown text under it; sc
 get the player as one element, "Voice note, <caption>", with Play/Pause and Download as its
 actions, and the text as its own. The terminal UI shows the file line, then the text. A
 voice note sent without `text` keeps its own card. Older clients show the card alone.
+
+Markdown (`md`, `markdown`), plain text and code (`txt`, `log`, `csv`, `tsv`, `json`,
+`jsonl`, `xml`, `yaml`, `yml`, `toml`, `ini`, `html`, `css`, `sql`, `sh` and common source
+extensions) and PDF files open in a viewer sheet on iPhone, Android and desktop: tap the
+card's icon or name, click the card, or tap the Library row; screen readers get it as the card's
+View action. Markdown renders with the chat's Markdown renderer,
+text shows monospaced and selectable, PDF uses the platform's PDF view (PDFKit, Android
+`PdfRenderer`, desktop: see `FileViewer.tsx`). The viewer header keeps Download. It reads the
+file through the same verified, cached path as images, up to 512 KB for Markdown and text
+and 20 MB for PDF; a bigger file, text that isn't UTF-8, or a failed read shows a message
+instead, and Download still works. The type choice and limits live in the model
+(`SharedFile.preview`, `filePreview` on desktop) and are tested on each client. The
+terminal UI saves files to Downloads and opens none.
 
 This feature adds no previews of other file types, folder packaging, background
 transfers, persistent resume or Watch UI. Existing bots do not publish workspace files

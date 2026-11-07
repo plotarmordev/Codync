@@ -1519,5 +1519,12 @@
   "Code {code} copied. Paste it on the sign-in page, then Enter checks. Ctrl+X cancels.": "コード {code} をコピーしました。サインイン ページに貼り付けてから Enter で確認。Ctrl+X でキャンセル。",
   "Sign in instead of using a saved token": "保存したトークンの代わりにサインイン",
   "↵ sign in instead of the token": "↵ トークンの代わりにサインイン",
-  "Code {code} copied: paste it at {url}, then Enter checks. Ctrl+X cancels.": "コード {code} をコピーしました: {url} に貼り付けてから Enter で確認。Ctrl+X でキャンセル。"
+  "Code {code} copied: paste it at {url}, then Enter checks. Ctrl+X cancels.": "コード {code} をコピーしました: {url} に貼り付けてから Enter で確認。Ctrl+X でキャンセル。",
+  "{received} of {size}": "{size} のうち {received}",
+  "Cancel download": "ダウンロードをキャンセル",
+  "Couldn't play. Tap to retry.": "再生できませんでした。タップして再試行。",
+  "Download": "ダウンロード",
+  "Downloaded": "ダウンロード済み",
+  "Tap to retry.": "タップして再試行。",
+  "View": "表示"
 }

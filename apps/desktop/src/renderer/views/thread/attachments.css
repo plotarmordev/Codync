@@ -58,6 +58,10 @@
   border-radius: var(--radius-l);
   max-width: 380px;
 }
+.file-card:focus-visible {
+  outline: 2px solid var(--secondary);
+  outline-offset: 2px;
+}
 .file-card-image {
   display: flex;
   align-self: flex-start;
@@ -66,4 +70,33 @@
 }
 .file-card-detail {
   overflow-wrap: anywhere;
+}
+
+/* The sound's clock made visible: a thin bar that fills left to right. */
+.file-card-progress {
+  height: 3px;
+  margin-top: 6px;
+  border-radius: 1.5px;
+  background: color-mix(in srgb, var(--tertiary) 30%, transparent);
+  overflow: hidden;
+}
+.file-card-progress > div {
+  height: 100%;
+  border-radius: 1.5px;
+  background: var(--text);
+  transition: width 0.2s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .file-card-progress > div { transition: none; }
+}
+/* The play button's 36 px target overflows the file icon's 24 px slot, so names line up across cards. The slot
+   keeps its size while the sound loads. */
+.file-card-play {
+  width: 24px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+}
+.file-card-play > button {
+  margin: 0 -6px;
 }

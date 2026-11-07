@@ -97,6 +97,6 @@ mod tests {
         assert_eq!(label(&attachment), "▤ a.png · 2 KB");
         let file =
             crate::chat::files::SharedFile { id: "f".into(), name: "b.csv".into(), size: 9, sha256: String::new() };
-        assert_eq!(label(&LibraryItem::File { entry: "e".into(), file, at: 0 }), "▤ b.csv · 9 B");
+        assert_eq!(label(&LibraryItem::File { entry: "e".into(), file, at: 0 }), "▤ b.csv · 9 bytes");
     }
 }

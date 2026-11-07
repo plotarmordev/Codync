@@ -387,8 +387,10 @@ function LocalDictationSettings() {
       .finally(() => setBusy(false))
   }
 
+  // Where the link field shows, it already says what to do; elsewhere the host says where to link one.
+  const footer = canLink && local !== null && !local.ready ? undefined : note ?? undefined
   return (
-    <CardSection title={voice.localEngineName(store === app.local, store.hostName)} footer={note ?? undefined}>
+    <CardSection title={voice.localEngineName(store === app.local, store.hostName)} footer={footer}>
       {[
         <Text key="body" size="footnote" tone="secondary">
           Your speech model transcribes what you say. Codync sends the audio only to the speech server you link on your computer or your own network, so it never leaves your computers.

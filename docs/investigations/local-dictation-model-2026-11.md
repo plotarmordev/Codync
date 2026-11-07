@@ -32,32 +32,48 @@ What the numbers show:
 - Through the host's `voiceTranscribe` itself, the first dictation after the host starts takes about 4 s more (the server starts and loads the model); a warm 10 s clip takes 0.2 s.
 - On silence the server's `no_speech_prob` stays near 0 and it writes "Thank you.", "you" or "."; the host checks loudness instead and skips silent pieces.
 
-## Choice
+## First choice
 
-Whisper large-v3-turbo on whisper.cpp's `whisper-server`, started by the host on first use and kept loaded. MLX is as accurate and a little faster on this Mac, but it needs Python and a package manager on the user's computer and runs only on Apple silicon; whisper.cpp is one native binary (Homebrew `whisper-cpp` on the Mac, packages on Linux and Windows) that the host talks to over loopback HTTP.
+Whisper large-v3-turbo on whisper.cpp's `whisper-server`, started by the host on first use and kept loaded. MLX is as accurate and a little faster on this Mac, but it needs Python and a package manager on the user's computer and runs only on Apple silicon; whisper.cpp is one native binary (Homebrew `whisper-cpp` on the Mac, packages on Linux and Windows) that the host talks to over loopback HTTP. Underdog Bark 3.0 replaced it ([below](#choice-english-only-on-bark-30)).
 
 ## Underdog Bark 3.0 (English only)
 
-[Underdog Bark 3.0](https://huggingface.co/ConwayResearch/Underdog-Bark-3.0) is a 163 MB English model fine-tuned from NVIDIA's Parakeet TDT 0.6B v3, with a lower published word error rate than Whisper large-v3-turbo on the Open ASR Leaderboard's sets (4.94% against 6.58%). It was measured as an English engine beside Whisper, on the same English clips and pieces as above; Whisper was measured again in the same session.
+[Underdog Bark 3.0](https://huggingface.co/ConwayResearch/Underdog-Bark-3.0) by Conway Research is an English model fine-tuned from NVIDIA's Parakeet TDT 0.6B v3, with a lower published word error rate than Whisper large-v3-turbo on the Open ASR Leaderboard's sets (4.94% against 6.58%). It was measured as an English engine beside Whisper, on the same English clips and pieces as above; Whisper was measured again in the same session.
 
-- Bark: the model card's MLX runtime (`bark_mlx.py`, mlx 0.32.2, mlx-audio 0.5.3, fp16 weights, 0.25 s of leading silence). It takes no prompt, so the names hint can't reach it. MLX runs one piece at a time.
-- Warm: the model already loaded. Cold: from starting the process (Bark: Python, imports and model load; Whisper: `whisper-server` start and model load) to the 10 s clip's text, the model file already in the disk cache, median of three.
+- Bark, MLX: the model card's runtime (`bark_mlx.py`, mlx 0.32.2, mlx-audio 0.5.3, fp16 weights, 0.25 s of leading silence). MLX runs one piece at a time.
+- Bark, transcribe.cpp: [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) 0.4.1 through its Rust crate, Metal, the [Q8_0 GGUF](https://huggingface.co/joshthomasdev/underdog-bark-3.0-gguf/tree/cee1f12dfe250983ed4987f7b4a95f4577c2cb97) (740 MB) converted from Bark's CC BY 4.0 revision, 0.25 s of leading silence, one piece at a time.
+- Bark takes no prompt: transcribe.cpp reports no prompt or vocabulary support for it, so the names hint can't reach it.
+- Warm: the model already loaded. Cold: from starting the process (Bark on MLX: Python, imports and model load; Whisper: `whisper-server` start and model load) or, for Bark on transcribe.cpp, from loading the model in process, to the 10 s clip's text, the model file already in the disk cache, median of three.
 
 Word error rate (%) / seconds from stop to text:
 
 | Engine | EN 10 s | EN 60 s | Cold, 10 s |
 | --- | --- | --- | --- |
 | Bark 3.0, MLX | 12.0 / 0.08 | 12.9 / 0.39 | 0.94 |
+| Bark 3.0, transcribe.cpp (Q8_0) | 12.0 / 0.08 | 12.9 / 0.34 | 0.25 |
 | Whisper large-v3-turbo, `whisper-server`, hint + names (English only) | 12.0 / 0.19 | 7.1 / 0.71 | 1.02 |
-| Whisper large-v3-turbo, `whisper-server`, hint + names + Chinese line (the host today) | 12.0 / 0.20 | 18.7 / 0.69 | — |
+| Whisper large-v3-turbo, `whisper-server`, hint + names + Chinese line (the host before Bark) | 12.0 / 0.20 | 18.7 / 0.69 | — |
 
 What the numbers show:
 
 - Bark is not more accurate than Whisper on English: the same on the 10 s clip, and 12.9% against 7.1% on the 60 s clip when Whisper gets an English prompt. Both read code terms as words ("use effect", "Scott"), but Bark also misses what Whisper gets right: "Codync" as "coding" (the names hint fixes it in Whisper), "Kotlin coroutine" as "cotlin colo routine", "SwiftUI" as "swift two i".
-- It beats the host's Whisper today (18.7%) only on the one 60 s clip where the Chinese line made Whisper drop a sentence and write "可Dinc"; on the 10 s clip the two are the same.
-- Its text loses casing and punctuation partway through the 60 s clip (after the first 20 s piece), which the error rate, ignoring both, doesn't count.
-- It is about twice as fast warm (0.39 s against 0.71 s for 60 s); cold, both answer in about a second. Its first run unpacks `model.bark` into a 1.2 GB fp16 folder, which takes 22 s.
-- Licence: the model is CC BY-NC 4.0 (non-commercial; commercial use needs Conway's licence), not CC-BY-4.0 like the Parakeet model it's built on. Third-party ONNX, GGUF and Core ML copies tagged CC-BY-4.0 derive from it and don't change that.
-- Runtime: Conway's own runtimes are Python (PyTorch, MLX, Core ML through `coremltools`); Underdog's native Swift runtime isn't published. A native one would mean a second engine beside whisper.cpp (for example sherpa-onnx with a third-party ONNX export).
+- It beats the host's earlier Whisper (18.7%) only on the one 60 s clip where the Chinese line made Whisper drop a sentence and write "可Dinc"; on the 10 s clip the two are the same.
+- Its text loses casing and punctuation: partway through the 60 s clip on MLX (after the first 20 s piece), and from the start on transcribe.cpp's Q8_0. The error rate ignores both.
+- It is about twice as fast warm (0.34–0.39 s against 0.71 s for 60 s). Cold, MLX and Whisper answer in about a second; transcribe.cpp loads the model in the host's process and answers in 0.25 s. MLX's first run unpacks `model.bark` into a 1.2 GB fp16 folder, which takes 22 s.
+- On the silence and room-noise clips it writes nothing, so it needs no loudness check before it.
+- Licence: Conway's repository switched to CC BY-NC 4.0 on 5 Nov 2026; revision `85db2ad18ab4` (15 Oct) and the GGUF converted from it (21 Oct) are CC BY 4.0, which can't be withdrawn from copies already released.
+- Runtime: Conway's own runtimes are Python (PyTorch, MLX, Core ML through `coremltools`). transcribe.cpp is native C/C++ on ggml (MIT), with a Rust crate that builds it from source with CMake (Metal on the Mac); it runs Bark's GGUF unchanged.
 
-Not adopted: Bark doesn't beat Whisper on English, can't take the names hint, and it's licensed for non-commercial use only. The host keeps Whisper large-v3-turbo for every language.
+One dictation in the style of a Codync user's (a 20 s English clip, macOS `say` with Samantha: "Okay Builder, the dictation pill on the iPhone cuts off the timer, can you fix that and push a new build to TestFlight? … open the PR against dev when it's green."):
+
+| Engine | Word error rate (%) | Warm seconds |
+| --- | --- | --- |
+| Bark 3.0, transcribe.cpp (Q8_0) | 3.4 | 0.13 |
+| Whisper large-v3-turbo, hint + names (English only) | 3.4 | 0.26 |
+| Whisper large-v3-turbo, hint + names + Chinese line | 5.2 | 0.27 |
+
+Both miss "TestFlight" ("test flight"); Bark also writes "pr" and "iphone" in lowercase, Whisper writes "Cargo Clippy".
+
+## Choice: English only, on Bark 3.0
+
+Dictation on this computer became English only: Underdog Bark 3.0 (the CC BY 4.0 Q8_0 GGUF) on transcribe.cpp, linked into the host and run in its own process on Metal. No server, port, Python or package to install; the user downloads the model file. On English speech it matches the host's Whisper on short dictation and is twice as fast, but on the long code-heavy clip it makes more errors than Whisper with an English prompt (12.9% against 7.1%), can't take the names hint, and writes no capitals or punctuation. Only Macs build it in (the host's Linux builds are musl, with no C++ toolchain for ggml), so other hosts answer that dictation on this computer needs a Mac.

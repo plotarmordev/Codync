@@ -211,6 +211,6 @@ import kotlinx.coroutines.launch
         catch (error: Exception) { message = error.message ?: "Couldn't reach $host." }
     }
     CardSection(DictationEngine.Local.title,
-        footer = "Your computer transcribes what you say with its own speech model; the audio never leaves your computer." +
+        footer = "Your computer transcribes what you say in English with its own speech model; the audio never leaves your computer." +
             message?.let { " $it" }.orEmpty(), modifier = Modifier.animateContentSize(Motion.layoutSize)) { }
 }

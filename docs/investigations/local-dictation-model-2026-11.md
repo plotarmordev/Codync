@@ -29,6 +29,8 @@ What the numbers show:
 - That line costs English: in one 60 s English piece whisper.cpp wrote "Codync" as "可Dinc" (18.7% against 7.7%). Chinese dictation is the bigger failure, so the line stays.
 - Starting `whisper-cli` for each piece loads the 1.6 GB model each time: 5 s for a 60 s clip. A resident server answers in about a second.
 - The remaining errors are the same everywhere: code terms read as words ("use effect", "cut linker routing"), and `Scout` heard as "Spot" in Chinese speech.
+- Through the host's `voiceTranscribe` itself, the first dictation after the host starts takes about 4 s more (the server starts and loads the model); a warm 10 s clip takes 0.2 s.
+- On silence the server's `no_speech_prob` stays near 0 and it writes "Thank you.", "you" or "."; the host checks loudness instead and skips silent pieces.
 
 ## Choice
 

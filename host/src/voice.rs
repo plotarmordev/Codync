@@ -3,6 +3,8 @@
 //! call gets a short-lived credential minted here and then streams audio to the
 //! provider directly, so audio never crosses the channel or the relay.
 
+mod local;
+
 use crate::market::vault;
 use crate::store::Store;
 use anyhow::{Result, anyhow, bail};
@@ -209,7 +211,7 @@ pub fn status(store: &Store) -> Result<Value> {
             json!({"provider": p.id(), "configured": !keys.get(p).is_empty(), "defaults": defaults})
         })
         .collect();
-    Ok(json!({"providers": providers}))
+    Ok(json!({"providers": providers, "local": local::status()}))
 }
 
 /// Checks the key with the provider (one credential mint), then keeps it. An empty key removes it.
@@ -393,41 +395,51 @@ fn names_hint(names: &[String]) -> String {
     format!("Names that may come up: {}.", names.join(", "))
 }
 
+/// A `multipart/form-data` body: `fields`, then `wav` as the file. Returns the boundary and the body.
+fn multipart(fields: &[(&str, &str)], wav: &[u8]) -> (String, Vec<u8>) {
+    let boundary = format!("codync-{}", uuid::Uuid::new_v4().simple());
+    let mut body = Vec::with_capacity(wav.len() + 512);
+    for (name, value) in fields {
+        body.extend_from_slice(
+            format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").as_bytes(),
+        );
+    }
+    body.extend_from_slice(
+        format!(
+            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(wav);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (boundary, body)
+}
+
+/// Speech to text on this computer's own model (`provider: "local"`), else on a provider's key.
+pub async fn transcribe_with(store: &Store, provider: &str, model: &str, audio: &str) -> Result<Value> {
+    if provider == "local" {
+        let wav = STANDARD.decode(audio).map_err(|_| anyhow!("audio must be base64"))?;
+        return local::transcribe(store, &wav).await;
+    }
+    transcribe(store, Provider::parse(provider)?, model, audio).await
+}
+
 /// Speech to text for one utterance (`audio`: base64 WAV, 16 kHz mono).
-pub async fn transcribe(store: &Store, p: Provider, model: &str, audio: &str) -> Result<Value> {
+async fn transcribe(store: &Store, p: Provider, model: &str, audio: &str) -> Result<Value> {
     let key = key(store, p)?;
     let model = checked(model)?;
     let wav = STANDARD.decode(audio).map_err(|_| anyhow!("audio must be base64"))?;
     let names = spoken_names(store);
     let text = match p {
         Provider::OpenAi => {
-            let boundary = format!("codync-{}", uuid::Uuid::new_v4().simple());
-            let mut body = Vec::with_capacity(wav.len() + 512);
-            body.extend_from_slice(
-                format!("--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n{model}\r\n").as_bytes(),
-            );
             // Keeps Traditional Chinese from coming back Simplified, and code terms intact.
-            let mut field = |name: &str, value: &str| {
-                body.extend_from_slice(
-                    format!("--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n")
-                        .as_bytes(),
-                );
-            };
-            field("prompt", &format!("{TRANSCRIBE_HINT} {}", names_hint(&names)));
+            let prompt = format!("{TRANSCRIBE_HINT} {}", names_hint(&names));
+            let mut fields = vec![("model", model), ("prompt", prompt.as_str())];
             // Only gpt-transcribe takes keywords; the older models reject the field.
             if model.starts_with("gpt-transcribe") {
-                for name in &names {
-                    field("keywords[]", name);
-                }
+                fields.extend(names.iter().map(|name| ("keywords[]", name.as_str())));
             }
-            body.extend_from_slice(
-                format!(
-                    "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"speech.wav\"\r\nContent-Type: audio/wav\r\n\r\n"
-                )
-                .as_bytes(),
-            );
-            body.extend_from_slice(&wav);
-            body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+            let (boundary, body) = multipart(&fields, &wav);
             let req = crate::http()
                 .post("https://api.openai.com/v1/audio/transcriptions")
                 .bearer_auth(&key)

@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from 'react'
-import { parseMarkdown, type Block } from './markdown-blocks.ts'
+import { parseMarkdown, tableColumns, type Block } from './markdown-blocks.ts'
 import { Hairline } from '../../components/Controls'
 import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
@@ -72,7 +72,7 @@ const MarkdownBlock = memo(function MarkdownBlock({ block }: { block: Block }) {
     case 'rule':
       return <Hairline className="md-rule" />
     case 'table': {
-      const columns = Math.max(block.header.length, ...block.rows.map((r) => r.length))
+      const columns = tableColumns(block)
       const cols = Array.from({ length: columns }, (_, i) => i)
       return (
         <div className="md-table-scroll">

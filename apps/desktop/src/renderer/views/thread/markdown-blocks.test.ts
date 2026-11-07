@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { parseMarkdown } from './markdown-blocks.ts'
+import { parseMarkdown, tableColumns } from './markdown-blocks.ts'
 
 test('blocks: headings, nested lists, rules, tables and code', () => {
   const blocks = parseMarkdown('# Title\n- one\n  - two\n1. first\n---\n| A | B |\n|---|---|\n| 1 | 2 |\n```js\nx = 1\n```\n> quoted')
@@ -18,4 +18,11 @@ test('blocks: headings, nested lists, rules, tables and code', () => {
 
 test('a pipe line without its rule stays text', () => {
   assert.deepEqual(parseMarkdown('| not a table'), [{ kind: 'paragraph', text: '| not a table' }])
+})
+
+test('a 150,000-row table parses and counts its widest row', () => {
+  const source = `| A | B |\n|---|---|\n${'| 1 | 2 |\n'.repeat(149_999)}| 1 | 2 | 3 |`
+  const [table] = parseMarkdown(source)
+  assert.equal(table?.kind === 'table' && table.rows.length, 150_000)
+  assert.equal(table?.kind === 'table' && tableColumns(table), 3)
 })

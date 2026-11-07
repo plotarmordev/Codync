@@ -44,7 +44,7 @@ impl Host {
     }
 
     pub async fn post(&self, method: &str, body: &Value) -> (bool, Value) {
-        let response = reqwest::Client::new()
+        let response = super::client()
             .post(format!("{}/api/{method}", self.base))
             .bearer_auth(&self.token)
             .json(body)
@@ -78,7 +78,7 @@ impl Host {
     /// The event stream (its catch-up, then live events), each event as it arrives.
     pub async fn events(&self) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
         use futures::StreamExt as _;
-        let response = reqwest::Client::new()
+        let response = super::client()
             .get(format!("{}/events?client=test", self.base))
             .bearer_auth(&self.token)
             .send()

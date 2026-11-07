@@ -29,6 +29,8 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
             json!({"scheduled": true})
         }
         "voiceStatus" => crate::voice::status(&hub.store)?,
+        // Never waits on the keyring: dictation on this computer needs no key.
+        "localDictation" => crate::voice::local::status(),
         "setVoiceKey" => {
             let provider = crate::voice::Provider::parse(str_arg(&b, "provider")?)?;
             crate::voice::set_key(&hub.store, provider, b["key"].as_str().unwrap_or_default()).await?
@@ -41,8 +43,13 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
             crate::voice::models(&hub.store, crate::voice::Provider::parse(str_arg(&b, "provider")?)?).await?
         }
         "voiceTranscribe" => {
-            let provider = crate::voice::Provider::parse(str_arg(&b, "provider")?)?;
-            crate::voice::transcribe(&hub.store, provider, str_arg(&b, "model")?, str_arg(&b, "audio")?).await?
+            crate::voice::transcribe_with(
+                &hub.store,
+                str_arg(&b, "provider")?,
+                str_arg(&b, "model")?,
+                str_arg(&b, "audio")?,
+            )
+            .await?
         }
         "voiceSpeak" => {
             let provider = crate::voice::Provider::parse(str_arg(&b, "provider")?)?;

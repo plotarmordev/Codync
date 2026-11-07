@@ -58,3 +58,18 @@ import Testing
         seen.append(choice)
     }
 }
+
+/// "This computer" is offered beside the mic's dictation engines only, never among call engines.
+@Test @MainActor func thisComputerIsDictationOnly() {
+    defer { UserDefaults.standard.removeObject(forKey: VoiceSettings.dictationEngineKey) }
+    #expect(DictationEngine.local.name == "This computer")
+    #expect(DictationEngine.local.pref == "local")
+
+    // Call engines are `VoiceProvider`s (the call engine picker's options): "local" isn't one.
+    #expect(VoiceProvider(rawValue: DictationEngine.local.pref) == nil)
+    #expect(VoiceProvider.allCases.map(\.rawValue) == ["openai", "gemini"])
+
+    // The dictation pref stores it as "local"; picking it needs no key or model rows.
+    UserDefaults.standard.set("local", forKey: VoiceSettings.dictationEngineKey)
+    #expect(VoiceSettings.dictationEngine == .local)
+}

@@ -7,6 +7,7 @@ import { ModalHeader, SheetPage } from '../../components/Overlay'
 import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { usePref } from '../../lib/prefs'
+import { useModel } from '../../lib/observable'
 import { useStore } from '../../store/context'
 import { useScreenViewed } from '../../store/analytics'
 import { errorText, liveClient } from './parts'
@@ -31,6 +32,7 @@ export function VoiceChatSettingsView({ showsHeader = true }: { showsHeader?: bo
   const [dictationEngine] = usePref(voice.dictationEngine)
   /** Dictation on another provider than calls still needs that provider's key and speech-to-text model. */
   const dictationProvider = voice.isVoiceProvider(dictationEngine) && dictationEngine !== provider ? dictationEngine : null
+  const dictationLocal = dictationEngine === 'local'
   const [mode, setMode] = usePref(voice.mode(provider ?? 'openai'))
   // Closing hands a running call to a different engine picked here.
   useEffect(() => () => voiceSettingsClosed.ring(), [])
@@ -77,6 +79,7 @@ export function VoiceChatSettingsView({ showsHeader = true }: { showsHeader?: bo
           </CardSection>
           {provider ? <ProviderVoiceSettings key={provider} provider={provider} /> : null}
           {dictationProvider ? <ProviderVoiceSettings key={`dictation-${dictationProvider}`} provider={dictationProvider} dictationOnly /> : null}
+          {dictationLocal ? <LocalDictationSettings /> : null}
         </CardForm>
       </div>
     </SheetPage>
@@ -325,6 +328,39 @@ function ProviderVoiceSettings({ provider, dictationOnly = false }: { provider: 
               </div>,
             ]),
       ]}
+    </CardSection>
+  )
+}
+
+/**
+ * Dictation on the computer's own speech model: no key, no models to pick, nothing billed. The
+ * footer says what to install while the model isn't there (hosts before it say to update), or why
+ * the check couldn't run; it checks again when the computer (re)connects.
+ */
+function LocalDictationSettings() {
+  const store = useStore()
+  useModel(store)
+  const online = store.connection.kind === 'online'
+  const [note, setNote] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const client = liveClient(store)
+      if (!client) return setNote(`Not connected to ${store.hostName}.`)
+      try {
+        const local = await voice.localDictation(client)
+        if (!cancelled) setNote(local.ready ? null : local.message)
+      } catch (e) {
+        if (!cancelled) setNote(errorText(e))
+      }
+    })()
+    return () => void (cancelled = true)
+  }, [online])
+  return (
+    <CardSection title="This computer" footer={note ?? undefined}>
+      <Text size="footnote" tone="secondary">
+        Your computer transcribes what you say with its own speech model; the audio never leaves your computer.
+      </Text>
     </CardSection>
   )
 }

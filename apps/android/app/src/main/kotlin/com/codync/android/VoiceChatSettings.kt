@@ -67,9 +67,12 @@ import kotlinx.coroutines.launch
             }
             if (provider != null) key(provider) { ProviderVoiceSettings(provider, speech, state, store, choices) }
             // Dictation on another provider than calls still needs that provider's key and speech-to-text model.
-            val dictation = remember { choices.dictation }
-            if (dictation != null && dictation != provider) key("dictation-${dictation.id}") {
-                ProviderVoiceSettings(dictation, false, state, store, choices, dictationOnly = true)
+            when (val dictation = remember { choices.dictation }) {
+                is DictationEngine.Cloud -> if (dictation.provider != provider) key("dictation-${dictation.id}") {
+                    ProviderVoiceSettings(dictation.provider, false, state, store, choices, dictationOnly = true)
+                }
+                DictationEngine.Local -> key("dictation-local") { LocalDictationSettings(state, store) }
+                else -> { }
             }
         }
     }
@@ -102,7 +105,7 @@ import kotlinx.coroutines.launch
 @Composable private fun ProviderVoiceSettings(provider: VoiceProvider, speech: Boolean, state: AppState, store: AppStore, choices: VoiceChoices,
     dictationOnly: Boolean = false) {
     // Speech mode and dictation with this provider both use its speech-to-text model.
-    val transcribes = dictationOnly || speech || choices.dictation == provider
+    val transcribes = dictationOnly || speech || (choices.dictation as? DictationEngine.Cloud)?.provider == provider
     val scope = rememberCoroutineScope()
     val host = state.hostName
     /** null while the computer hasn't answered yet. */
@@ -192,4 +195,22 @@ import kotlinx.coroutines.launch
             row { ValueRow("This month", "≈ ${choices.minutes(provider)} min", Modifier.graphicsLayer { alpha = if (hasKey) 1f else .55f }) }
         }
     }
+}
+
+/**
+ * "This computer" picked for dictation: nothing to set up here (no key, no model), only whether the
+ * computer's own speech model is ready — and if it isn't, what it needs.
+ */
+@Composable private fun LocalDictationSettings(state: AppState, store: AppStore) {
+    val host = state.hostName
+    /** null while the computer hasn't answered yet. */
+    var message by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        if (state.actualConnection !is LinkState.Ready) { message = "Not connected to $host."; return@LaunchedEffect }
+        try { message = store.localDictation().takeUnless { it.ready }?.reason() } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { message = error.message ?: "Couldn't reach $host." }
+    }
+    CardSection(DictationEngine.Local.title,
+        footer = "Your computer transcribes what you say with its own speech model; the audio never leaves your computer." +
+            message?.let { " $it" }.orEmpty(), modifier = Modifier.animateContentSize(Motion.layoutSize)) { }
 }

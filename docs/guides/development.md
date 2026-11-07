@@ -100,7 +100,7 @@ Unlock the phone when required. Build, install, launch, and visual inspection ar
 
 | Component | Commands | Requirements |
 | --- | --- | --- |
-| Host | `cd host && cargo build` | rustup; `host/rust-toolchain.toml` pins the version CI uses (a Homebrew `rust` ahead of rustup on PATH ignores it) |
+| Host | `cd host && cargo build` | rustup; `host/rust-toolchain.toml` pins the version CI uses (a Homebrew `rust` ahead of rustup on PATH ignores it); on a Mac also `cmake` (`brew install cmake`), for the local dictation runtime |
 | Host checks | `cd host && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` | Local agent credentials are unnecessary for unit tests |
 | iOS Kit | `cd apps/ios/Kit && xcodebuild test -scheme CodyncKit-Package -destination 'platform=iOS Simulator,id=<sim-id>'` | Swift 6 / Xcode; iOS-only package |
 | Desktop | `cd apps/desktop && npm ci && npm run typecheck && npm test` | Node and npm; CI uses Node 24 |

@@ -359,7 +359,7 @@ function LocalDictationSettings() {
   return (
     <CardSection title="This computer" footer={note ?? undefined}>
       <Text size="footnote" tone="secondary">
-        Your computer transcribes what you say with its own speech model; the audio never leaves your computer.
+        Your computer transcribes what you say in English with its own speech model; the audio never leaves your computer.
       </Text>
     </CardSection>
   )

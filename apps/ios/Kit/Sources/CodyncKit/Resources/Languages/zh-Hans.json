@@ -1252,6 +1252,7 @@
   "Library is empty": "资料库还是空的",
   "This file is too big to open here (over {limit}). Download it to open it in another app.": "文件太大，无法在这里打开（超过 {limit}）。下载后可用其他 App 打开。",
   "This file isn't UTF-8 text. Download it to open it in another app.": "这个文件不是 UTF-8 文本。下载后可用其他 App 打开。",
+  "This video can't play here. Download it to open it in another app.": "这个视频无法在这里播放。下载后可用其他 App 打开。",
   "Couldn't open the file.": "无法打开文件。",
   "Artifacts {name} makes and files shared in this chat show here.": "{name} 做的 Artifact，和这个对话里分享的文件，都会出现在这里。",
   "{name}, view details": "{name}，查看详情",

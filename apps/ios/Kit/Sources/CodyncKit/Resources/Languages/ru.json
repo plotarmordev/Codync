@@ -1252,6 +1252,7 @@
   "Library is empty": "Библиотека пуста",
   "This file is too big to open here (over {limit}). Download it to open it in another app.": "Файл слишком большой, чтобы открыть его здесь (больше {limit}). Скачайте его, чтобы открыть в другом приложении.",
   "This file isn't UTF-8 text. Download it to open it in another app.": "Этот файл не является текстом в UTF-8. Скачайте его, чтобы открыть в другом приложении.",
+  "This video can't play here. Download it to open it in another app.": "Это видео нельзя воспроизвести здесь. Скачайте его, чтобы открыть в другом приложении.",
   "Couldn't open the file.": "Не удалось открыть файл.",
   "Artifacts {name} makes and files shared in this chat show here.": "Здесь показаны артефакты, которые создаёт {name}, и файлы, которыми поделились в этом чате.",
   "{name}, view details": "{name}, подробнее",

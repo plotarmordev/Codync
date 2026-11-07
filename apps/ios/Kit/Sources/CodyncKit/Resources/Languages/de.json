@@ -1252,6 +1252,7 @@
   "Library is empty": "Die Mediathek ist leer",
   "This file is too big to open here (over {limit}). Download it to open it in another app.": "Diese Datei ist zu groß, um sie hier zu öffnen (über {limit}). Lade sie herunter, um sie in einer anderen App zu öffnen.",
   "This file isn't UTF-8 text. Download it to open it in another app.": "Diese Datei ist kein UTF-8-Text. Lade sie herunter, um sie in einer anderen App zu öffnen.",
+  "This video can't play here. Download it to open it in another app.": "Dieses Video kann hier nicht abgespielt werden. Lade es herunter, um es in einer anderen App zu öffnen.",
   "Couldn't open the file.": "Die Datei konnte nicht geöffnet werden.",
   "Artifacts {name} makes and files shared in this chat show here.": "Artefakte von {name} und in diesem Chat geteilte Dateien erscheinen hier.",
   "{name}, view details": "{name}, Details anzeigen",

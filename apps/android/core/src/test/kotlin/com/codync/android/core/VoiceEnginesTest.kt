@@ -53,11 +53,15 @@ class VoiceEnginesTest {
         assertNull(choices.dictation)
         choices.dictation = DictationEngine.Local; assertEquals("local", choices.dictation?.id)
         choices.dictation = null; assertNull(choices.dictation)
-        val notReady = WireJson.decodeFromString(LocalDictation.serializer(), """{"ready":false,"message":"Install a speech model."}""")
-        assertFalse(notReady.ready); assertEquals("Install a speech model.", notReady.reason())
+        val notReady = WireJson.decodeFromString(LocalDictation.serializer(), """{"ready":false,"message":"Link a speech server."}""")
+        assertFalse(notReady.ready); assertEquals("Link a speech server.", notReady.reason()); assertNull(notReady.server)
         val silent = WireJson.decodeFromString(LocalDictation.serializer(), """{"ready":false}""")
         assertFalse(silent.ready); assertEquals(LOCAL_UPDATE_MESSAGE, silent.reason())
-        assertTrue(WireJson.decodeFromString(LocalDictation.serializer(), """{"ready":true}""").ready)
+        val linked = WireJson.decodeFromString(LocalDictation.serializer(),
+            """{"ready":true,"server":"http://127.0.0.1:8080/v1/audio/transcriptions"}""")
+        assertTrue(linked.ready); assertEquals("http://127.0.0.1:8080/v1/audio/transcriptions", linked.server)
+        // Hosts before `setSpeechServer` send no `server` when ready.
+        assertNull(WireJson.decodeFromString(LocalDictation.serializer(), """{"ready":true}""").server)
         // A host before `localDictation` answers 404; `localDictation()` turns that into the update note (app side).
         DictationEngine.Local.addUsage(choices, 61)
         assertTrue(prefs.values.keys.none { it.startsWith("callUsage.") })

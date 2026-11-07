@@ -69,11 +69,14 @@ sealed interface DictationEngine {
 const val LOCAL_UPDATE_MESSAGE = "Update Codync on your computer to dictate with its own speech model."
 
 /**
- * Whether the computer's own speech model can transcribe "This computer" dictation (the host's
- * `localDictation` method); if not, [message] says what it needs, and [reason] falls back to the
- * update note when it sent none (a host before the method answers 404 instead).
+ * Whether a speech server is linked for "This computer" dictation (the host's `localDictation`
+ * method): [server] is its transcription endpoint when one is linked, and [message] says what to
+ * do without one, with [reason] falling back to the update note when the host sent none (a host
+ * before the method answers 404 instead).
  */
-@Serializable data class LocalDictation(val ready: Boolean = false, val message: String? = null) {
+@Serializable data class LocalDictation(val ready: Boolean = false, val message: String? = null,
+    /** The linked speech server's endpoint; null when none is linked, and absent on hosts before `setSpeechServer`. */
+    val server: String? = null) {
     fun reason(): String = message ?: LOCAL_UPDATE_MESSAGE
 }
 

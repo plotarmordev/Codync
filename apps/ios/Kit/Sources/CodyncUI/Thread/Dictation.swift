@@ -8,7 +8,7 @@ enum DictationGate {
     case open
     /// No key for a provider: the mic button opens settings instead.
     case needsKey
-    /// The computer says why it can't transcribe (its speech model isn't installed, say).
+    /// The computer says why it can't transcribe (no speech server is linked, say).
     case blocked(String)
 }
 
@@ -56,7 +56,7 @@ struct DictationService {
 /// after what was already typed, and the recording pill's stop, or the recognizer finishing on a
 /// pause, stops it; it uses the call's language setting. With an engine picked beside the mic, it
 /// records, and the pill's stop has the computer transcribe all of it, on the user's key for a
-/// provider or with the computer's own speech model for "This computer"; the transcript goes
+/// provider or the linked speech server for "This computer"; the transcript goes
 /// after what's in the box by then.
 @MainActor @Observable
 final class Dictation {

@@ -206,18 +206,19 @@ private extension Dictation {
     }
 }
 
-/// "This computer" without its speech model installed says what the computer reported, as a
+/// "This computer" with no speech server linked says what the computer reported, as a
 /// dictation failure — not the missing-key settings prompt — and never opens the microphone.
 @MainActor @Test func localDictationWithoutTheModelSaysWhy() async {
     let mic = Mic()
-    await dictating(picked: .local, check: { .blocked("Install the Whisper model in Codync on your Mac.") }, mic: mic) { dictation, store in
+    let message = "No speech model is linked. Link a speech server you run in Codync on this computer: Voice chat, This computer."
+    await dictating(picked: .local, check: { .blocked(message) }, mic: mic) { dictation, store in
         await dictation.start(after: "", model: store) { _ in }
-        #expect(dictation.failure == "Install the Whisper model in Codync on your Mac.")
+        #expect(dictation.failure == message)
         #expect(!dictation.needsKey && !dictation.listening && mic.heard == nil)
     }
 }
 
-/// A "This computer" recording is transcribed by the host's own speech model: `localDictation`
+/// A "This computer" recording is transcribed by the linked speech server: `localDictation`
 /// says it's ready, the pieces go out with provider "local" and no model, and no usage minutes are
 /// counted for any provider.
 @MainActor @Test func aLocalRecordingIsTranscribedOnTheComputer() async throws {
@@ -225,7 +226,7 @@ private extension Dictation {
     let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let remote = FakeRemote(.ready(.direct))
-    await remote.setCanned("localDictation", #"{"ready":true,"message":null}"#)
+    await remote.setCanned("localDictation", #"{"ready":true,"message":null,"server":"http://127.0.0.1:8080/v1/audio/transcriptions"}"#)
     await remote.setCanned("voiceTranscribe", #"{"text":"heard on this computer"}"#)
     let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in remote }
     defer { store.retire() }
@@ -286,12 +287,14 @@ private extension Dictation {
     #expect(VoiceProvider.allCases.allSatisfy { DictationEngine.provider($0) != .local })
 }
 
-/// `localDictation` decodes, and a not-ready computer without a reason reads as "update your computer".
+/// `localDictation` decodes the linked `server` (absent on older hosts), and a not-ready computer
+/// without a reason reads as "update your computer".
 @MainActor @Test func localDictationDecodesAndDefaultsToAnUpdateNote() throws {
     let decoder = JSONDecoder()
+    let linked = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":true,"message":null,"server":"http://127.0.0.1:8080/v1/audio/transcriptions"}"#.utf8))
+    #expect(linked.ready && linked.server == "http://127.0.0.1:8080/v1/audio/transcriptions")
     let notReady = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":false,"message":"Install the model."}"#.utf8))
-    #expect(!notReady.ready && notReady.reason == "Install the model.")
-    #expect(try decoder.decode(LocalDictation.self, from: Data(#"{"ready":true}"#.utf8)).ready)
+    #expect(!notReady.ready && notReady.server == nil && notReady.reason == "Install the model.")
     let silent = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":false}"#.utf8))
     #expect(!silent.ready && silent.reason == VoiceStatus.localUpdateMessage)
 }

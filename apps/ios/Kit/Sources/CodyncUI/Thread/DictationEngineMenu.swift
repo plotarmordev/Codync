@@ -2,7 +2,7 @@ import CodyncKit
 import SwiftUI
 
 /// Beside the composer's mic, in its capsule: which speech dictation uses — on-device, a provider on
-/// the user's own key, or this computer's own speech model.
+/// user's own key, or the speech server the computer is linked to.
 struct DictationEngineMenu: View {
     let height: CGFloat
     @AppStorage(VoiceSettings.dictationEngineKey) private var engine = "device"

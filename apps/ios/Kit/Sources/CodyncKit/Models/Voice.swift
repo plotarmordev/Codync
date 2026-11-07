@@ -129,12 +129,14 @@ public struct VoiceStatus: Decodable, Sendable {
     }
 }
 
-/// Whether the computer's own speech model can transcribe "This computer" dictation (the host's
-/// `localDictation` method), and if it can't, what it needs: its `message`, or the update note
-/// when the computer sent none (a host before the method answers 404 instead).
+/// Whether the computer's linked speech server can transcribe "This computer" dictation (the
+/// host's `localDictation` method), and if it can't, what it needs: its `message`, or the update
+/// note when the computer sent none (a host before the method answers 404 instead).
 public struct LocalDictation: Decodable, Sendable {
     public var ready: Bool
     public var message: String?
+    /// The linked server's transcription endpoint; absent on hosts before the field.
+    public var server: String? = nil
 
     public var reason: String { message ?? VoiceStatus.localUpdateMessage }
 }
@@ -158,8 +160,9 @@ public struct VoiceModels: Codable, Sendable {
 public extension HostClient {
     func voiceStatus() async throws -> VoiceStatus { try await call("voiceStatus") }
 
-    /// Whether the computer can transcribe "This computer" dictation itself. Never asks for the
-    /// keys `voiceStatus` waits on; a host before it answers 404, which reads as "update".
+    /// Whether the computer's linked speech server is ready to transcribe "This computer"
+    /// dictation. Never asks for the keys `voiceStatus` waits on; a host before it answers 404,
+    /// which reads as "update".
     func localDictation() async throws -> LocalDictation {
         do {
             return try await call("localDictation")
@@ -186,7 +189,7 @@ public extension HostClient {
     }
 
     /// Speech to text for one utterance (a WAV file). `provider` is a provider's raw value, or
-    /// "local" for the computer's own speech model (no key, no model to pick).
+    /// "local" for the linked speech server (no key, no model to pick).
     func voiceTranscribe(provider: String, model: String, wav: Data) async throws -> String {
         struct Text: Decodable { var text: String }
         let t: Text = try await call("voiceTranscribe", ["provider": provider, "model": model,

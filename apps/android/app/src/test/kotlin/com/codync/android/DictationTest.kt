@@ -124,9 +124,9 @@ class DictationTest {
         dictating(engine = DictationEngine.Local, gate = gate, mic = mic) { dictation, service, _ ->
             dictation.start("", service) { }
             assertTrue(until { gate.calls == 1 })
-            gate.answer.complete(DictationGate.Blocked("Install a speech model in Codync on your computer."))
+            gate.answer.complete(DictationGate.Blocked("Link a speech server in Codync on your computer."))
             assertTrue(until { dictation.failure != null })
-            assertEquals("Install a speech model in Codync on your computer.", dictation.failure)
+            assertEquals("Link a speech server in Codync on your computer.", dictation.failure)
             assertTrue(!dictation.needsKey && !dictation.listening && mic.heard == null)
         }
     }

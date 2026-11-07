@@ -198,19 +198,32 @@ import kotlinx.coroutines.launch
 }
 
 /**
- * "This computer" picked for dictation: nothing to set up here (no key, no model), only whether the
- * computer's own speech model is ready — and if it isn't, what it needs.
+ * "This computer" picked for dictation: no key and nothing to pick. The phone can't link a speech
+ * server (the host takes `setSpeechServer` from loopback only), so it shows the linked server, or
+ * what the computer says to do without one; the check runs again when the computer (re)connects.
  */
 @Composable private fun LocalDictationSettings(state: AppState, store: AppStore) {
     val host = state.hostName
+    val online = state.actualConnection is LinkState.Ready
     /** null while the computer hasn't answered yet. */
-    var message by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) {
-        if (state.actualConnection !is LinkState.Ready) { message = "Not connected to $host."; return@LaunchedEffect }
-        try { message = store.localDictation().takeUnless { it.ready }?.reason() } catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: Exception) { message = error.message ?: "Couldn't reach $host." }
+    var local by remember(online) { mutableStateOf<LocalDictation?>(null) }
+    var error by remember(online) { mutableStateOf<String?>(null) }
+    LaunchedEffect(online) {
+        if (!online) { error = "Not connected to $host."; return@LaunchedEffect }
+        try { local = store.localDictation() } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failed: Exception) { error = failed.message ?: "Couldn't reach $host." }
     }
+    val body = "Your speech model transcribes what you say. Codync sends the audio only to the speech server you link " +
+        "on your computer or your own network, so it never leaves your computers."
     CardSection(DictationEngine.Local.title,
-        footer = "Your computer transcribes what you say in English with its own speech model; the audio never leaves your computer." +
-            message?.let { " $it" }.orEmpty(), modifier = Modifier.animateContentSize(Motion.layoutSize)) { }
+        footer = body + (local?.takeUnless { it.ready }?.reason() ?: error)?.let { " $it" }.orEmpty(),
+        modifier = Modifier.animateContentSize(Motion.layoutSize)) {
+        local?.server?.let { server ->
+            row {
+                ValueRow("Speech server", detail = "Linked on $host") {
+                    Text(server, style = Type.body, color = Palette.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
 }

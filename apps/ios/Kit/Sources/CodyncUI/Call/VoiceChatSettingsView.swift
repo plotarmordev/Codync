@@ -352,8 +352,9 @@ private struct ProviderVoiceSettings: View {
     }
 }
 
-/// "This computer" dictation: no key and nothing to pick, only whether the computer's own speech
-/// model is ready (and what to install when it isn't).
+/// "This computer" dictation: no key and nothing to pick, only whether the computer's linked
+/// speech server is ready. Phones see the link or the computer's message; linking is loopback-only
+/// (`setSpeechServer`), done in Codync on that computer.
 private struct LocalDictationSettings: View {
     @Environment(BotStore.self) private var store
     /// The computer's answer while it hasn't given one yet.
@@ -361,14 +362,18 @@ private struct LocalDictationSettings: View {
     @State private var error: String?
 
     private var footer: String {
-        var text = "Your computer transcribes what you say in English with its own speech model; the audio never leaves your computer."
+        var text = "Your speech model transcribes what you say. Codync sends the audio only to the speech server you link on your computer or your own network, so it never leaves your computers."
         if let local, !local.ready { text += " " + local.reason }
         if let error { text += " " + error }
         return text
     }
 
     var body: some View {
-        CardSection(DictationEngine.local.name, footer: footer) {}
+        CardSection(DictationEngine.local.name, footer: footer) {
+            if let server = local?.server {
+                ValueRow("Speech server", detail: "Linked on \(store.hostName)", value: server)
+            }
+        }
 
         Color.clear.frame(height: 0)
             .task {

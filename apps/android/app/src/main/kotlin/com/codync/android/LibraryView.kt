@@ -43,6 +43,7 @@ import com.kyant.shapes.RoundedRectangle
     val items = state.artifacts.library(bot.id, state.library[bot.id].orEmpty())
     var renaming by remember { mutableStateOf<Artifact?>(null) }
     var image by remember { mutableStateOf<Attachment?>(null) }
+    var reading by remember { mutableStateOf<OpenFile?>(null) }
     Column(Modifier.fillMaxWidth()) {
         when {
             items.isNotEmpty() -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -54,7 +55,7 @@ import com.kyant.shapes.RoundedRectangle
                             when (item) {
                                 is LibraryItem.ArtifactItem -> ArtifactRow(item.artifact, { open(OpenArtifact(bot.id, item.artifact.id, item.artifact.title, item.artifact.entryId)) },
                                     { renaming = item.artifact }) { store.shareArtifact(bot.id, item.artifact.id, item.artifact.title) }
-                                is LibraryItem.FileItem -> FileRow(item, bot.id, state, store)
+                                is LibraryItem.FileItem -> FileRow(item, bot.id, state, store) { reading = OpenFile(item.entryId, bot.id, item.file) }
                                 is LibraryItem.AttachmentItem -> AttachmentRow(item.file, bot.id, state, store) { image = item.file }
                             }
                         }
@@ -69,6 +70,7 @@ import com.kyant.shapes.RoundedRectangle
     val target = renaming
     RenameArtifactDialog(target?.title, { renaming = null }) { title -> target?.let { store.renameArtifact(bot.id, it.id, title) } }
     AttachmentImageSheet(image, bot.id, state, store) { image = null }
+    FileViewerSheet(reading, store) { reading = null }
 }
 
 /** One row of the Library: what it is on the left, its name and detail. */
@@ -90,12 +92,14 @@ import com.kyant.shapes.RoundedRectangle
     }
 }
 
-/** A file the bot shared: tapping downloads it to the share sheet, as its card in the chat does (again: cancels). */
-@Composable private fun FileRow(item: LibraryItem.FileItem, botId: String, state: AppState, store: AppStore) {
+/** A file the bot shared: a Markdown, text or PDF file opens on tap; another downloads to the share sheet, as its card in the
+ *  chat does (again: cancels). */
+@Composable private fun FileRow(item: LibraryItem.FileItem, botId: String, state: AppState, store: AppStore, open: () -> Unit) {
     val download = state.fileDownloads[item.file.id]
     val busy = download is FileDownloadState.Downloading
-    LibraryRow(Modifier.plainButton { if (busy) store.cancelFile(item.file.id) else store.saveFile(item.entryId, botId, item.file) },
-        { Symbol(AttachmentIcon.symbol(item.file.name), size = 22.dp, tint = Palette.secondary) }) {
+    LibraryRow(Modifier.plainButton {
+        if (item.file.preview != null) open() else if (busy) store.cancelFile(item.file.id) else store.saveFile(item.entryId, botId, item.file)
+    }, { Symbol(AttachmentIcon.symbol(item.file.name), size = 22.dp, tint = Palette.secondary) }) {
         NameAndDetail(item.file.name, detail(item.file, download))
     }
 }

@@ -104,8 +104,20 @@ private data class EntryFields(
 fun isImageName(name: String) = name.substringAfterLast('.', "").lowercase() in listOf("png", "jpg", "jpeg", "heic", "gif", "webp", "tiff", "bmp")
 fun isAudioName(name: String) = name.substringAfterLast('.', "").lowercase() in listOf("mp3", "m4a", "wav", "aac")
 
-/** The largest shared file the phone fetches whole to show (an image) or play (a sound). */
+/** The largest shared file the phone fetches whole to show (an image or PDF) or play (a sound). */
 private const val INLINE_BYTES = 20L * 1024 * 1024
+
+/** How a shared file opens inside the app; `maxBytes` is the largest it opens there (bigger ones say so and offer Download). */
+enum class FilePreview(val maxBytes: Long, private val extensions: Set<String>) {
+    Markdown(512L * 1024, setOf("md", "markdown")),
+    Text(512L * 1024, setOf("txt", "log", "csv", "tsv", "json", "jsonl", "xml", "yaml", "yml", "toml", "ini", "swift", "kt", "kts", "java",
+        "js", "jsx", "ts", "tsx", "py", "rb", "go", "rs", "c", "h", "cpp", "hpp", "cs", "sh", "sql", "html", "css")),
+    Pdf(INLINE_BYTES, setOf("pdf"));
+
+    companion object {
+        fun of(name: String): FilePreview? = name.substringAfterLast('.', "").lowercase().let { ext -> entries.firstOrNull { ext in it.extensions } }
+    }
+}
 
 /** A file a bot shared: immutable on the computer, checked against its SHA-256 once downloaded. */
 @Serializable data class SharedFile(val id: String, val name: String, val size: Long, val sha256: String) {
@@ -113,6 +125,10 @@ private const val INLINE_BYTES = 20L * 1024 * 1024
     val showsAsImage: Boolean get() = isImageName(name) && size <= INLINE_BYTES
     /** A voice note or other sound small enough to play in the chat. */
     val showsAsAudio: Boolean get() = isAudioName(name) && size <= INLINE_BYTES
+    /** How it opens inside the app, if it does. */
+    val preview: FilePreview? get() = FilePreview.of(name)
+    /** Small enough to open inside the app. */
+    val opensInline: Boolean get() = preview?.let { size <= it.maxBytes } ?: false
 
     /** Before any of it is read: a name that can't leave its folder and a hash to check. */
     fun validate() {

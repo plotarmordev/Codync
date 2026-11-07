@@ -52,10 +52,10 @@ internal class DictationService(
 /** Dictation through this computer: its keys and transcription, and the phone's microphone. */
 internal fun AppStore.dictationService(context: Context) = DictationService(voiceChoices().dictation,
     check = { engine ->
-        val status = voiceStatus().also { voiceChoices().remember(it) }
         when (engine) {
-            is DictationEngine.Cloud -> if (status.configured(engine.provider)) DictationGate.Open else DictationGate.NeedsKey
-            DictationEngine.Local -> if (status.localReady()) DictationGate.Open else DictationGate.Blocked(status.localMessage())
+            is DictationEngine.Cloud -> voiceStatus().also { voiceChoices().remember(it) }
+                .let { if (it.configured(engine.provider)) DictationGate.Open else DictationGate.NeedsKey }
+            DictationEngine.Local -> localDictation().let { if (it.ready) DictationGate.Open else DictationGate.Blocked(it.reason()) }
         }
     },
     openMic = { AndroidMic(context) }, transcribe = ::transcribeDictation)

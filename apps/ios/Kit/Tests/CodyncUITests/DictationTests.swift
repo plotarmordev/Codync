@@ -217,15 +217,15 @@ private extension Dictation {
     }
 }
 
-/// A "This computer" recording is transcribed by the host's own speech model: `voiceStatus` says
-/// it's ready, the pieces go out with provider "local" and no model, and no usage minutes are
+/// A "This computer" recording is transcribed by the host's own speech model: `localDictation`
+/// says it's ready, the pieces go out with provider "local" and no model, and no usage minutes are
 /// counted for any provider.
 @MainActor @Test func aLocalRecordingIsTranscribedOnTheComputer() async throws {
     let suite = "DictationTests.\(UUID().uuidString)"
     let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let remote = FakeRemote(.ready(.direct))
-    await remote.setCanned("voiceStatus", #"{"providers":[],"local":{"ready":true,"message":null}}"#)
+    await remote.setCanned("localDictation", #"{"ready":true,"message":null}"#)
     await remote.setCanned("voiceTranscribe", #"{"text":"heard on this computer"}"#)
     let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in remote }
     defer { store.retire() }
@@ -252,7 +252,8 @@ private extension Dictation {
     dictation.finish()
     #expect(await until { box == "heard on this computer" }, "failure: \(dictation.failure ?? "none")")
 
-    #expect(await remote.calls.contains("voiceStatus"))
+    #expect(await remote.calls.contains("localDictation"))
+    #expect(await !remote.calls.contains("voiceStatus"))
     #expect(await until { await remote.calls.contains("voiceTranscribe") })
     let calls = await remote.calls
     let providers = await remote.bodies("provider"), models = await remote.bodies("model")
@@ -285,12 +286,43 @@ private extension Dictation {
     #expect(VoiceProvider.allCases.allSatisfy { DictationEngine.provider($0) != .local })
 }
 
-/// `local` in voiceStatus decodes, and an old host without it reads as "update your computer".
-@MainActor @Test func localStatusDecodesAndDefaultsToAnUpdateNote() throws {
-    let new = try JSONDecoder().decode(VoiceStatus.self, from: Data(#"{"providers":[],"local":{"ready":false,"message":"Install the model."}}"#.utf8))
-    #expect(new.localDictation == (false, "Install the model."))
-    let ready = try JSONDecoder().decode(VoiceStatus.self, from: Data(#"{"providers":[],"local":{"ready":true}}"#.utf8))
-    #expect(ready.localDictation.ready)
-    let old = try JSONDecoder().decode(VoiceStatus.self, from: Data(#"{"providers":[]}"#.utf8))
-    #expect(old.localDictation == (false, VoiceStatus.localUpdateMessage))
+/// `localDictation` decodes, and a not-ready computer without a reason reads as "update your computer".
+@MainActor @Test func localDictationDecodesAndDefaultsToAnUpdateNote() throws {
+    let decoder = JSONDecoder()
+    let notReady = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":false,"message":"Install the model."}"#.utf8))
+    #expect(!notReady.ready && notReady.reason == "Install the model.")
+    #expect(try decoder.decode(LocalDictation.self, from: Data(#"{"ready":true}"#.utf8)).ready)
+    let silent = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":false}"#.utf8))
+    #expect(!silent.ready && silent.reason == VoiceStatus.localUpdateMessage)
+}
+
+/// A computer from before `localDictation` (it answers 404, unknown method) blocks "This computer"
+/// with the update note instead of failing.
+@MainActor @Test func anOldComputerAsksForAnUpdate() async throws {
+    let suite = "DictationTests.\(UUID().uuidString)"
+    let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let remote = FakeRemote(.ready(.direct))
+    await remote.setCanned("localDictation", throwing: HostError.http(404, "unknown method"))
+    let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in remote }
+    defer { store.retire() }
+    store.setActive(true)
+    #expect(await until { await remote.subscribed })
+    await remote.emit(botEvent("b1", name: "Bot", rev: 1))
+    #expect(await until { store.connection == .online })
+
+    let mic = Mic()
+    var service = DictationService.live
+    service.picked = { .local }
+    service.allowMic = { true }
+    service.openMic = { _, heard in
+        mic.heard = heard
+        return true
+    }
+    let dictation = Dictation(service: service)
+    await dictation.start(after: "", model: store) { _ in }
+    #expect(dictation.failure == VoiceStatus.localUpdateMessage)
+    #expect(await remote.calls.contains("localDictation"))
+    #expect(await !remote.calls.contains("voiceStatus"))
+    #expect(!dictation.listening && mic.heard == nil)
 }

@@ -28,12 +28,14 @@ struct DictationService {
         DictationService(
             picked: { VoiceSettings.dictationEngine },
             check: { engine, model in
-                let status = try await model.ready().voiceStatus()
-                VoiceSettings.remember(status)
+                let client = try await model.ready()
                 switch engine {
-                case .provider(let provider): return status.configured(provider) ? .open : .needsKey
+                case .provider(let provider):
+                    let status = try await client.voiceStatus()
+                    VoiceSettings.remember(status)
+                    return status.configured(provider) ? .open : .needsKey
                 case .local:
-                    let local = status.localDictation
+                    let local = try await client.localDictation()
                     return local.ready ? .open : .blocked(local.reason)
                 }
             },

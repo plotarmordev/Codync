@@ -18,9 +18,11 @@ actor FakeRemote: RemoteTransport {
     private(set) var sent: [String] = []
     /// JSON bodies of `call`s, in order (what a test asserts a host call carried).
     private var bodies: [[String: Any]] = []
-    /// Answers for calls the switch below doesn't know.
-    private var canned: [String: Data] = [:]
-    func setCanned(_ method: String, _ json: String) { canned[method] = Data(json.utf8) }
+    /// Answers for calls the switch below doesn't know; a `HostError` throws it instead.
+    private var canned: [String: Result<Data, any Error>] = [:]
+    func setCanned(_ method: String, _ json: String) { canned[method] = .success(Data(json.utf8)) }
+    /// The method fails like a host that doesn't know it.
+    func setCanned(_ method: String, throwing error: any Error) { canned[method] = .failure(error) }
     /// The `key` string each `call`'s JSON body carried, per call, in order.
     func bodies(_ key: String) async -> [String?] {
         bodies.map { $0[key] as? String }
@@ -92,7 +94,7 @@ actor FakeRemote: RemoteTransport {
             failures[method] = left - 1
             throw HostError.unreachable
         }
-        if let canned = canned[method] { return canned }
+        if let canned = canned[method] { return try canned.get() }
         switch method {
         case "hello":
             return Data(hello.utf8)

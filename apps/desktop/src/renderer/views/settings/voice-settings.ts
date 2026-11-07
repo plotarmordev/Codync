@@ -1,5 +1,5 @@
 import { dictationEngineIds, voiceEngine, voiceEngineIds } from '../../../shared/voice-engine'
-import type { HostClient } from '../../client/host-client'
+import type { HostClient, HostError } from '../../client/host-client'
 import { pref, type Pref } from '../../lib/prefs'
 
 // Realtime voice on the user's own provider keys (host/src/voice.rs, kit Voice.swift +
@@ -20,8 +20,12 @@ export interface VoiceDefaults {
 
 export interface VoiceStatus {
   providers: { provider: VoiceProvider; configured: boolean; defaults?: VoiceDefaults | null }[]
-  /** The computer's own speech model; absent on hosts before it (then `localDictation` reports what to update). */
-  local?: { ready: boolean; message: string | null }
+}
+
+/** Whether the computer's own speech model can transcribe dictation; `message` says what to install. */
+export interface LocalDictation {
+  ready: boolean
+  message: string | null
 }
 
 export interface VoiceModels {
@@ -58,10 +62,6 @@ export const voiceInfo: Record<VoiceProvider, {
 
 export const isVoiceProvider = (s: string): s is VoiceProvider => s === 'openai' || s === 'gemini'
 export const configured = (s: VoiceStatus, p: VoiceProvider) => s.providers.some((x) => x.provider === p && x.configured)
-
-/** Whether the computer transcribes dictation itself; the message says what to install (or to update, on hosts before `local`). */
-export const localDictation = (s: VoiceStatus) =>
-  s.local ?? { ready: false, message: 'Update Codync on your computer to dictate with its own speech model.' }
 
 /** `device` (on-device speech), `local` (the computer's speech model) or a provider. */
 function enginePref(stored: Pref<string>): Pref<string> {
@@ -168,6 +168,16 @@ export async function voiceStatus(c: HostClient) {
   const status = await c.call<VoiceStatus>('voiceStatus')
   for (const entry of status.providers) rememberDefaults(entry.provider, entry.defaults)
   return status
+}
+
+/** Whether the computer transcribes dictation itself; hosts before `localDictation` are told to update. */
+export async function localDictation(c: HostClient): Promise<LocalDictation> {
+  try {
+    return await c.call<LocalDictation>('localDictation')
+  } catch (e) {
+    if ((e as Partial<HostError>).status === 404) return { ready: false, message: 'Update Codync on your computer to dictate with its own speech model.' }
+    throw e
+  }
 }
 
 /** Checks the key with the provider before the computer keeps it; an empty key removes it. */

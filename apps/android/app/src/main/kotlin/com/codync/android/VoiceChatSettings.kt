@@ -207,7 +207,7 @@ import kotlinx.coroutines.launch
     var message by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         if (state.actualConnection !is LinkState.Ready) { message = "Not connected to $host."; return@LaunchedEffect }
-        try { message = store.voiceStatus().takeUnless { it.localReady() }?.localMessage() } catch (cancelled: CancellationException) { throw cancelled }
+        try { message = store.localDictation().takeUnless { it.ready }?.reason() } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { message = error.message ?: "Couldn't reach $host." }
     }
     CardSection(DictationEngine.Local.title,

@@ -119,31 +119,24 @@ public struct VoiceStatus: Decodable, Sendable {
         public var defaults: VoiceDefaults?
     }
 
-    /// The computer's own speech model, for "This computer" dictation. Missing from hosts before it.
-    public struct Local: Decodable, Sendable {
-        public var ready: Bool
-        /// Why it isn't ready (what to install), when it isn't.
-        public var message: String?
-    }
-
-    public var providers: [Provider]
-    public var local: Local?
-
-    /// What an older host that doesn't report `local` says when "This computer" is picked.
+    /// What an older host without `localDictation` hears when "This computer" is picked.
     public static let localUpdateMessage = "Update Codync on your computer to dictate with its own speech model."
 
-    /// Whether "This computer" can transcribe, and why not when it can't.
-    public var localDictation: (ready: Bool, reason: String) {
-        switch local {
-        case .some(let local) where local.ready: (true, "")
-        case .some(let local): (false, local.message ?? Self.localUpdateMessage)
-        case .none: (false, Self.localUpdateMessage)
-        }
-    }
+    public var providers: [Provider]
 
     public func configured(_ provider: VoiceProvider) -> Bool {
         providers.first { $0.provider == provider }?.configured == true
     }
+}
+
+/// Whether the computer's own speech model can transcribe "This computer" dictation (the host's
+/// `localDictation` method), and if it can't, what it needs: its `message`, or the update note
+/// when the computer sent none (a host before the method answers 404 instead).
+public struct LocalDictation: Decodable, Sendable {
+    public var ready: Bool
+    public var message: String?
+
+    public var reason: String { message ?? VoiceStatus.localUpdateMessage }
 }
 
 public struct VoiceModels: Codable, Sendable {
@@ -164,6 +157,16 @@ public struct VoiceModels: Codable, Sendable {
 
 public extension HostClient {
     func voiceStatus() async throws -> VoiceStatus { try await call("voiceStatus") }
+
+    /// Whether the computer can transcribe "This computer" dictation itself. Never asks for the
+    /// keys `voiceStatus` waits on; a host before it answers 404, which reads as "update".
+    func localDictation() async throws -> LocalDictation {
+        do {
+            return try await call("localDictation")
+        } catch HostError.http(404, _) {
+            return LocalDictation(ready: false, message: VoiceStatus.localUpdateMessage)
+        }
+    }
 
     /// Checks the key with the provider before the computer keeps it; an empty key removes it.
     func setVoiceKey(_ key: String, for provider: VoiceProvider) async throws -> VoiceStatus {

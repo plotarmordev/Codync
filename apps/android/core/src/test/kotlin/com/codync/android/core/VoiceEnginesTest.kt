@@ -53,12 +53,12 @@ class VoiceEnginesTest {
         assertNull(choices.dictation)
         choices.dictation = DictationEngine.Local; assertEquals("local", choices.dictation?.id)
         choices.dictation = null; assertNull(choices.dictation)
-        val status = WireJson.decodeFromString(VoiceStatus.serializer(),
-            """{"providers":[],"local":{"ready":false,"message":"Install a speech model."}}""")
-        assertFalse(status.localReady()); assertEquals("Install a speech model.", status.localMessage())
-        val old = WireJson.decodeFromString(VoiceStatus.serializer(), """{"providers":[]}""")
-        assertFalse(old.localReady()); assertEquals("Update Codync on your computer to dictate with its own speech model.", old.localMessage())
-        assertTrue(WireJson.decodeFromString(VoiceStatus.serializer(), """{"providers":[],"local":{"ready":true}}""").localReady())
+        val notReady = WireJson.decodeFromString(LocalDictation.serializer(), """{"ready":false,"message":"Install a speech model."}""")
+        assertFalse(notReady.ready); assertEquals("Install a speech model.", notReady.reason())
+        val silent = WireJson.decodeFromString(LocalDictation.serializer(), """{"ready":false}""")
+        assertFalse(silent.ready); assertEquals(LOCAL_UPDATE_MESSAGE, silent.reason())
+        assertTrue(WireJson.decodeFromString(LocalDictation.serializer(), """{"ready":true}""").ready)
+        // A host before `localDictation` answers 404; `localDictation()` turns that into the update note (app side).
         DictationEngine.Local.addUsage(choices, 61)
         assertTrue(prefs.values.keys.none { it.startsWith("callUsage.") })
     }

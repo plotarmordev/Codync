@@ -357,7 +357,7 @@ private struct ProviderVoiceSettings: View {
 private struct LocalDictationSettings: View {
     @Environment(BotStore.self) private var store
     /// The computer's answer while it hasn't given one yet.
-    @State private var local: (ready: Bool, reason: String)?
+    @State private var local: LocalDictation?
     @State private var error: String?
 
     private var footer: String {
@@ -377,9 +377,7 @@ private struct LocalDictationSettings: View {
                     return
                 }
                 do {
-                    let status = try await client.voiceStatus()
-                    VoiceSettings.remember(status)
-                    local = status.localDictation
+                    local = try await client.localDictation()
                 } catch {
                     self.error = error.localizedDescription
                 }

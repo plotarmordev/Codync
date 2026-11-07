@@ -348,7 +348,7 @@ function LocalDictationSettings() {
       const client = liveClient(store)
       if (!client) return setNote(`Not connected to ${store.hostName}.`)
       try {
-        const local = voice.localDictation(await voice.voiceStatus(client))
+        const local = await voice.localDictation(client)
         if (!cancelled) setNote(local.ready ? null : local.message)
       } catch (e) {
         if (!cancelled) setNote(errorText(e))

@@ -264,6 +264,13 @@ fun AppStore.voiceSettings(settings: VoiceSettings) { VoicePreferences.save(appl
 // The computer's voice methods: it holds the provider keys and does the provider calls that need them.
 
 internal suspend fun AppStore.voiceStatus(): VoiceStatus = WireJson.decodeFromJsonElement(hostCall("voiceStatus", JsonObject(emptyMap()), 30_000))
+
+/** Whether the computer can transcribe "This computer" dictation itself. Never asks for the keys `voiceStatus` waits on; a host before it answers 404, which reads as "update". */
+internal suspend fun AppStore.localDictation(): LocalDictation = try {
+    WireJson.decodeFromJsonElement(hostCall("localDictation", JsonObject(emptyMap()), 30_000))
+} catch (error: HostError) {
+    if (error.status == 404) LocalDictation(ready = false, message = LOCAL_UPDATE_MESSAGE) else throw error
+}
 internal suspend fun AppStore.voiceModels(provider: VoiceProvider): VoiceModels =
     WireJson.decodeFromJsonElement(hostCall("voiceModels", body("provider" to provider.id), 30_000))
 

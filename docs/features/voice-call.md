@@ -80,10 +80,10 @@ large-v3-turbo (`<data dir>/speech/ggml-large-v3-turbo.bin`), started on loopbac
 loaded; the prompt is the host's transcription hint, the names hint and a Chinese line that keeps
 Chinese speech from drifting into English. A piece whose loudest 100 ms stays under -45 dBFS gives no
 text without reaching the model (Whisper makes up "Thank you." for silence). No key, no minutes, no network call out: the
-host reaches the server without any proxy the environment names, stops it when it shuts down, and neither
-`voiceStatus` nor this transcription needs the keyring (with it locked, providers show as not configured). `voiceStatus`'s
-`local: {ready, message}` says whether it can run; before recording, the mic checks it and, if not
-ready, shows `message` (what to install) as the dictation's failure. It's a dictation engine only,
+host reaches the server without any proxy the environment names, stops it when it shuts down, and never
+waits on the keyring for it. `localDictation` → `{ready, message}` says whether it can run (hosts before
+it answer "unknown method", and the apps say to update Codync on the computer); before recording, the mic
+checks it and, if not ready, shows `message` (what to install) as the dictation's failure. It's a dictation engine only,
 never a call engine. Why this model and runtime:
 [local dictation model](../investigations/local-dictation-model-2026-11.md).
 
@@ -244,7 +244,8 @@ shows the provider's name next to the dots whenever audio leaves the device.
   `codync.db` with the vault key from Keychain / Secret Service), so one key serves the iPhone and the
   desktop app. It reaches the host once, over the encrypted channel, and never leaves it again; it is never
   logged and never sent to the relay or our cloud.
-- Host methods (control scope): `voiceStatus` (which providers have a key), `setVoiceKey
+- Host methods (control scope): `voiceStatus` (which providers have a key), `localDictation` (whether this
+  computer's own model can transcribe; never waits on the keyring), `setVoiceKey
   {provider, key}` (checked with one credential mint before it's kept; empty removes it),
   `voiceSession {provider, model, voice}` → `{credential}`, `voiceModels {provider}` → `{models,
   transcribe, speech}`, `voiceTranscribe {provider, model, audio}` (base64 16 kHz WAV) → `{text}`,

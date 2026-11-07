@@ -75,15 +75,16 @@ starting a call or switching chats drops a dictation still recording or transcri
 recording's length counts toward the provider's minutes this month.
 
 **This computer** records the same way, and `voiceTranscribe` with `provider: "local"` has the host
-transcribe on its own model (`host/src/voice/local.rs`): whisper.cpp's `whisper-server` with Whisper
-large-v3-turbo (`<data dir>/speech/ggml-large-v3-turbo.bin`), started on loopback on first use and kept
-loaded; the prompt is the host's transcription hint, the names hint and a Chinese line that keeps
-Chinese speech from drifting into English. A piece whose loudest 100 ms stays under -45 dBFS gives no
-text without reaching the model (Whisper makes up "Thank you." for silence). No key, no minutes, no network call out: the
-host reaches the server without any proxy the environment names, stops it when it shuts down, and never
-waits on the keyring for it. `localDictation` → `{ready, message}` says whether it can run (hosts before
+transcribe on its own model (`host/src/voice/local.rs`): [Underdog Bark 3.0](https://huggingface.co/ConwayResearch/Underdog-Bark-3.0)
+by Conway Research (CC BY 4.0, English only), as the Q8_0 GGUF at
+`<data dir>/speech/underdog-bark-3.0-Q8_0.gguf`, run in the host's own process by
+[transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) on Metal. It loads on first use and
+stays loaded. It takes no prompt and writes nothing for silence. Macs only: building the host on a Mac
+needs `cmake` (transcribe.cpp compiles its ggml runtime). Other hosts answer that dictation on this
+computer needs a Mac. No key, no minutes, no network call out, and it never waits on the keyring.
+`localDictation` → `{ready, message}` says whether it can run (hosts before
 it answer "unknown method", and the apps say to update Codync on the computer); before recording, the mic
-checks it and, if not ready, shows `message` (what to install) as the dictation's failure. It's a dictation engine only,
+checks it and, if not ready, shows `message` (where to download the model) as the dictation's failure. It's a dictation engine only,
 never a call engine. Why this model and runtime:
 [local dictation model](../investigations/local-dictation-model-2026-11.md).
 

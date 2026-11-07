@@ -1,4 +1,4 @@
-import { voiceEngine, voiceEngineIds } from '../../../shared/voice-engine'
+import { dictationEngineIds, voiceEngine, voiceEngineIds } from '../../../shared/voice-engine'
 import type { HostClient } from '../../client/host-client'
 import { pref, type Pref } from '../../lib/prefs'
 
@@ -7,6 +7,9 @@ import { pref, type Pref } from '../../lib/prefs'
 
 export type VoiceProvider = 'openai' | 'gemini'
 export const VOICE_PROVIDERS: VoiceProvider[] = ['openai', 'gemini']
+
+/** What transcribes dictation in the message box: a provider on the user's key, or `local`, the computer's own speech model (no key, no usage). */
+export type DictationTarget = VoiceProvider | 'local'
 
 /** The provider's newest model for each voice mode, as the computer last found them. */
 export interface VoiceDefaults {
@@ -17,6 +20,8 @@ export interface VoiceDefaults {
 
 export interface VoiceStatus {
   providers: { provider: VoiceProvider; configured: boolean; defaults?: VoiceDefaults | null }[]
+  /** The computer's own speech model; absent on hosts before it (then `localDictation` reports what to update). */
+  local?: { ready: boolean; message: string | null }
 }
 
 export interface VoiceModels {
@@ -54,7 +59,11 @@ export const voiceInfo: Record<VoiceProvider, {
 export const isVoiceProvider = (s: string): s is VoiceProvider => s === 'openai' || s === 'gemini'
 export const configured = (s: VoiceStatus, p: VoiceProvider) => s.providers.some((x) => x.provider === p && x.configured)
 
-/** `device` (on-device speech) or a provider. */
+/** Whether the computer transcribes dictation itself; the message says what to install (or to update, on hosts before `local`). */
+export const localDictation = (s: VoiceStatus) =>
+  s.local ?? { ready: false, message: 'Update Codync on your computer to dictate with its own speech model.' }
+
+/** `device` (on-device speech), `local` (the computer's speech model) or a provider. */
 function enginePref(stored: Pref<string>): Pref<string> {
   return { ...stored, get: () => voiceEngine(stored.get(), window.codync.platform) }
 }
@@ -62,6 +71,13 @@ function enginePref(stored: Pref<string>): Pref<string> {
 export const engineOptions = () => voiceEngineIds(window.codync.platform).map((id) => ({
   id, label: isVoiceProvider(id) ? voiceInfo[id].name : 'On device',
 }))
+
+/** The engines the message box dictates with: call engines plus This computer (dictation only). */
+export const dictationEngineOptions = () =>
+  dictationEngineIds(window.codync.platform).map((id) => ({
+    id,
+    label: isVoiceProvider(id) ? voiceInfo[id].name : id === 'local' ? 'This computer' : 'On device',
+  }))
 
 const storedCallEngine = pref('callEngine', 'device')
 /** Keep an old/default device choice available to call startup's configured-provider fallback. */

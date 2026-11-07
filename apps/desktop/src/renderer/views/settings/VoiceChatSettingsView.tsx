@@ -31,6 +31,7 @@ export function VoiceChatSettingsView({ showsHeader = true }: { showsHeader?: bo
   const [dictationEngine] = usePref(voice.dictationEngine)
   /** Dictation on another provider than calls still needs that provider's key and speech-to-text model. */
   const dictationProvider = voice.isVoiceProvider(dictationEngine) && dictationEngine !== provider ? dictationEngine : null
+  const dictationLocal = dictationEngine === 'local'
   const [mode, setMode] = usePref(voice.mode(provider ?? 'openai'))
   // Closing hands a running call to a different engine picked here.
   useEffect(() => () => voiceSettingsClosed.ring(), [])
@@ -77,6 +78,7 @@ export function VoiceChatSettingsView({ showsHeader = true }: { showsHeader?: bo
           </CardSection>
           {provider ? <ProviderVoiceSettings key={provider} provider={provider} /> : null}
           {dictationProvider ? <ProviderVoiceSettings key={`dictation-${dictationProvider}`} provider={dictationProvider} dictationOnly /> : null}
+          {dictationLocal ? <LocalDictationSettings /> : null}
         </CardForm>
       </div>
     </SheetPage>
@@ -325,6 +327,36 @@ function ProviderVoiceSettings({ provider, dictationOnly = false }: { provider: 
               </div>,
             ]),
       ]}
+    </CardSection>
+  )
+}
+
+/**
+ * Dictation on the computer's own speech model: no key, no models to pick, nothing billed. The
+ * footer says what to install while the model isn't there (hosts before it say to update).
+ */
+function LocalDictationSettings() {
+  const store = useStore()
+  const [local, setLocal] = useState<{ ready: boolean; message: string | null } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const client = liveClient(store)
+      if (!client) return
+      try {
+        const status = voice.localDictation(await voice.voiceStatus(client))
+        if (!cancelled) setLocal(status)
+      } catch {
+        // Dictating reports this check's failure itself; here it just leaves the note.
+      }
+    })()
+    return () => void (cancelled = true)
+  }, [store])
+  return (
+    <CardSection title="This computer" footer={local && !local.ready ? (local.message ?? undefined) : undefined}>
+      <Text size="footnote" tone="secondary">
+        Your computer transcribes what you say with its own speech model; the audio never leaves your computer.
+      </Text>
     </CardSection>
   )
 }

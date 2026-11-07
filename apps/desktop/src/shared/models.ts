@@ -240,7 +240,7 @@ export const isImageName = (name: string) =>
 
 export const isAudioName = (name: string) => ['mp3', 'm4a', 'wav', 'aac'].includes(name.split('.').pop()?.toLowerCase() ?? '')
 
-/** The largest shared file a chat fetches whole to show (an image) or play (a sound). */
+/** The largest shared file a chat fetches whole to show (an image or PDF) or play (a sound). */
 const INLINE_BYTES = 20 * 1024 * 1024
 
 /** A shared image small enough to show in the chat. */
@@ -248,6 +248,33 @@ export const showsAsImage = (file: SharedFile) => isImageName(file.name) && file
 
 /** A shared voice note or other sound small enough to play in the chat. */
 export const showsAsAudio = (file: SharedFile) => isAudioName(file.name) && file.size <= INLINE_BYTES
+
+/** A shared file the apps open inside their viewer, and the bytes it fetches at most. */
+export interface FilePreview {
+  kind: 'markdown' | 'text' | 'pdf'
+  maxBytes: number
+}
+
+/** Text files fetch up to 512 KB; PDFs share the images' inline limit. */
+const TEXT_BYTES = 512 * 1024
+
+const FILE_PREVIEWS: Record<string, FilePreview> = {}
+for (const [kind, exts] of [
+  ['markdown', ['md', 'markdown']],
+  ['text', ['txt', 'log', 'csv', 'tsv', 'json', 'jsonl', 'xml', 'yaml', 'yml', 'toml', 'ini', 'swift', 'kt', 'kts', 'java', 'js', 'jsx', 'ts', 'tsx', 'py', 'rb', 'go', 'rs', 'c', 'h', 'cpp', 'hpp', 'cs', 'sh', 'sql', 'html', 'css']],
+  ['pdf', ['pdf']],
+] as [FilePreview['kind'], string[]][]) {
+  for (const ext of exts) FILE_PREVIEWS[ext] = { kind, maxBytes: kind === 'pdf' ? INLINE_BYTES : TEXT_BYTES }
+}
+
+/** A shared Markdown, text or PDF file the viewer can show, whatever its size (too big opens a note instead). */
+export const filePreview = (file: SharedFile): FilePreview | null => FILE_PREVIEWS[file.name.split('.').pop()?.toLowerCase() ?? ''] ?? null
+
+/** A shared file small enough to open inside the app. */
+export const opensInline = (file: SharedFile) => {
+  const preview = filePreview(file)
+  return preview !== null && file.size <= preview.maxBytes
+}
 
 export interface ConnectionRequest {
   [key: string]: unknown

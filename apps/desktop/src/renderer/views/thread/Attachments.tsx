@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isAudioName, isImageName, type Attachment, type SharedFile } from '@shared/models'
+import type { DownloadState } from '../../store/file-downloads'
 import { Icon } from '../../components/Icon'
 import { ModalHeader, Sheet, SheetPage } from '../../components/Overlay'
 import { HStack, VStack } from '../../components/Stack'
@@ -28,6 +29,21 @@ export function byteCount(bytes: number) {
     unit++
   }
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+}
+
+/** What the download button does now (also the Library's file rows). */
+export function downloadAction(state: DownloadState | undefined) {
+  return state?.kind === 'downloading' ? 'Cancel download' : state?.kind === 'failed' ? 'Retry download' : state?.kind === 'saved' ? 'Save again' : 'Download'
+}
+
+/** The line under a shared file's name: its size, the download's progress, or what went wrong. */
+export function downloadDetail(state: DownloadState | undefined, file: SharedFile) {
+  switch (state?.kind) {
+    case 'downloading': return `${byteCount(state.received)} of ${byteCount(file.size)}`
+    case 'failed': return state.message
+    case 'saved': return `${byteCount(file.size)} · Saved`
+    default: return byteCount(file.size)
+  }
 }
 
 /** Files sent with a message: images as pictures (click for full size), other files as cards. */

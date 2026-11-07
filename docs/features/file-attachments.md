@@ -93,8 +93,9 @@ sound the chat plays (the extensions above, up to 20 MiB; `SharedFile::plays_in_
 checks it like `send_message` (nonempty, at most 32 KiB). The message counts as one the bot
 sent: like `send_message`, the agent's own reply text then stays in the trace, and in a
 routine run it is the run's result. iPhone, Android and desktop show the player at the top of
-the bubble (play/pause with its spinner, progress bar, elapsed / length or the size before the
-first play, the same "Couldn't play" caption) and the Markdown text under it; screen readers
+the bubble on one centred row (play/pause with its spinner, the progress bar once the length is
+known, then elapsed / length, or the size before the first play, the same "Couldn't play"
+caption), its glyph on the text's edge, and the Markdown text under it; screen readers
 get the player as one element, "Voice note, <caption>", with Play/Pause and Download as its
 actions, and the text as its own. The terminal UI shows the file line, then the text. A
 voice note sent without `text` keeps its own card. Older clients show the card alone.

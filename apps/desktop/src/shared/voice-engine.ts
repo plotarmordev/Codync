@@ -13,7 +13,5 @@ export function voiceEngineIds(platform: string): string[] {
  * iterating `voiceEngineIds` (calls, fallbacks) ever offers it.
  */
 export function dictationEngineIds(platform: string): string[] {
-  const ids = voiceEngineIds(platform)
-  ids.splice(ids[0] === 'device' ? 1 : 0, 0, 'local')
-  return ids
+  return [...voiceEngineIds(platform), 'local']
 }

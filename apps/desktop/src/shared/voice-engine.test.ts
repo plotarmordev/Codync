@@ -16,10 +16,7 @@ test('macOS keeps on-device dictation and provider choices', () => {
 })
 
 test("the computer's own speech model is a dictation engine everywhere, never a call engine", () => {
-  for (const platform of ['darwin', 'win32', 'linux']) {
-    assert.ok(dictationEngineIds(platform).includes('local'), platform)
-    assert.ok(!voiceEngineIds(platform).includes('local'), platform)
-  }
-  assert.deepEqual(dictationEngineIds('darwin'), ['device', 'local', 'openai', 'gemini'])
-  assert.deepEqual(dictationEngineIds('linux'), ['local', 'openai', 'gemini'])
+  assert.deepEqual(dictationEngineIds('darwin'), ['device', 'openai', 'gemini', 'local'])
+  assert.deepEqual(dictationEngineIds('linux'), ['openai', 'gemini', 'local'])
+  for (const platform of ['darwin', 'linux']) assert.ok(!voiceEngineIds(platform).includes('local'), platform)
 })

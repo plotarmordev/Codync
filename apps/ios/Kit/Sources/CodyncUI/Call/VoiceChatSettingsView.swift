@@ -352,9 +352,10 @@ private struct ProviderVoiceSettings: View {
     }
 }
 
-/// "This computer" dictation: no key and nothing to pick, only whether the computer's linked
-/// speech server is ready. Phones see the link or the computer's message; linking is loopback-only
-/// (`setSpeechServer`), done in Codync on that computer.
+/// Dictation on the computer's linked speech server, titled with the computer's name (the phone
+/// isn't where it runs): no key and nothing to pick, only whether that server is ready. Phones see
+/// the link or the computer's message; linking is loopback-only (`setSpeechServer`), done in
+/// Codync on that computer.
 private struct LocalDictationSettings: View {
     @Environment(BotStore.self) private var store
     /// The computer's answer while it hasn't given one yet.
@@ -369,9 +370,9 @@ private struct LocalDictationSettings: View {
     }
 
     var body: some View {
-        CardSection(DictationEngine.local.name, footer: footer) {
+        CardSection(store.hostName, footer: footer) {
             if let server = local?.server {
-                ValueRow("Speech server", detail: "Linked on \(store.hostName)", value: server)
+                ValueRow("Speech server", detail: "Linked", value: server)
             }
         }
 

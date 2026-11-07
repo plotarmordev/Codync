@@ -198,9 +198,10 @@ import kotlinx.coroutines.launch
 }
 
 /**
- * "This computer" picked for dictation: no key and nothing to pick. The phone can't link a speech
- * server (the host takes `setSpeechServer` from loopback only), so it shows the linked server, or
- * what the computer says to do without one; the check runs again when the computer (re)connects.
+ * The computer's speech server picked for dictation, titled with the computer's name (the phone isn't where it
+ * runs): no key and nothing to pick. The phone can't link a speech server (the host takes `setSpeechServer` from
+ * loopback only), so it shows the linked server, or what the computer says to do without one; the check runs again
+ * when the computer (re)connects.
  */
 @Composable private fun LocalDictationSettings(state: AppState, store: AppStore) {
     val host = state.hostName
@@ -215,12 +216,12 @@ import kotlinx.coroutines.launch
     }
     val body = "Your speech model transcribes what you say. Codync sends the audio only to the speech server you link " +
         "on your computer or your own network, so it never leaves your computers."
-    CardSection(DictationEngine.Local.title,
+    CardSection(DictationEngine.Local.title(host),
         footer = body + (local?.takeUnless { it.ready }?.reason() ?: error)?.let { " $it" }.orEmpty(),
         modifier = Modifier.animateContentSize(Motion.layoutSize)) {
         local?.server?.let { server ->
             row {
-                ValueRow("Speech server", detail = "Linked on $host") {
+                ValueRow("Speech server", detail = "Linked") {
                     Text(server, style = Type.body, color = Palette.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }

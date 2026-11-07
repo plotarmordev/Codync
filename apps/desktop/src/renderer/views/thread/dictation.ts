@@ -107,7 +107,7 @@ export class Dictation extends Observable {
       this.recording = { target, pcm: [], stopMic: null }
       return void this.record(this.recording, ++this.generation)
     }
-    if (!speech) return this.fail(`${this.platform.noSpeech} Pick This computer, OpenAI or Gemini beside the mic.`)
+    if (!speech) return this.fail(`${this.platform.noSpeech} Pick another engine beside the mic.`)
     this.off = speech.onEvent((e) => this.event(e))
     speech.start(this.platform.language())
     this.listen()
@@ -208,7 +208,7 @@ export class Dictation extends Observable {
       const texts = await inOrder(pieces(recording.pcm), (piece) =>
         generation === this.generation ? this.platform.transcribe(target, piece) : Promise.reject(new Error('Cancelled')),
       )
-      // `local` is the computer's own model: nothing billed, nothing counted.
+      // `local` is the computer's own speech server: nothing billed, nothing counted.
       if (target !== 'local') this.platform.count(samples / 16000, target)
       if (generation !== this.generation) return
       const said = texts.map((t) => t.trim()).filter(Boolean).reduce(joinDictated, '')

@@ -8,7 +8,7 @@ import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { usePref } from '../../lib/prefs'
 import { useModel } from '../../lib/observable'
-import { useStore } from '../../store/context'
+import { useApp, useStore } from '../../store/context'
 import { useScreenViewed } from '../../store/analytics'
 import { errorText, liveClient } from './parts'
 import * as voice from './voice-settings'
@@ -333,12 +333,13 @@ function ProviderVoiceSettings({ provider, dictationOnly = false }: { provider: 
 }
 
 /**
- * Dictation on the computer's linked speech server: no key, no models to pick, nothing billed.
+ * Dictation on the computer's linked speech server, titled after that computer: no key, no models to pick, nothing billed.
  * Loopback (Codync on that computer itself) links and unlinks the server; elsewhere the card
  * shows the link or the host's message. The check runs again when the computer (re)connects;
  * its errors and link errors show in the footer / result line like the key entry's.
  */
 function LocalDictationSettings() {
+  const app = useApp()
   const store = useStore()
   useModel(store)
   const online = store.connection.kind === 'online'
@@ -387,14 +388,14 @@ function LocalDictationSettings() {
   }
 
   return (
-    <CardSection title="This computer" footer={note ?? undefined}>
+    <CardSection title={voice.localEngineName(store === app.local, store.hostName)} footer={note ?? undefined}>
       {[
         <Text key="body" size="footnote" tone="secondary">
           Your speech model transcribes what you say. Codync sends the audio only to the speech server you link on your computer or your own network, so it never leaves your computers.
         </Text>,
         ...(local?.server
           ? [
-              <ValueRow key="server" label="Speech server" detail={`Linked on ${store.hostName}`}>
+              <ValueRow key="server" label="Speech server" detail="Linked">
                 <Text truncate title={local.server}>{local.server}</Text>
                 {canLink ? busy ? <Spinner /> : <IconButton title="Unlink" icon="trash" onClick={() => link('')} /> : null}
               </ValueRow>,

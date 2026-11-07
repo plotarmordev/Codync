@@ -65,20 +65,20 @@ import kotlinx.coroutines.delay
             }.semantics { contentDescription = "Dictate" }, contentAlignment = Alignment.Center) {
                 Symbol("mic", size = 18.dp, tint = Palette.secondary)
             }
-            DictationEngineMenu(store, height)
+            DictationEngineMenu(state.hostName, store, height)
         }
     }
     CodyncSheet(dictation.needsKey, { dictation.needsKey = false }) { VoiceChatSettings(state, store) }
     CodyncDialog("Couldn't dictate", dictation.failure != null, { dictation.failure = null }, dictation.failure, cancel = "OK") { emptyList() }
 }
 
-/** Beside the mic, in its capsule: which speech dictation uses, on-device, this computer, or a provider on the user's own key. */
-@Composable private fun DictationEngineMenu(store: AppStore, height: Dp) {
+/** Beside the mic, in its capsule: which speech dictation uses, on-device, a provider on the user's own key, or [computer]'s speech server. */
+@Composable private fun DictationEngineMenu(computer: String, store: AppStore, height: Dp) {
     val choices = remember { store.voiceChoices() }
     var engine by remember { mutableStateOf(choices.dictation) }
     DropdownMenu({
         listOf(MenuItem("On device", selected = engine == null) { engine = null; choices.dictation = null }) +
-            DictationEngine.engines.map { option -> MenuItem(option.title, selected = engine == option) { engine = option; choices.dictation = option } }
+            DictationEngine.engines.map { option -> MenuItem(option.title(computer), selected = engine == option) { engine = option; choices.dictation = option } }
     }, Modifier.height(height).padding(end = 6.dp).width(20.dp), label = "Dictation engine") {
         Symbol("chevron.up", Modifier.align(Alignment.Center), size = 12.dp, tint = Palette.secondary)
     }

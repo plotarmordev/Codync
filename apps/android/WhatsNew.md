@@ -13,11 +13,11 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 無法播放的音訊會在卡片上顯示「無法播放」，點一下即可重試，不再跳出對話框。
 - 檔案卡片的按鈕更好點，檔案大小與 iPhone 和電腦版一致；使用 TalkBack 時每張卡片只需滑一次。
 - Bot 用語音回覆時，播放器會直接出現在那則訊息的泡泡頂端，文字在下方；播放鍵、較粗的進度條與時間排成一列，點或拖動進度條即可跳到想聽的地方。
-- 聽寫多了「這台電腦」引擎：由你自己架設的語音模型轉成文字（在電腦版 Codync 的語音設定中連結），不需要金鑰，聲音不會離開你的電腦。
+- 聽寫可以選你的電腦（以電腦名稱列出）：由你自己架設的語音模型轉成文字（在電腦版 Codync 的語音設定中連結），不需要金鑰，聲音不會離開你的電腦。
 
 ### en-US
 - Voice notes show a spinner while they load, then the time played, their length and a progress bar.
 - A sound that can't play says so on its card; tap to try again, with no dialog.
 - File card buttons are easier to tap, file sizes match the iPhone and desktop apps, and TalkBack reads each card as one item.
 - When a bot speaks its reply, the voice note plays at the top of that message's bubble, with the text under it: play button, a thicker progress bar and the time on one row; tap or drag the bar to jump to any point.
-- Dictation has a new engine, This computer: a speech model you run yourself transcribes what you say (link it in Voice chat settings in Codync on your computer), with no key, and the audio never leaves your computers.
+- Dictation can use your computer, listed under its name: a speech model you run yourself transcribes what you say (link it in Voice chat settings in Codync on your computer), with no key, and the audio never leaves your computers.

@@ -43,7 +43,7 @@ struct DictationService {
             openMic: { engine, heard in Dictation.openMic(engine, bufferSize: 2048) { MicTap.pcm16k(from: $0, out: heard) } },
             transcribe: { pcm, engine, model in
                 let said = try await Dictation.transcribe(pcm, engine: engine, on: model)
-                // "This computer" spends no provider minutes.
+                // The computer's speech server spends no provider minutes.
                 if case .provider(let provider) = engine {
                     VoiceUsage.add(seconds: pcm.count / MicTap.bytesPerSecond, for: provider)
                 }
@@ -56,7 +56,7 @@ struct DictationService {
 /// after what was already typed, and the recording pill's stop, or the recognizer finishing on a
 /// pause, stops it; it uses the call's language setting. With an engine picked beside the mic, it
 /// records, and the pill's stop has the computer transcribe all of it, on the user's key for a
-/// provider or the linked speech server for "This computer"; the transcript goes
+/// provider or on the speech server linked on the computer; the transcript goes
 /// after what's in the box by then.
 @MainActor @Observable
 final class Dictation {

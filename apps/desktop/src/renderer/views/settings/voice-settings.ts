@@ -8,7 +8,7 @@ import { pref, type Pref } from '../../lib/prefs'
 export type VoiceProvider = 'openai' | 'gemini'
 export const VOICE_PROVIDERS: VoiceProvider[] = ['openai', 'gemini']
 
-/** What transcribes dictation in the message box: a provider on the user's key, or `local`, the computer's own speech model (no key, no usage). */
+/** What transcribes dictation in the message box: a provider on the user's key, or `local`, the speech server linked on the computer (no key, no usage). */
 export type DictationTarget = VoiceProvider | 'local'
 
 /** The provider's newest model for each voice mode, as the computer last found them. */
@@ -74,11 +74,14 @@ export const engineOptions = () => voiceEngineIds(window.codync.platform).map((i
   id, label: isVoiceProvider(id) ? voiceInfo[id].name : 'On device',
 }))
 
-/** The engines the message box dictates with: call engines plus This computer (dictation only). */
-export const dictationEngineOptions = () =>
+/** The `local` engine goes by the computer it runs on: "This computer" when that's where this app is, its name otherwise (an SSH or account computer). */
+export const localEngineName = (thisComputer: boolean, hostName: string) => (thisComputer ? 'This computer' : hostName)
+
+/** The engines the message box dictates with: call engines plus `local`, under `localName` (dictation only). */
+export const dictationEngineOptions = (localName: string) =>
   dictationEngineIds(window.codync.platform).map((id) => ({
     id,
-    label: isVoiceProvider(id) ? voiceInfo[id].name : id === 'local' ? 'This computer' : 'On device',
+    label: isVoiceProvider(id) ? voiceInfo[id].name : id === 'local' ? localName : 'On device',
   }))
 
 const storedCallEngine = pref('callEngine', 'device')

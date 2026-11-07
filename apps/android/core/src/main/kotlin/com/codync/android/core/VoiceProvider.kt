@@ -28,7 +28,8 @@ enum class VoiceProvider(val id: String, val title: String, val keyPage: String,
 /** What transcribes dictation into the message box: a provider on the user's own key, or the computer itself. */
 sealed interface DictationEngine {
     val id: String
-    val title: String
+    /** Its name in the engine menu; the computer's own engine goes by [computer], the name of the computer the bot runs on. */
+    fun title(computer: String): String
     /** The model `voiceTranscribe` asks for: the provider's speech-to-text model, none on the computer's own model. */
     fun model(choices: VoiceChoices): String
     /** The month's minutes for a recording: providers bill their own, the computer's own model counts none. */
@@ -36,15 +37,15 @@ sealed interface DictationEngine {
 
     data class Cloud(val provider: VoiceProvider) : DictationEngine {
         override val id get() = provider.id
-        override val title get() = provider.title
+        override fun title(computer: String) = provider.title
         override fun model(choices: VoiceChoices) = choices.model(provider, VoiceChoices.Model.Transcribe)
         override fun addUsage(choices: VoiceChoices, seconds: Long, month: YearMonth) = choices.addUsage(provider, seconds, month)
     }
 
-    /** The computer's own speech model (host `local`): no key, no usage. */
+    /** The speech server linked on the computer (host `local`): no key, no usage. */
     data object Local : DictationEngine {
         override val id get() = "local"
-        override val title get() = "This computer"
+        override fun title(computer: String) = computer
         override fun model(choices: VoiceChoices) = ""
         override fun addUsage(choices: VoiceChoices, seconds: Long, month: YearMonth) { }
     }
@@ -65,11 +66,11 @@ sealed interface DictationEngine {
     fun configured(provider: VoiceProvider): Boolean = providers.any { it.provider == provider.id && it.configured }
 }
 
-/** What an older host without `localDictation` hears when "This computer" is picked. */
+/** What an older host without `localDictation` hears when [DictationEngine.Local] is picked. */
 const val LOCAL_UPDATE_MESSAGE = "Update Codync on your computer to dictate with its own speech model."
 
 /**
- * Whether a speech server is linked for "This computer" dictation (the host's `localDictation`
+ * Whether a speech server is linked for [DictationEngine.Local] dictation (the host's `localDictation`
  * method): [server] is its transcription endpoint when one is linked, and [message] says what to
  * do without one, with [reason] falling back to the update note when the host sent none (a host
  * before the method answers 404 instead).

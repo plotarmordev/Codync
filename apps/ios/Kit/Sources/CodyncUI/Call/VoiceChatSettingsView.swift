@@ -49,6 +49,9 @@ public struct VoiceChatSettingsView: View {
                 if let provider = dictationProvider {
                     ProviderVoiceSettings(provider: provider, dictationOnly: true).id("dictation-\(provider.rawValue)")
                 }
+                if dictationEngine == DictationEngine.local.pref {
+                    LocalDictationSettings()
+                }
             }
         }
         .background(Palette.background)
@@ -346,5 +349,38 @@ private struct ProviderVoiceSettings: View {
             }
             busy = false
         }
+    }
+}
+
+/// "This computer" dictation: no key and nothing to pick, only whether the computer's own speech
+/// model is ready (and what to install when it isn't).
+private struct LocalDictationSettings: View {
+    @Environment(BotStore.self) private var store
+    /// The computer's answer while it hasn't given one yet.
+    @State private var local: LocalDictation?
+    @State private var error: String?
+
+    private var footer: String {
+        var text = "Your computer transcribes what you say in English with its own speech model; the audio never leaves your computer."
+        if let local, !local.ready { text += " " + local.reason }
+        if let error { text += " " + error }
+        return text
+    }
+
+    var body: some View {
+        CardSection(DictationEngine.local.name, footer: footer) {}
+
+        Color.clear.frame(height: 0)
+            .task {
+                guard let client = store.client else {
+                    error = "Not connected to \(store.hostName)."
+                    return
+                }
+                do {
+                    local = try await client.localDictation()
+                } catch {
+                    self.error = error.localizedDescription
+                }
+            }
     }
 }

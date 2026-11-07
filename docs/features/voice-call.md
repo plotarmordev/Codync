@@ -61,8 +61,8 @@ window takes the speech helper; it doesn't stop on a pause. On the iPhone the pi
 was recognized so far. The desktop island's message field has the same mic and pill.
 
 A `chevron.up` beside the composer's mic picks dictation's engine, kept on the device apart from the
-call engine (`dictationEngine`): **On device** (the above), or **OpenAI** / **Gemini** on the user's
-own key. With a provider, the mic first checks that the computer holds its key (`voiceStatus`; no key
+call engine (`dictationEngine`): **On device** (the above), **OpenAI** / **Gemini** on the user's own
+key, or **This computer** (`local`). With a provider, the mic first checks that the computer holds its key (`voiceStatus`; no key
 opens Voice chat settings before anything is recorded), then records; the pill (and its time) appears only once
 the microphone is open, so nothing said before it is lost; nothing is typed while recording. The
 pill's stop turns the pill into "Transcribing…" and the whole recording goes through
@@ -72,8 +72,22 @@ channel message each on the iPhone; under the host's 2 MB request body on the de
 time, joined in order; a tail under half a second stays with the piece before, and the first piece
 that fails fails the dictation. Under half a second of audio in all is dropped. Sending a message,
 starting a call or switching chats drops a dictation still recording or transcribing. The
-recording's length counts toward the provider's minutes this month. The island's mic stays
-on-device (its window doesn't reach the host).
+recording's length counts toward the provider's minutes this month.
+
+**This computer** records the same way, and `voiceTranscribe` with `provider: "local"` has the host
+transcribe on its own model (`host/src/voice/local.rs`): [Underdog Bark 3.0](https://huggingface.co/ConwayResearch/Underdog-Bark-3.0)
+by Conway Research (CC BY 4.0, English only), as the Q8_0 GGUF at
+`<data dir>/speech/underdog-bark-3.0-Q8_0.gguf`, run in the host's own process by
+[transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) on Metal. It loads on first use and
+stays loaded. It takes no prompt; a recording that never gets louder than -45 dBFS is answered with no text
+without reaching the model, which would write "Yeah." for it. Macs only: building the host on a Mac
+needs `cmake` (transcribe.cpp compiles its ggml runtime). Other hosts answer that dictation on this
+computer needs a Mac. No key, no minutes, no network call out, and it never waits on the keyring.
+`localDictation` → `{ready, message}` says whether it can run (hosts before
+it answer "unknown method", and the apps say to update Codync on the computer); before recording, the mic
+checks it and, if not ready, shows `message` (where to download the model) as the dictation's failure. It's a dictation engine only,
+never a call engine. Why this model and runtime:
+[local dictation model](../investigations/local-dictation-model-2026-11.md).
 
 - Desktop (`views/thread/dictation.ts`, the model, tested with a stub platform; the helper,
   microphone and host wired in `dictation-platform.ts`; pieces in `dictation-pieces.ts`; menu in
@@ -232,7 +246,8 @@ shows the provider's name next to the dots whenever audio leaves the device.
   `codync.db` with the vault key from Keychain / Secret Service), so one key serves the iPhone and the
   desktop app. It reaches the host once, over the encrypted channel, and never leaves it again; it is never
   logged and never sent to the relay or our cloud.
-- Host methods (control scope): `voiceStatus` (which providers have a key), `setVoiceKey
+- Host methods (control scope): `voiceStatus` (which providers have a key), `localDictation` (whether this
+  computer's own model can transcribe; never waits on the keyring), `setVoiceKey
   {provider, key}` (checked with one credential mint before it's kept; empty removes it),
   `voiceSession {provider, model, voice}` → `{credential}`, `voiceModels {provider}` → `{models,
   transcribe, speech}`, `voiceTranscribe {provider, model, audio}` (base64 16 kHz WAV) → `{text}`,

@@ -1,7 +1,7 @@
 import type { CodyncBridge, SpeechEvent } from '../../../shared/ipc.ts'
 import { VoiceKeyRouter, type VoiceKey } from '../../../shared/voice-shortcut.ts'
 import { Observable } from '../../lib/observable.ts'
-import type { VoiceProvider } from '../settings/voice-settings.ts'
+import type { DictationTarget, VoiceProvider } from '../settings/voice-settings.ts'
 import { inOrder, joinDictated, MIN_SAMPLES, pieces } from './dictation-pieces.ts'
 
 /** The running dictation: one recognizer at a time, and a call stops dictation first. */
@@ -21,24 +21,27 @@ export interface DictationPlatform {
   host: boolean
   /** The on-device recognizer's language; null is the computer's. */
   language(): string | null
-  /** The provider picked beside the mic; null is on-device. */
-  provider(): VoiceProvider | null
-  /** Whether the host holds the provider key. Network failures still reject. */
-  checkKey(provider: VoiceProvider): Promise<boolean>
+  /** What transcribes dictation, picked beside the mic; null is on-device. */
+  target(): DictationTarget | null
+  /**
+   * The target can start: for a provider, whether the host holds its key (false sends them to add
+   * it); for `local` it rejects with what the computer says to install. Network failures reject.
+   */
+  checkReady(target: DictationTarget): Promise<boolean>
   configureKey(provider: VoiceProvider): void
   /** Opens the microphone as 16 kHz PCM; resolves to what closes it. */
   microphone(out: (pcm: Int16Array, level: number) => void): Promise<() => void>
-  /** One piece of a recording, as the provider's text. */
-  transcribe(provider: VoiceProvider, piece: Int16Array): Promise<string>
-  /** Seconds sent to `provider`, for this month's usage. */
+  /** One piece of a recording, as `target`'s text. */
+  transcribe(target: DictationTarget, piece: Int16Array): Promise<string>
+  /** Seconds a provider transcribed, for this month's usage (`local` never reaches this). */
   count(seconds: number, provider: VoiceProvider): void
   /** Shows an error, every time (even the same one again). */
   report(message: string): void
 }
 
-/** Recording for a provider: what the microphone heard so far, and how to stop it. */
+/** Recording for a dictation target: what the microphone heard so far, and how to stop it. */
 interface Recording {
-  provider: VoiceProvider
+  target: DictationTarget
   pcm: Int16Array[]
   stopMic: (() => void) | null
 }
@@ -99,12 +102,12 @@ export class Dictation extends Observable {
     this.error = null
     this.before = draft
     const { speech } = this.platform
-    const provider = this.platform.host ? this.platform.provider() : null
-    if (provider) {
-      this.recording = { provider, pcm: [], stopMic: null }
+    const target = this.platform.host ? this.platform.target() : null
+    if (target) {
+      this.recording = { target, pcm: [], stopMic: null }
       return void this.record(this.recording, ++this.generation)
     }
-    if (!speech) return this.fail(`${this.platform.noSpeech} Pick OpenAI or Gemini beside the mic.`)
+    if (!speech) return this.fail(`${this.platform.noSpeech} Pick This computer, OpenAI or Gemini beside the mic.`)
     this.off = speech.onEvent((e) => this.event(e))
     speech.start(this.platform.language())
     this.listen()
@@ -158,16 +161,18 @@ export class Dictation extends Observable {
   }
 
   /**
-   * Opens the microphone once the host has the provider's key, so nothing said is lost to a missing
-   * one, and only then listens (the pill shows), so nothing said before the microphone is open is lost.
+   * Opens the microphone once the target said it can start (a key the host holds, the computer's
+   * speech model installed), so nothing said is lost to a missing one, and only then listens (the
+   * pill shows), so nothing said before the microphone is open is lost.
    */
   private async record(recording: Recording, generation: number) {
     try {
-      const hasKey = await this.platform.checkKey(recording.provider)
+      const ready = await this.platform.checkReady(recording.target)
       if (generation !== this.generation) return
-      if (!hasKey) {
+      if (!ready) {
         this.end()
-        this.platform.configureKey(recording.provider)
+        // Only a provider comes back `false` (a missing key); `local` either can start or rejects.
+        if (recording.target !== 'local') this.platform.configureKey(recording.target)
         return
       }
       const stop = await this.platform.microphone((pcm, level) => {
@@ -183,8 +188,8 @@ export class Dictation extends Observable {
   }
 
   /**
-   * Stops recording and puts the provider's transcript of all of it after what's in the box now
-   * (typing goes on while it records); `done` runs once it's there.
+   * Stops recording and puts the transcript of all of it after what's in the box now (typing goes
+   * on while it records); `done` runs once it's there.
    */
   private async transcribe(recording: Recording, done?: () => void) {
     const generation = ++this.generation
@@ -198,12 +203,13 @@ export class Dictation extends Observable {
     this.transcribing = true
     this.changed()
     try {
-      const { provider } = recording
-      // Once cancelled, the pieces not sent yet stay unsent (each is billed on the user's key).
+      const { target } = recording
+      // Once cancelled, the pieces not sent yet stay unsent (a provider bills each on the user's key).
       const texts = await inOrder(pieces(recording.pcm), (piece) =>
-        generation === this.generation ? this.platform.transcribe(provider, piece) : Promise.reject(new Error('Cancelled')),
+        generation === this.generation ? this.platform.transcribe(target, piece) : Promise.reject(new Error('Cancelled')),
       )
-      this.platform.count(samples / 16000, provider)
+      // `local` is the computer's own model: nothing billed, nothing counted.
+      if (target !== 'local') this.platform.count(samples / 16000, target)
       if (generation !== this.generation) return
       const said = texts.map((t) => t.trim()).filter(Boolean).reduce(joinDictated, '')
       this.edit((box) => joinDictated(box, said))

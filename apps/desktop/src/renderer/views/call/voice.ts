@@ -8,6 +8,7 @@ import {
   chosenVoice,
   dictationEngine,
   callEngineChoice,
+  type DictationTarget,
   isVoiceProvider,
   language,
   mode,
@@ -39,10 +40,10 @@ export const VoiceSettings = {
     const value = callEngineChoice()
     return isVoiceProvider(value) ? value : null
   },
-  /** The provider picked for dictation; null for on-device. */
-  dictationProvider: (): VoiceProvider | null => {
+  /** What transcribes dictation in the message box; null for on-device speech. */
+  dictationTarget: (): DictationTarget | null => {
     const value = dictationEngine.get()
-    return isVoiceProvider(value) ? value : null
+    return isVoiceProvider(value) ? value : value === 'local' ? 'local' : null
   },
   model: (p: VoiceProvider) => chosenModel(p, 'realtime'),
   transcribeModel: (p: VoiceProvider) => chosenModel(p, 'transcribe'),
@@ -267,8 +268,8 @@ export function wav(chunks: Int16Array[]): Uint8Array {
   return out
 }
 
-/** Speech to text for one recording (a 16 kHz WAV) on the host, which holds the provider's key. */
-export async function transcribeOnHost(client: HostClient, provider: VoiceProvider, model: string, audio: Uint8Array) {
+/** Speech to text for one recording (a 16 kHz WAV) on the host: a provider on the user's key, or `local` (the computer's own model, no key, empty model). */
+export async function transcribeOnHost(client: HostClient, provider: DictationTarget, model: string, audio: Uint8Array) {
   return (await client.call<{ text: string }>('voiceTranscribe', { provider, model, audio: toBase64(audio) }, 60_000)).text
 }
 

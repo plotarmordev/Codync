@@ -69,6 +69,35 @@ public enum VoiceProvider: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// What transcribes dictation into the message box: a provider on the user's own key, or this
+/// computer's own speech model (`voiceTranscribe` with provider "local"; no key, no minutes).
+/// Dictation only: never a call engine. `nil` in the `dictationEngine` pref stays on-device.
+public enum DictationEngine: Equatable, Sendable {
+    case provider(VoiceProvider)
+    case local
+
+    /// The `dictationEngine` pref's value ("device" / absent means no engine: on-device speech).
+    public init?(pref: String) {
+        if pref == "local" { self = .local }
+        else if let provider = VoiceProvider(rawValue: pref) { self = .provider(provider) }
+        else { return nil }
+    }
+
+    public var pref: String {
+        switch self {
+        case .provider(let provider): provider.rawValue
+        case .local: "local"
+        }
+    }
+
+    public var name: String {
+        switch self {
+        case .provider(let provider): provider.name
+        case .local: "This computer"
+        }
+    }
+}
+
 /// The provider's newest model for each voice mode, as the computer last found them.
 public struct VoiceDefaults: Codable, Sendable, Equatable {
     public var realtime: String
@@ -90,11 +119,24 @@ public struct VoiceStatus: Decodable, Sendable {
         public var defaults: VoiceDefaults?
     }
 
+    /// What an older host without `localDictation` hears when "This computer" is picked.
+    public static let localUpdateMessage = "Update Codync on your computer to dictate with its own speech model."
+
     public var providers: [Provider]
 
     public func configured(_ provider: VoiceProvider) -> Bool {
         providers.first { $0.provider == provider }?.configured == true
     }
+}
+
+/// Whether the computer's own speech model can transcribe "This computer" dictation (the host's
+/// `localDictation` method), and if it can't, what it needs: its `message`, or the update note
+/// when the computer sent none (a host before the method answers 404 instead).
+public struct LocalDictation: Decodable, Sendable {
+    public var ready: Bool
+    public var message: String?
+
+    public var reason: String { message ?? VoiceStatus.localUpdateMessage }
 }
 
 public struct VoiceModels: Codable, Sendable {
@@ -116,6 +158,16 @@ public struct VoiceModels: Codable, Sendable {
 public extension HostClient {
     func voiceStatus() async throws -> VoiceStatus { try await call("voiceStatus") }
 
+    /// Whether the computer can transcribe "This computer" dictation itself. Never asks for the
+    /// keys `voiceStatus` waits on; a host before it answers 404, which reads as "update".
+    func localDictation() async throws -> LocalDictation {
+        do {
+            return try await call("localDictation")
+        } catch HostError.http(404, _) {
+            return LocalDictation(ready: false, message: VoiceStatus.localUpdateMessage)
+        }
+    }
+
     /// Checks the key with the provider before the computer keeps it; an empty key removes it.
     func setVoiceKey(_ key: String, for provider: VoiceProvider) async throws -> VoiceStatus {
         try await call("setVoiceKey", ["provider": provider.rawValue, "key": key], timeout: 30)
@@ -133,10 +185,11 @@ public extension HostClient {
         try await call("voiceModels", ["provider": provider.rawValue], timeout: 30)
     }
 
-    /// Speech to text for one utterance (a WAV file), with the computer's key.
-    func voiceTranscribe(_ provider: VoiceProvider, model: String, wav: Data) async throws -> String {
+    /// Speech to text for one utterance (a WAV file). `provider` is a provider's raw value, or
+    /// "local" for the computer's own speech model (no key, no model to pick).
+    func voiceTranscribe(provider: String, model: String, wav: Data) async throws -> String {
         struct Text: Decodable { var text: String }
-        let t: Text = try await call("voiceTranscribe", ["provider": provider.rawValue, "model": model,
+        let t: Text = try await call("voiceTranscribe", ["provider": provider, "model": model,
                                                           "audio": wav.base64EncodedString()], timeout: 60)
         return t.text
     }

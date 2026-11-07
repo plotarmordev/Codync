@@ -85,6 +85,20 @@ actions. On desktop the card is one keyboard stop: Enter or Space does its first
 (play, view, else download), and its menu (right-click, Shift-F10 or VoiceOver's Show
 menu) lists them all. The terminal UI shows only the card.
 
+### A voice note inside its message
+
+`send_file {path, text}` sends a message that carries a voice note: one final agent entry
+`{text, final: true, files: [meta], voiceNote: true}`. The host accepts `text` only with a
+sound the chat plays (the extensions above, up to 20 MiB; `SharedFile::plays_in_chat`) and
+checks it like `send_message` (nonempty, at most 32 KiB). The message counts as one the bot
+sent: like `send_message`, the agent's own reply text then stays in the trace, and in a
+routine run it is the run's result. iPhone, Android and desktop show the player at the top of
+the bubble (play/pause with its spinner, progress bar, elapsed / length or the size before the
+first play, the same "Couldn't play" caption) and the Markdown text under it; screen readers
+get the player as one element, "Voice note, <caption>", with Play/Pause and Download as its
+actions, and the text as its own. The terminal UI shows the file line, then the text. A
+voice note sent without `text` keeps its own card. Older clients show the card alone.
+
 This feature adds no previews of other file types, folder packaging, background
 transfers, persistent resume or Watch UI. Existing bots do not publish workspace files
 automatically: they must call `send_file`.

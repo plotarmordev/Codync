@@ -238,6 +238,63 @@ async fn a_routine_run_shares_a_voice_note_in_the_bots_own_chat() {
     assert_eq!(base64::engine::general_purpose::STANDARD.decode(read["data"].as_str().unwrap()).unwrap(), note);
 }
 
+/// The bot's history once its `voice_messages`-th run of `spoken` settled: its voice message saved, the bot idle.
+async fn spoken(host: &Host, bot: &str, voice_messages: usize) -> Vec<Value> {
+    let results = host.home.join("file-results.json");
+    let waited = tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let sync = common::snapshot(&host.base, &host.token).await;
+            let idle = sync["bots"].as_array().unwrap().iter().any(|b| b["id"] == bot && b["status"] == "idle");
+            let history = host.call("history", json!({"botId": bot})).await;
+            let entries = history["entries"].as_array().unwrap();
+            if idle
+                && results.exists()
+                && entries.iter().filter(|e| e["data"]["voiceNote"] == true).count() == voice_messages
+            {
+                return entries.clone();
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await;
+    let entries = waited.unwrap();
+    let results: Value = serde_json::from_slice(&std::fs::read(&results).unwrap()).unwrap();
+    assert_eq!(results[0]["content"][0]["text"], r#"{"sent":true}"#, "{results}");
+    assert_eq!(results[1]["isError"], true, "only a voice note goes with a message: {results}");
+    std::fs::remove_file(host.home.join("file-results.json")).unwrap();
+    entries
+}
+
+/// A voice note sent with its message is one bubble that counts as a sent message: the agent's reply stays in the trace.
+fn assert_one_voice_message(entries: &[Value]) {
+    let shared: Vec<_> = entries.iter().filter(|e| e["data"]["files"].is_array()).collect();
+    assert_eq!(shared.len(), 1, "{entries:?}");
+    let message = &shared[0]["data"];
+    assert_eq!((message["text"].as_str(), message["voiceNote"].as_bool()), (Some("Here is the **plan**."), Some(true)));
+    assert_eq!(message["files"][0]["name"], "note.m4a");
+    assert!(entries.iter().all(|e| e["data"]["text"] != "The files are ready." || e["data"]["final"] != true));
+}
+
+#[tokio::test]
+async fn a_voice_note_goes_inside_its_message_in_a_turn_and_a_routine_run() {
+    let host = Host::start().await;
+    std::fs::write(host.home.join("note.m4a"), b"\0\0\0\x18ftypM4A voice").unwrap();
+    std::fs::write(host.home.join("report.pdf"), b"%PDF-example").unwrap();
+    let agent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/file_agent.py");
+    let created = host.call("createBot", json!({"name":"Speaker", "backend":"custom", "cwd":host.home, "command":common::python_agent(&agent), "connectors":[], "notify":false})).await;
+    let bot = created["bot"]["id"].as_str().unwrap();
+    host.call("send", json!({"botId":bot,"text":"spoken"})).await;
+    assert_one_voice_message(&spoken(&host, bot, 1).await);
+    let routine = json!({"botId":bot,"name":"Briefing","instruction":"spoken","triggers":[{"type":"webhook"}]});
+    let routine = host.call("saveRoutine", routine).await;
+    host.call("runRoutine", json!({"botId":bot,"id":routine["routine"]["id"]})).await;
+    let entries = spoken(&host, bot, 2).await;
+    let run_turn = entries.iter().rfind(|e| e["data"]["routineId"].is_string()).unwrap()["turn"].clone();
+    assert_one_voice_message(&entries.into_iter().filter(|e| e["turn"] == run_turn).collect::<Vec<_>>());
+    let runs = host.call("routines", json!({"botId": bot})).await["runs"].clone();
+    assert_eq!(runs[0]["result"], "Here is the **plan**.", "{runs}");
+}
+
 #[tokio::test]
 async fn files_only_turns_finish_without_duplicate_text_and_input_uploads_still_work() {
     use base64::Engine as _;

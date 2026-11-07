@@ -5,7 +5,7 @@ import { ModalHeader, Sheet, SheetPage } from '../../components/Overlay'
 import { Text } from '../../components/Text'
 import { useTr } from '../../lib/use-language'
 import { useStore } from '../../store/context'
-import { downloadAction, downloadDetail } from './Attachments'
+import { downloadAction, downloadDetail } from './file-card'
 import { MarkdownText } from './Markdown'
 import './attachments.css'
 

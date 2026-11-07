@@ -12,14 +12,30 @@ struct FileDownloadCard: View {
     @State private var audio = SharedAudio()
 
     var body: some View {
+        let download = model.fileDownloads.states[file.id]
+        let caption = Self.detail(download, play: audio.state, elapsed: audio.elapsed, duration: audio.duration, size: file.size)
         VStack(alignment: .leading, spacing: 12) {
             if file.showsAsImage { preview }
-            row
+            row(caption: caption)
         }
         .padding(14)
         .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 16))
         .codyncSheet(isPresented: $viewing) { AttachmentViewer(shared: file, entryId: entry.id) }
         .onDisappear { audio.stop() }
+        // One element reads the whole card; its buttons become named actions.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(file.name), \(caption)")
+        .accessibilityActions {
+            if file.showsAsAudio {
+                Button(audio.state == .playing ? L10n.tr("Pause") : L10n.tr("Play"), action: play)
+            }
+            if file.showsAsImage {
+                Button(L10n.tr("View")) { viewing = true }
+            } else if file.preview != nil {
+                Button(L10n.tr("View"), action: open)
+            }
+            Button(busy ? L10n.tr("Cancel download") : L10n.tr("Download"), action: self.download)
+        }
     }
 
     /// The picture itself; tap for full size.
@@ -28,77 +44,124 @@ struct FileDownloadCard: View {
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture { viewing = true }
-            .accessibilityLabel(file.name)
-            .accessibilityAddTraits(.isButton)
             .frame(maxWidth: .infinity, maxHeight: 280, alignment: .leading)
     }
 
-    private var row: some View {
-        let state = model.fileDownloads.states[file.id]
-        return HStack(spacing: 12) {
+    private func row(caption: String) -> some View {
+        HStack(spacing: 12) {
             if file.preview != nil {
-                Button { openFile?(FileViewerTarget(file: file, entryId: entry.id, botId: entry.botId)) } label: {
-                    label(state)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(L10n.tr("Open {name}").replacingOccurrences(of: "{name}", with: file.name))
+                Button(action: open) { label(caption: caption) }.buttonStyle(.plain)
             } else {
-                label(state)
+                label(caption: caption)
             }
             Spacer(minLength: 0)
-            Button {
-                Motion.animate {
-                    if case .downloading = state { model.fileDownloads.cancel(file.id) }
-                    else { model.fileDownloads.save(client: model.client, entry: entry, file: file) }
-                }
-            } label: {
-                Image(systemName: busy(state) ? "xmark" : "arrow.down.to.line")
-                    .font(.system(size: 20)).frame(width: 36, height: 36)
+            Button(action: download) {
+                Image(systemName: busy ? "xmark" : "arrow.down.to.line")
+                    .font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(busy(state) ? "Cancel download" : "Download") \(file.name)")
         }
     }
 
     /// Its icon (or a voice note's play button) and name; tap opens the viewer for readable files.
-    private func label(_ state: FileDownloads.State?) -> some View {
+    private func label(caption: String) -> some View {
         HStack(spacing: 12) {
             if file.showsAsAudio { playButton } else {
                 Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
+                    .frame(width: 24)
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(file.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(2)
-                Text(Self.detail(state, size: file.size)).font(.caption2).foregroundStyle(Palette.secondary)
+                Text(caption).font(.caption2).foregroundStyle(audio.state == .failed ? Palette.danger : Palette.secondary)
+                if audio.duration != nil { progress }
             }
         }
     }
 
-    /// A voice note's play/pause, in place of its file icon.
+    /// A voice note's play/pause, in place of its file icon. The shared button's 44 pt hit area overflows the
+    /// 24 pt glyph's slot, so the name lines up with the other file cards.
     private var playButton: some View {
-        Button {
-            Task { await audio.toggle(file, entryId: entry.id, model: model) }
-        } label: {
-            Image(systemName: audio.playing ? "pause.circle" : "play.circle")
-                .font(.system(size: 24)).foregroundStyle(Palette.text)
-                .contentTransition(.symbolEffect(.replace))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(audio.playing ? "Pause" : "Play") \(file.name)")
+        AudioPlayButton(state: audio.state, action: play).padding(-10)
     }
 
-    private func busy(_ state: FileDownloads.State?) -> Bool {
-        if case .downloading = state { return true }
-        return false
+    /// The position in the sound, once its length is known.
+    private var progress: some View {
+        AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 1).padding(.top, 3)
     }
-    /// The size, or how the download is going.
-    static func detail(_ state: FileDownloads.State?, size bytes: Int64) -> String {
+
+    private func play() {
+        Task { await audio.toggle(file, entryId: entry.id, model: model) }
+    }
+
+    private func open() {
+        openFile?(FileViewerTarget(file: file, entryId: entry.id, botId: entry.botId))
+    }
+
+    private func download() {
+        model.fileDownloads.toggle(client: model.client, entry: entry, file: file)
+    }
+
+    private var busy: Bool { model.fileDownloads.isDownloading(file.id) }
+
+    /// What the card says under the name: a failed play, then the download, then the sound's position, then its size.
+    static func detail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,
+                       elapsed: TimeInterval = 0, duration: TimeInterval? = nil, size bytes: Int64) -> String {
+        if play == .failed { return L10n.tr("Couldn't play. Tap to retry.") }
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-        switch state {
-        case .downloading(let received): return "\(ByteCountFormatter.string(fromByteCount: received, countStyle: .file)) of \(size)"
-        case .failed(let message): return "\(message) Tap to retry."
-        case .saved: return "\(size) · Downloaded"
-        case nil: return size
+        switch download {
+        case .downloading(let received):
+            let received = ByteCountFormatter.string(fromByteCount: received, countStyle: .file)
+            return L10n.tr("{received} of {size}")
+                .replacingOccurrences(of: "{received}", with: received)
+                .replacingOccurrences(of: "{size}", with: size)
+        case .failed(let message): return "\(L10n.tr(message)) \(L10n.tr("Tap to retry."))"
+        case .saved, nil: break
         }
+        if let duration { return "\(SharedAudio.timeText(elapsed)) / \(SharedAudio.timeText(duration))" }
+        if case .saved = download { return "\(size) · \(L10n.tr("Downloaded"))" }
+        return size
+    }
+}
+
+/// A shared sound's play/pause: a spinner while it loads, and the 44 pt tap target of every card-sized control.
+/// Both a file card and a bubble's voice note show it.
+struct AudioPlayButton: View {
+    let state: SharedAudio.State
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if state == .loading {
+                    Spinner(size: 24)
+                } else {
+                    Image(systemName: state == .playing ? "pause.circle" : "play.circle")
+                        .font(.system(size: 24)).foregroundStyle(Palette.text)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// How far a shared sound has played: a thin bar filling left to right.
+struct AudioProgress: View {
+    let elapsed: TimeInterval
+    let duration: TimeInterval
+
+    var body: some View {
+        Capsule()
+            .fill(Palette.tertiary)
+            .frame(height: 2.5)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Capsule().fill(Palette.text)
+                        .frame(width: proxy.size.width * min(1, elapsed / max(1, duration)))
+                }
+            }
     }
 }
 

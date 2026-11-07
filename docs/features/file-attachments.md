@@ -75,13 +75,35 @@ Android and desktop, tap/click for full size. A sound file (`mp3`, `m4a`, `wav`,
 voice note) up to 20 MB gets a play/pause button in place of its icon. For either the
 client reads the whole file into memory through the same `readFile` chunks, checks size
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
-read leaves the placeholder, a failed sound read says it couldn't play. The terminal UI
-shows only the card.
+read leaves the placeholder. While a sound loads its button shows a spinner; once loaded
+its caption reads elapsed / total time over a progress bar. A sound that can't be read
+or decoded goes back to play and its caption reads "Couldn't play. Tap to retry." (click
+on desktop), with no dialog; the next tap reads it again. Every client shows sizes as
+Apple's `ByteCountFormatter` does (decimal units, rounded half up from the byte count),
+and screen readers get one element per card, with play, view and download as its
+actions. On desktop the card is one keyboard stop: Enter or Space does its first action
+(play, view, else download), and its menu (right-click, Shift-F10 or VoiceOver's Show
+menu) lists them all. The terminal UI shows only the card.
+
+### A voice note inside its message
+
+`send_file {path, text}` sends a message that carries a voice note: one final agent entry
+`{text, final: true, files: [meta], voiceNote: true}`. The host accepts `text` only with a
+sound the chat plays (the extensions above, up to 20 MiB; `SharedFile::plays_in_chat`) and
+checks it like `send_message` (nonempty, at most 32 KiB). The message counts as one the bot
+sent: like `send_message`, the agent's own reply text then stays in the trace, and in a
+routine run it is the run's result. iPhone, Android and desktop show the player at the top of
+the bubble (play/pause with its spinner, progress bar, elapsed / length or the size before the
+first play, the same "Couldn't play" caption) and the Markdown text under it; screen readers
+get the player as one element, "Voice note, <caption>", with Play/Pause and Download as its
+actions, and the text as its own. The terminal UI shows the file line, then the text. A
+voice note sent without `text` keeps its own card. Older clients show the card alone.
 
 Markdown (`md`, `markdown`), plain text and code (`txt`, `log`, `csv`, `tsv`, `json`,
 `jsonl`, `xml`, `yaml`, `yml`, `toml`, `ini`, `html`, `css`, `sql`, `sh` and common source
-extensions) and PDF files open in a viewer sheet on iPhone, Android and desktop: tap or
-click the card (or the Library row). Markdown renders with the chat's Markdown renderer,
+extensions) and PDF files open in a viewer sheet on iPhone, Android and desktop: tap the
+card's icon or name, click the card, or tap the Library row; screen readers get it as the card's
+View action. Markdown renders with the chat's Markdown renderer,
 text shows monospaced and selectable, PDF uses the platform's PDF view (PDFKit, Android
 `PdfRenderer`, desktop: see `FileViewer.tsx`). The viewer header keeps Download. It reads the
 file through the same verified, cached path as images, up to 512 KB for Markdown and text

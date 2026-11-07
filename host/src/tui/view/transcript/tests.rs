@@ -18,6 +18,23 @@ async fn generated_files_are_selectable_cards_without_duplicate_fallback_text() 
 }
 
 #[tokio::test]
+async fn a_voice_note_shows_its_message_under_its_file_line() {
+    use crate::tui::app::Msg;
+    use serde_json::json;
+    let mut app = app_with_bots();
+    app.on_msg(Msg::Event(
+        json!({"type":"entry", "entry":{"id":"spoken", "botId":"a", "seq":1, "kind":"agent", "turn":1,
+        "data":{"author":"a", "text":"Here is the plan.", "final":true, "voiceNote":true,
+                "files":[{"id":"file", "name":"note.m4a", "size":2048, "sha256":"hash"}]}}}),
+    ));
+    let chat = build_chat(&app, &app.bots["a"], 80);
+    let lines: Vec<_> = chat.lines.iter().map(ToString::to_string).collect();
+    let file = lines.iter().position(|l| l.contains("note.m4a")).unwrap();
+    let message = lines.iter().position(|l| l.contains("Here is the plan.")).unwrap();
+    assert!(file < message, "{lines:?}");
+}
+
+#[tokio::test]
 async fn an_artifact_card_is_one_line_with_its_newest_title() {
     use crate::tui::app::Msg;
     use serde_json::json;
@@ -200,4 +217,27 @@ async fn a_calls_conversation_takes_what_the_host_sent_beyond_the_loaded_chat() 
         ],
     );
     assert_eq!(call_lines(&app, &bot, &line), ["voice → bot: check git", "Mika: Clean."]);
+}
+
+#[test]
+fn file_sizes_read_as_the_apps_show_them() {
+    for (bytes, shown) in [
+        (0, "Zero KB"),
+        (1, "1 byte"),
+        (43, "43 bytes"),
+        (999, "999 bytes"),
+        (1_000, "1 KB"),
+        (1_499, "1 KB"),
+        (1_500, "2 KB"),
+        (380_030, "380 KB"),
+        (999_500, "1 MB"),
+        (1_049_999, "1 MB"),
+        (1_050_000, "1.1 MB"),
+        (12_345_678, "12.3 MB"),
+        (999_995_000, "1 GB"),
+        (1_005_000_000, "1.01 GB"),
+        (1_234_567_890_123, "1.23 TB"),
+    ] {
+        assert_eq!(file_size(bytes), shown, "{bytes} bytes");
+    }
 }

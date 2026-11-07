@@ -100,7 +100,7 @@ import com.kyant.shapes.RoundedRectangle
     LibraryRow(Modifier.plainButton {
         if (item.file.preview != null) open() else if (busy) store.cancelFile(item.file.id) else store.saveFile(item.entryId, botId, item.file)
     }, { Symbol(AttachmentIcon.symbol(item.file.name), size = 22.dp, tint = Palette.secondary) }) {
-        NameAndDetail(item.file.name, detail(item.file, download))
+        NameAndDetail(item.file.name, detail(item.file, download, tr = translator()))
     }
 }
 

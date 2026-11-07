@@ -1,3 +1,13 @@
+/** One voice-note card's player state. */
+export type AudioPhase = 'idle' | 'loading' | 'playing' | 'paused' | 'failed'
+
+/** What a card shows: the player's phase and the sound's clock (seconds; duration 0 until known). */
+export interface AudioSnapshot {
+  phase: AudioPhase
+  elapsed: number
+  duration: number
+}
+
 /** A loaded sound, ready to play (an `HTMLAudioElement` in the app). */
 export interface Sound {
   play(): Promise<void>
@@ -5,49 +15,64 @@ export interface Sound {
   dispose(): void
 }
 
-/** Where a card's player gets its sound and says what happens. */
+/** What a sound reports back to its card's player. */
+export interface SoundEvents {
+  /** It started or stopped playing. */
+  playing(playing: boolean): void
+  /** Its clock moved or its length became known (seconds). */
+  time(elapsed: number, duration: number): void
+  /** It played to the end. */
+  ended(): void
+  /** It broke while playing (after `play()` already settled). */
+  failed(): void
+}
+
+/** Where a card's player gets its sound. */
 export interface SharedAudioPlatform {
   /** The sound's bytes, fetched once from the computer; null when they can't be read. */
   load(): Promise<Uint8Array | null>
-  /** A player for the bytes, reporting each play and pause. */
-  open(data: Uint8Array, playing: (playing: boolean) => void): Sound
-  failed(): void
+  /** A player for the bytes. */
+  open(data: Uint8Array, events: SoundEvents): Sound
 }
 
 /** Plays a sound a bot shared (a voice note); one card's player, disposed when the card goes. */
 export class SharedAudio {
-  private sounding = false
-  get playing() { return this.sounding }
+  private phase: AudioPhase = 'idle'
+  private elapsed = 0
+  private duration = 0
   private sound: Sound | null = null
-  // A tap while the sound loads is dropped, so it never starts a second player.
-  private loading = false
   private disposed = false
   private readonly platform: SharedAudioPlatform
-  private readonly changed: (playing: boolean) => void
+  private readonly changed: (snapshot: AudioSnapshot) => void
 
-  constructor(platform: SharedAudioPlatform, changed: (playing: boolean) => void) {
+  constructor(platform: SharedAudioPlatform, changed: (snapshot: AudioSnapshot) => void) {
     this.platform = platform
     this.changed = changed
   }
 
+  get snapshot(): AudioSnapshot {
+    return { phase: this.phase, elapsed: this.elapsed, duration: this.duration }
+  }
+
   /** Settles once this tap's pause, play or failure is done. */
   async toggle() {
-    if (this.playing) return this.sound?.pause()
-    if (this.loading) return
-    this.loading = true
+    if (this.phase === 'playing') return this.sound?.pause()
+    // A tap while the sound loads is dropped, so it never starts a second player.
+    if (this.phase === 'loading' || this.disposed) return
+    this.setPhase('loading')
     try {
       await this.play()
     } catch {
-      this.platform.failed()
-    } finally {
-      this.loading = false
+      // play() may already have started the sound before its promise rejects: the card must not stay on pause.
+      this.drop()
+      this.setPhase('failed')
     }
   }
 
   dispose() {
     this.disposed = true
-    this.sound?.pause()
-    this.sound?.dispose()
+    this.drop()
+    this.phase = 'idle'
   }
 
   private async play() {
@@ -56,11 +81,45 @@ export class SharedAudio {
       // The card went while the sound loaded: nothing could pause it any more.
       if (this.disposed) return
       if (!data) throw new Error('unreadable')
-      this.sound = this.platform.open(data, (playing) => {
-        this.sounding = playing
-        this.changed(playing)
+      const sound = this.platform.open(data, {
+        playing: (on) => {
+          if (this.sound !== sound) return
+          this.setPhase(on ? 'playing' : this.phase === 'idle' ? 'idle' : 'paused')
+        },
+        time: (elapsed, duration) => {
+          if (this.sound !== sound) return
+          this.elapsed = elapsed
+          if (duration > 0) this.duration = duration
+          this.changed(this.snapshot)
+        },
+        ended: () => {
+          if (this.sound !== sound) return
+          this.elapsed = 0
+          this.setPhase('idle')
+        },
+        failed: () => {
+          if (this.sound !== sound) return
+          this.drop()
+          this.setPhase('failed')
+        },
       })
+      this.sound = sound
     }
     await this.sound.play()
+  }
+
+  /** Drops the player and its clock, so a failure shows no stale progress and the next tap fetches and decodes again. */
+  private drop() {
+    const sound = this.sound
+    this.sound = null
+    this.elapsed = 0
+    this.duration = 0
+    sound?.pause()
+    sound?.dispose()
+  }
+
+  private setPhase(phase: AudioPhase) {
+    this.phase = phase
+    this.changed(this.snapshot)
   }
 }

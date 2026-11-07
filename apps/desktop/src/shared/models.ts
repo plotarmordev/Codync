@@ -280,6 +280,12 @@ export const opensInline = (file: SharedFile) => {
   return preview !== null && file.size <= preview.maxBytes
 }
 
+/** The voice note playing at the top of a message's bubble; none when its files show as their own cards. */
+export const voiceNoteOf = (data: EntryData) => {
+  const file = data.voiceNote ? data.files?.[0] : undefined
+  return file && showsAsAudio(file) ? file : undefined
+}
+
 export interface ConnectionRequest {
   [key: string]: unknown
 }
@@ -372,6 +378,8 @@ export interface EntryData {
   botReactions?: BotReaction[]
   attachments?: Attachment[]
   files?: SharedFile[]
+  /** agent: `files` holds the voice note of this message, which plays at the top of its bubble. */
+  voiceNote?: boolean
   /** agent: an artifact the bot published (or updated) in this turn. */
   artifact?: ArtifactCard
   callSeconds?: number

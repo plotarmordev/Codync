@@ -31,7 +31,7 @@ private func silentWAV() -> Data {
     return wav + Data("data".utf8) + le(UInt32(samples.count)) + samples
 }
 
-/// A voice note's player whose fetch `load` holds, on a store to report errors to.
+/// A voice note's player whose fetch `load` holds, on a store.
 @MainActor private func playing(_ body: (SharedAudio, HeldLoad, BotStore, SharedFile) async -> Void) async {
     let suite = "SharedAudioTests.\(UUID().uuidString)"
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
@@ -47,14 +47,35 @@ private func silentWAV() -> Data {
     await playing { audio, load, store, note in
         let first = Task { await audio.toggle(note, entryId: "entry", model: store) }
         #expect(await load.asked())
+        #expect(audio.state == .loading)
         await audio.toggle(note, entryId: "entry", model: store)
         load.answer(silentWAV())
         await first.value
 
         #expect(load.calls == 1)
-        #expect(audio.playing)
+        #expect(audio.state == .playing)
         await audio.toggle(note, entryId: "entry", model: store)
-        #expect(!audio.playing)
+        #expect(audio.state == .paused)
+    }
+}
+
+@MainActor @Test func aVoiceNoteThatFailsToPlayShowsItsFailureAndTheNextTapLoadsAgain() async {
+    await playing { audio, load, store, note in
+        let first = Task { await audio.toggle(note, entryId: "entry", model: store) }
+        #expect(await load.asked())
+        load.answer(nil)
+        await first.value
+
+        #expect(audio.state == .failed)
+        #expect(store.lastError == nil)
+
+        let second = Task { await audio.toggle(note, entryId: "entry", model: store) }
+        #expect(await load.asked())
+        load.answer(silentWAV())
+        await second.value
+        #expect(load.calls == 2)
+        #expect(audio.state == .playing)
+        #expect(audio.duration == 1)
     }
 }
 
@@ -66,7 +87,20 @@ private func silentWAV() -> Data {
         load.answer(silentWAV())
         await tap.value
 
-        #expect(!audio.playing)
+        #expect(audio.state == .idle)
         #expect(store.lastError == nil)
     }
+}
+
+@MainActor @Test func aVoiceNoteCardCaptionPutsItsFailureOverTheDownloadThePositionAndTheSize() {
+    let size: Int64 = 1_250_000
+    #expect(FileDownloadCard.detail(.failed("Couldn't download."), play: .failed, duration: 12, size: size)
+        == "Couldn't play. Tap to retry.")
+    #expect(FileDownloadCard.detail(.downloading(500_000), play: .failed, size: size) == "Couldn't play. Tap to retry.")
+    #expect(FileDownloadCard.detail(.downloading(500_000), play: .playing, duration: 12, size: size) == "500 KB of 1.3 MB")
+    #expect(FileDownloadCard.detail(.saved, size: size) == "1.3 MB · Downloaded")
+    #expect(FileDownloadCard.detail(.saved, play: .paused, elapsed: 7, duration: 48, size: size) == "0:07 / 0:48")
+    #expect(FileDownloadCard.detail(nil, play: .playing, duration: 12, size: size) == "0:00 / 0:12")
+    #expect(FileDownloadCard.detail(nil, play: .paused, elapsed: 7, duration: 48, size: size) == "0:07 / 0:48")
+    #expect(FileDownloadCard.detail(nil, size: size) == "1.3 MB")
 }

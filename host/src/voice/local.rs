@@ -13,13 +13,19 @@ use url::Url;
 
 const SERVER_KEY: &str = "speech-server";
 const TIMEOUT: Duration = Duration::from_mins(2);
-const NOT_LINKED: &str =
-    "No speech model is linked. Link a speech server you run in Codync on this computer: Voice chat, This computer.";
 /// Whisper writes "Thank you." or "you" for silence or faint room noise; a recording whose loudest
 /// 100 ms stays under this RMS (-45 dBFS; room noise is about -60, speech -30 to -10) has no speech.
 const SPEECH_RMS: f32 = 0.0056;
 /// 100 ms at 16 kHz.
 const WINDOW: u16 = 1_600;
+
+/// Read on phones as well as on the computer, so it names the computer rather than "this computer".
+fn not_linked() -> String {
+    let computer = crate::service::host_name();
+    format!(
+        "No speech model is linked on {computer}. Link a speech server you run in Codync on {computer}: Settings, Voice chat."
+    )
+}
 
 fn server(store: &Store) -> Option<String> {
     store.kv_get(SERVER_KEY).filter(|s| !s.is_empty())
@@ -28,7 +34,7 @@ fn server(store: &Store) -> Option<String> {
 /// `{ready, message, server}` for `localDictation`: the linked server, or what to do without one.
 pub fn status(store: &Store) -> Value {
     let server = server(store);
-    json!({"ready": server.is_some(), "message": server.is_none().then_some(NOT_LINKED), "server": server})
+    json!({"ready": server.is_some(), "message": server.is_none().then(not_linked), "server": server})
 }
 
 /// `setSpeechServer`: links the server at `url` once it transcribes a short silence, or unlinks it
@@ -46,7 +52,7 @@ pub async fn link(store: &Store, url: &str) -> Result<Value> {
 
 /// Speech to text for one utterance (a 16 kHz mono 16-bit WAV) on the linked server.
 pub async fn transcribe(store: &Store, wav: &[u8]) -> Result<Value> {
-    let url = server(store).ok_or_else(|| anyhow!(NOT_LINKED))?;
+    let url = server(store).ok_or_else(|| anyhow!(not_linked()))?;
     if !voiced(wav) {
         return Ok(json!({"text": ""}));
     }
@@ -213,7 +219,7 @@ mod tests {
             }
         });
         let store = memory_store();
-        assert_eq!(status(&store)["message"], NOT_LINKED);
+        assert_eq!(status(&store)["message"], not_linked());
         assert!(transcribe(&store, &recording(&[0; 160])).await.is_err());
 
         let linked = link(&store, &url).await.unwrap();
@@ -223,7 +229,10 @@ mod tests {
         assert_eq!(transcribe(&store, &recording(&[0; 8_000])).await.unwrap()["text"], "");
 
         let unlinked = link(&store, "").await.unwrap();
-        assert_eq!((unlinked["ready"].as_bool(), unlinked["message"].as_str()), (Some(false), Some(NOT_LINKED)));
+        assert_eq!(
+            (unlinked["ready"].as_bool(), unlinked["message"].as_str()),
+            (Some(false), Some(not_linked().as_str()))
+        );
     }
 
     #[test]

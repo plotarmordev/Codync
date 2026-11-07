@@ -101,15 +101,19 @@ voice note sent without `text` keeps its own card. Older clients show the card a
 
 Markdown (`md`, `markdown`), plain text and code (`txt`, `log`, `csv`, `tsv`, `json`,
 `jsonl`, `xml`, `yaml`, `yml`, `toml`, `ini`, `html`, `css`, `sql`, `sh` and common source
-extensions) and PDF files open in a viewer sheet on iPhone, Android and desktop: tap the
+extensions), PDF and video (`mp4`, `mov`, `m4v`, `webm`) files open in a viewer sheet on iPhone, Android and desktop: tap the
 card's icon or name, click the card, or tap the Library row; screen readers get it as the card's
 View action. Markdown renders with the chat's Markdown renderer,
 text shows monospaced and selectable, PDF uses the platform's PDF view (PDFKit, Android
-`PdfRenderer`, desktop: see `FileViewer.tsx`). The viewer header keeps Download. It reads the
-file through the same verified, cached path as images, up to 512 KB for Markdown and text
-and 20 MB for PDF; a bigger file, text that isn't UTF-8, or a failed read shows a message
+`PdfRenderer`, desktop: see `FileViewer.tsx`), and video plays in the platform's player (AVKit,
+Android `VideoView`, desktop `<video>`) once its first bytes prove it's a video container
+(`isVideo`/`isVideoData`: an ISO media `ftyp`/QuickTime atom or WebM's EBML header), whatever its name.
+Long text and Markdown lay out lazily on the phones. The viewer header keeps Download. It reads the
+file through the same verified, cached path as images, up to 10 MB for Markdown and text
+and 25 MB for PDF and video; a bigger file, text that isn't UTF-8, a video that isn't one or
+can't play, or a failed read shows a message
 instead, and Download still works. The type choice and limits live in the model
-(`SharedFile.preview`, `filePreview` on desktop) and are tested on each client. The
+(`SharedFile.preview`, `filePreview` in desktop's `file-preview.ts`) and are tested on each client. The
 terminal UI saves files to Downloads and opens none.
 
 This feature adds no previews of other file types, folder packaging, background

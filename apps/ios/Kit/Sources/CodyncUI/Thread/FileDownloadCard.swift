@@ -14,7 +14,7 @@ struct FileDownloadCard: View {
         let caption = Self.detail(download, play: audio.state, elapsed: audio.elapsed, duration: audio.duration, size: file.size)
         VStack(alignment: .leading, spacing: 12) {
             if file.showsAsImage { preview }
-            row(download, caption: caption)
+            row(caption: caption)
         }
         .padding(14)
         .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 16))
@@ -30,7 +30,7 @@ struct FileDownloadCard: View {
             if file.showsAsImage {
                 Button(L10n.tr("View")) { viewing = true }
             }
-            Button(busy(download) ? L10n.tr("Cancel download") : L10n.tr("Download")) { self.download(download) }
+            Button(busy ? L10n.tr("Cancel download") : L10n.tr("Download"), action: self.download)
         }
     }
 
@@ -43,7 +43,7 @@ struct FileDownloadCard: View {
             .frame(maxWidth: .infinity, maxHeight: 280, alignment: .leading)
     }
 
-    private func row(_ download: FileDownloads.State?, caption: String) -> some View {
+    private func row(caption: String) -> some View {
         HStack(spacing: 12) {
             if file.showsAsAudio { playButton } else {
                 Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
@@ -55,63 +55,34 @@ struct FileDownloadCard: View {
                 if audio.duration != nil { progress }
             }
             Spacer(minLength: 0)
-            Button { self.download(download) } label: {
-                Image(systemName: busy(download) ? "xmark" : "arrow.down.to.line")
+            Button(action: download) {
+                Image(systemName: busy ? "xmark" : "arrow.down.to.line")
                     .font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
     }
 
-    /// A voice note's play/pause (a spinner while it loads), in place of its file icon. The 44 pt hit area overflows
-    /// the 24 pt glyph's slot, so the name lines up with the other file cards.
+    /// A voice note's play/pause, in place of its file icon. The shared button's 44 pt hit area overflows the
+    /// 24 pt glyph's slot, so the name lines up with the other file cards.
     private var playButton: some View {
-        Button(action: play) {
-            Group {
-                if audio.state == .loading {
-                    Spinner(size: 24)
-                } else {
-                    Image(systemName: audio.state == .playing ? "pause.circle" : "play.circle")
-                        .font(.system(size: 24)).foregroundStyle(Palette.text)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-            }
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-            .padding(-10)
-        }
-        .buttonStyle(.plain)
+        AudioPlayButton(state: audio.state, action: play).padding(-10)
     }
 
     /// The position in the sound, once its length is known.
     private var progress: some View {
-        Capsule()
-            .fill(Palette.tertiary)
-            .frame(height: 2.5)
-            .overlay(alignment: .leading) {
-                GeometryReader { proxy in
-                    Capsule().fill(Palette.text)
-                        .frame(width: proxy.size.width * min(1, audio.elapsed / max(1, audio.duration ?? 1)))
-                }
-            }
-            .padding(.top, 3)
+        AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 1).padding(.top, 3)
     }
 
     private func play() {
         Task { await audio.toggle(file, entryId: entry.id, model: model) }
     }
 
-    private func download(_ state: FileDownloads.State?) {
-        Motion.animate {
-            if case .downloading = state { model.fileDownloads.cancel(file.id) }
-            else { model.fileDownloads.save(client: model.client, entry: entry, file: file) }
-        }
+    private func download() {
+        model.fileDownloads.toggle(client: model.client, entry: entry, file: file)
     }
 
-    private func busy(_ state: FileDownloads.State?) -> Bool {
-        if case .downloading = state { return true }
-        return false
-    }
+    private var busy: Bool { model.fileDownloads.isDownloading(file.id) }
 
     /// What the card says under the name: a failed play, then the download, then the sound's position, then its size.
     static func detail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,
@@ -130,6 +101,48 @@ struct FileDownloadCard: View {
         if let duration { return "\(SharedAudio.timeText(elapsed)) / \(SharedAudio.timeText(duration))" }
         if case .saved = download { return "\(size) · \(L10n.tr("Downloaded"))" }
         return size
+    }
+}
+
+/// A shared sound's play/pause: a spinner while it loads, and the 44 pt tap target of every card-sized control.
+/// Both a file card and a bubble's voice note show it.
+struct AudioPlayButton: View {
+    let state: SharedAudio.State
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if state == .loading {
+                    Spinner(size: 24)
+                } else {
+                    Image(systemName: state == .playing ? "pause.circle" : "play.circle")
+                        .font(.system(size: 24)).foregroundStyle(Palette.text)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// How far a shared sound has played: a thin bar filling left to right.
+struct AudioProgress: View {
+    let elapsed: TimeInterval
+    let duration: TimeInterval
+
+    var body: some View {
+        Capsule()
+            .fill(Palette.tertiary)
+            .frame(height: 2.5)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Capsule().fill(Palette.text)
+                        .frame(width: proxy.size.width * min(1, elapsed / max(1, duration)))
+                }
+            }
     }
 }
 

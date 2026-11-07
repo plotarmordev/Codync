@@ -20,19 +20,18 @@ struct VoiceNoteBubble: View {
         .onDisappear { audio.stop() }
     }
 
-    /// The play/pause button with the progress bar and its caption.
+    /// The play/pause button, the progress bar and its clock on one row.
     private var player: some View {
         let download = model.fileDownloads.states[file.id]
         let caption = FileDownloadCard.detail(download, play: audio.state, elapsed: audio.elapsed, duration: audio.duration, size: file.size)
         // The 44 pt hit area overflows the 24 pt glyph, so the glyph lines up with the text under it, as on a card.
         return HStack(spacing: 12) {
             AudioPlayButton(state: audio.state, action: play).padding(-10)
-            VStack(alignment: .leading, spacing: 4) {
-                if let duration = audio.duration { AudioProgress(elapsed: audio.elapsed, duration: duration) }
-                Text(caption).font(.caption2).foregroundStyle(audio.state == .failed ? Palette.danger : Palette.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if let duration = audio.duration { AudioProgress(elapsed: audio.elapsed, duration: duration) }
+            // Steady digits, so the bar's end doesn't move as the clock runs.
+            Text(caption).font(.caption2.monospacedDigit()).foregroundStyle(audio.state == .failed ? Palette.danger : Palette.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         // One element reads the whole player; its buttons become named actions.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(L10n.tr("Voice note")), \(caption)")

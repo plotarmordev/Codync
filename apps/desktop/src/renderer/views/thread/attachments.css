@@ -62,7 +62,8 @@
   outline: 2px solid var(--secondary);
   outline-offset: 2px;
 }
-/* A message's voice note, at the top of its bubble: no card of its own, the text follows under it. */
+/* A message's voice note, at the top of its bubble: no card of its own, the text follows under it. The row keeps the
+   text bubble's padding: the play glyph sits on the text's edge, its button's hover chip inside the bubble. */
 .voice-note {
   min-width: 220px;
   margin-bottom: 8px;
@@ -72,8 +73,20 @@
   outline: 2px solid var(--secondary);
   outline-offset: 2px;
 }
+.voice-note .file-card-play {
+  width: 21px;
+  height: 24px;
+}
+.voice-note .file-card-play > button {
+  margin: -6px -7.5px;
+}
 .voice-note .file-card-progress {
-  margin: 0 0 6px;
+  flex: 1;
+  margin: 0;
+}
+/* Steady digits, so the bar's end doesn't move as the clock runs. */
+.voice-note .file-card-detail {
+  font-variant-numeric: tabular-nums;
 }
 .file-card-image {
   display: flex;
@@ -85,17 +98,17 @@
   overflow-wrap: anywhere;
 }
 
-/* The sound's clock made visible: a thin bar that fills left to right. */
+/* The sound's clock made visible: a bar that fills left to right. */
 .file-card-progress {
-  height: 3px;
+  height: 4px;
   margin-top: 6px;
-  border-radius: 1.5px;
+  border-radius: 2px;
   background: color-mix(in srgb, var(--tertiary) 30%, transparent);
   overflow: hidden;
 }
 .file-card-progress > div {
   height: 100%;
-  border-radius: 1.5px;
+  border-radius: 2px;
   background: var(--text);
   transition: width 0.2s linear;
 }

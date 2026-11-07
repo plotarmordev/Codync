@@ -22,7 +22,7 @@ function AudioFileCard({ entry, file }: { entry: Entry; file: SharedFile }) {
   return <FileCard entry={entry} file={file} audio={snapshot} toggle={toggle} icon={<AudioIcon snapshot={snapshot} toggle={toggle} />} />
 }
 
-/** A message's voice note, at the top of its bubble: the play button, the progress bar and the clock, as on a card. */
+/** A message's voice note, at the top of its bubble: the play button, the progress bar and the clock on one row. */
 export function VoiceNotePlayer({ entry, file }: { entry: Entry; file: SharedFile }) {
   const { snapshot, toggle } = useSharedAudio(file, entry.id)
   const stop = useFileStop(entry, file, snapshot, toggle)
@@ -30,10 +30,8 @@ export function VoiceNotePlayer({ entry, file }: { entry: Entry; file: SharedFil
     <div className="voice-note" {...stop.props} aria-label={`Voice note, ${stop.detail}`}>
       <HStack gap={10} aria-hidden>
         <AudioIcon snapshot={snapshot} toggle={toggle} />
-        <VStack grow>
-          <AudioProgress snapshot={snapshot} />
-          <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail">{stop.detail}</Text>
-        </VStack>
+        <AudioProgress snapshot={snapshot} />
+        <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail">{stop.detail}</Text>
       </HStack>
     </div>
     {stop.overlays}
@@ -121,7 +119,7 @@ function AudioIcon({ snapshot, toggle }: { snapshot: AudioSnapshot; toggle: () =
   </div>
 }
 
-/** The thin bar under or over the caption: how much of a loaded voice note has played. */
+/** The bar beside or under the caption: how much of a loaded voice note has played. */
 function AudioProgress({ snapshot }: { snapshot: AudioSnapshot }) {
   if (snapshot.duration <= 0) return null
   return <div className="file-card-progress"><div style={{ width: `${(snapshot.elapsed / snapshot.duration) * 100}%` }} /></div>

@@ -128,7 +128,7 @@ struct AudioPlayButton: View {
     }
 }
 
-/// How far a shared sound has played: a thin bar filling left to right.
+/// How far a shared sound has played: a bar filling left to right.
 struct AudioProgress: View {
     let elapsed: TimeInterval
     let duration: TimeInterval
@@ -136,7 +136,7 @@ struct AudioProgress: View {
     var body: some View {
         Capsule()
             .fill(Palette.tertiary)
-            .frame(height: 2.5)
+            .frame(height: 4)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
                     Capsule().fill(Palette.text)

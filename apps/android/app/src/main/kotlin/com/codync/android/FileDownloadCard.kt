@@ -86,9 +86,9 @@ import kotlinx.coroutines.launch
     }
 }
 
-/** The thin progress bar of a playing voice note, filled left to right, read again about four times a second while
- *  it plays. */
-@Composable internal fun AudioProgress(audio: SharedAudio) {
+/** The progress bar of a playing voice note, filled left to right, read again about four times a second while it
+ *  plays; as wide as [modifier] lets it, the whole row by default. */
+@Composable internal fun AudioProgress(audio: SharedAudio, modifier: Modifier = Modifier.fillMaxWidth()) {
     LaunchedEffect(audio, audio.phase) {
         audio.syncElapsed()
         while (audio.phase == AudioPhase.Playing) {
@@ -96,8 +96,8 @@ import kotlinx.coroutines.launch
             audio.syncElapsed()
         }
     }
-    Box(Modifier.fillMaxWidth().height(3.dp).clip(Capsule()).background(Palette.tertiary)) {
-        Box(Modifier.fillMaxWidth((audio.elapsed / audio.duration).toFloat().coerceIn(0f, 1f)).height(3.dp).clip(Capsule()).background(Palette.text))
+    Box(modifier.height(4.dp).clip(Capsule()).background(Palette.tertiary)) {
+        Box(Modifier.fillMaxWidth((audio.elapsed / audio.duration).toFloat().coerceIn(0f, 1f)).height(4.dp).clip(Capsule()).background(Palette.text))
     }
 }
 

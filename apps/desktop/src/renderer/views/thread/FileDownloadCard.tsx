@@ -31,7 +31,7 @@ export function VoiceNotePlayer({ entry, file }: { entry: Entry; file: SharedFil
       <HStack gap={10} aria-hidden>
         <AudioIcon snapshot={snapshot} toggle={toggle} />
         <VStack grow>
-          <div className="file-card-progress"><div style={{ width: `${snapshot.duration > 0 ? (snapshot.elapsed / snapshot.duration) * 100 : 0}%` }} /></div>
+          <AudioProgress snapshot={snapshot} />
           <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail">{stop.detail}</Text>
         </VStack>
       </HStack>
@@ -58,7 +58,7 @@ function FileCard({ entry, file, audio, toggle, icon }: { entry: Entry; file: Sh
           <VStack grow>
             <Text as="div" size="subheadline" weight="semibold" truncate title={file.name}>{file.name}</Text>
             <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail">{stop.detail}</Text>
-            {audio && audio.duration > 0 ? <div className="file-card-progress"><div style={{ width: `${(audio.elapsed / audio.duration) * 100}%` }} /></div> : null}
+            {audio ? <AudioProgress snapshot={audio} /> : null}
           </VStack>
           <IconButtonBase title={downloadAction(stop.state)} icon={stop.busy ? 'xmark' : 'arrow.down.to.line'} size={36} tabIndex={-1} onClick={stop.download} />
         </HStack>
@@ -119,4 +119,10 @@ function AudioIcon({ snapshot, toggle }: { snapshot: AudioSnapshot; toggle: () =
       ? <Spinner size={18} />
       : <IconButtonBase title={snapshot.phase === 'playing' ? 'Pause' : 'Play'} icon={snapshot.phase === 'playing' ? 'pause.circle' : 'play.circle'} size={36} tabIndex={-1} onClick={toggle} />}
   </div>
+}
+
+/** The thin bar under or over the caption: how much of a loaded voice note has played. */
+function AudioProgress({ snapshot }: { snapshot: AudioSnapshot }) {
+  if (snapshot.duration <= 0) return null
+  return <div className="file-card-progress"><div style={{ width: `${(snapshot.elapsed / snapshot.duration) * 100}%` }} /></div>
 }

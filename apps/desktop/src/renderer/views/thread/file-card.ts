@@ -36,6 +36,11 @@ export function downloadAction(state: DownloadState | undefined) {
   return state?.kind === 'downloading' ? 'Cancel download' : state?.kind === 'failed' ? 'Retry download' : state?.kind === 'saved' ? 'Save again' : 'Download'
 }
 
+/** The download's menu item, titled for what it does now. */
+export function downloadItem(state: DownloadState | undefined, download: () => void): MenuItem {
+  return { title: downloadAction(state), icon: state?.kind === 'downloading' ? 'xmark' : 'arrow.down.to.line', action: download }
+}
+
 /** A card's actions, the first one what a click or Enter does: a voice note's play or pause, a picture's view, then the download's. */
 export function cardActions({ state, audio, toggle, view, download }: {
   state: DownloadState | undefined
@@ -48,7 +53,7 @@ export function cardActions({ state, audio, toggle, view, download }: {
   return [
     ...(toggle ? [{ title: playing ? 'Pause' : 'Play', icon: playing ? 'pause.circle' : 'play.circle', action: toggle }] : []),
     ...(view ? [{ title: 'View', icon: 'eye', action: view }] : []),
-    { title: downloadAction(state), icon: state?.kind === 'downloading' ? 'xmark' : 'arrow.down.to.line', action: download },
+    downloadItem(state, download),
   ]
 }
 

@@ -77,7 +77,7 @@ function useFileStop(entry: Entry, file: SharedFile, audio?: AudioSnapshot, togg
   const menu = useContextMenu()
   const image: ImageSource = { file, entryId: entry.id }
   const view = () => setViewing(true)
-  const download = () => busy ? store.fileDownloads.cancel(file.id) : void store.fileDownloads.save(store.client, entry.id, file)
+  const download = () => store.fileDownloads.toggle(store.client, entry.id, file)
   const actions = () => cardActions({ state, audio, toggle, view: showsAsImage(file) ? view : undefined, download })
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return

@@ -15,6 +15,7 @@ import { useStore as useLiveStore, useStoreRef as useStore } from '../../store/c
 import { QUICK_REACTIONS, type BotStore } from '../../store/bot-store'
 import { AttachmentList } from './Attachments'
 import { relativeTime } from './chat-items'
+import { downloadItem } from './file-card'
 import { MarkdownText } from './Markdown'
 import { PermissionCard } from './PermissionCard'
 import { ConnectionRequestCard } from '../marketplace/ConnectionRequestCard'
@@ -187,7 +188,7 @@ export function AgentBubble({ entry, openTrace, reply, openArtifact }: { entry: 
           items={() => [
             { title: 'Copy', icon: 'square.on.square', action: copy },
             ...(reply ? [{ title: 'Reply', icon: 'arrowshape.turn.up.left', action: reply }] : []),
-            ...(voiceNote ? [{ title: 'Download', icon: 'arrow.down.to.line', action: () => void store.fileDownloads.save(store.client, entry.id, voiceNote) }] : []),
+            ...(voiceNote ? [downloadItem(store.fileDownloads.states.get(voiceNote.id), () => store.fileDownloads.toggle(store.client, entry.id, voiceNote))] : []),
             { title: 'Show what it did', icon: 'list.bullet', action: openTrace },
           ]}
         >

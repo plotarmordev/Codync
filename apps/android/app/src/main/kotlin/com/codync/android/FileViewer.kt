@@ -121,11 +121,19 @@ private sealed interface Opened {
 /** The file `source` read for its viewer, or why it can't be. */
 private fun open(preview: FilePreview, source: File, openPdf: (File) -> PdfDocument): Opened = when (preview) {
     FilePreview.Pdf -> Opened.Pdf(openPdf(source))
-    FilePreview.Video -> if (isVideoData(source.inputStream().use { it.readNBytes(8) })) Opened.Video(source) else Opened.Message(NOT_VIDEO)
+    FilePreview.Video -> if (isVideoData(head(source))) Opened.Video(source) else Opened.Message(NOT_VIDEO)
     FilePreview.Markdown, FilePreview.Text -> when (val text = utf8(source.readBytes())) {
         null -> Opened.Message("This file isn't UTF-8 text. Download it to open it in another app.")
         else -> if (preview == FilePreview.Markdown) Opened.Markdown(MarkdownBlocks.parse(text)) else Opened.Text(text.lines())
     }
+}
+
+/** The first bytes of `file`, enough to tell a video container (`readNBytes` needs API 33). */
+private fun head(file: File): ByteArray = file.inputStream().use { input ->
+    val bytes = ByteArray(8)
+    var read = 0
+    while (read < bytes.size) read += input.read(bytes, read, bytes.size - read).takeIf { it >= 0 } ?: break
+    bytes.copyOf(read)
 }
 
 /** Android's video view with its play/pause and seek bar, playing `file` as soon as it's ready; `failed` when it can't. */

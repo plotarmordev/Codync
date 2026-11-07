@@ -258,17 +258,21 @@ export interface FilePreview {
 /** Text files fetch up to 512 KB; PDFs share the images' inline limit. */
 const TEXT_BYTES = 512 * 1024
 
-const FILE_PREVIEWS: Record<string, FilePreview> = {}
+const FILE_PREVIEWS = new Map<string, FilePreview>()
 for (const [kind, exts] of [
   ['markdown', ['md', 'markdown']],
   ['text', ['txt', 'log', 'csv', 'tsv', 'json', 'jsonl', 'xml', 'yaml', 'yml', 'toml', 'ini', 'swift', 'kt', 'kts', 'java', 'js', 'jsx', 'ts', 'tsx', 'py', 'rb', 'go', 'rs', 'c', 'h', 'cpp', 'hpp', 'cs', 'sh', 'sql', 'html', 'css']],
   ['pdf', ['pdf']],
 ] as [FilePreview['kind'], string[]][]) {
-  for (const ext of exts) FILE_PREVIEWS[ext] = { kind, maxBytes: kind === 'pdf' ? INLINE_BYTES : TEXT_BYTES }
+  for (const ext of exts) FILE_PREVIEWS.set(ext, { kind, maxBytes: kind === 'pdf' ? INLINE_BYTES : TEXT_BYTES })
 }
 
-/** A shared Markdown, text or PDF file the viewer can show, whatever its size (too big opens a note instead). */
-export const filePreview = (file: SharedFile): FilePreview | null => FILE_PREVIEWS[file.name.split('.').pop()?.toLowerCase() ?? ''] ?? null
+/** A shared Markdown, text or PDF file the viewer can show, whatever its size (too big opens a note instead). A name
+ * without a dot has no extension, as on the phones. */
+export const filePreview = (file: SharedFile): FilePreview | null => {
+  const dot = file.name.lastIndexOf('.')
+  return dot < 0 ? null : FILE_PREVIEWS.get(file.name.slice(dot + 1).toLowerCase()) ?? null
+}
 
 /** A shared file small enough to open inside the app. */
 export const opensInline = (file: SharedFile) => {

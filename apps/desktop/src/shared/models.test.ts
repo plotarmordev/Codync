@@ -76,8 +76,9 @@ test('a shared Markdown, text or PDF file names its preview kind and byte limit'
 
 test('the preview kind ignores the extension\'s case and misses other files', () => {
   assert.equal(filePreview(shared('NOTES.MD'))?.kind, 'markdown')
-  assert.equal(filePreview(shared('Shot.PNG'))?.kind, undefined)
-  assert.equal(filePreview(shared('memo')), null)
+  for (const name of ['Shot.PNG', 'memo', 'md', 'report.constructor', 'x.__proto__', 'a.toString']) {
+    assert.equal(filePreview(shared(name)), null, name)
+  }
 })
 
 test('a file at its limit opens inside the app; one byte over does not', () => {

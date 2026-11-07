@@ -210,7 +210,7 @@ private extension Dictation {
 /// dictation failure — not the missing-key settings prompt — and never opens the microphone.
 @MainActor @Test func localDictationWithoutTheModelSaysWhy() async {
     let mic = Mic()
-    let message = "No speech model is linked on Mac. Link a speech server you run in Codync on Mac: Settings, Voice chat."
+    let message = "No speech model is linked on Mac. Link one in Codync on that computer: Settings, Voice chat."
     await dictating(picked: .local, check: { .blocked(message) }, mic: mic) { dictation, store in
         await dictation.start(after: "", model: store) { _ in }
         #expect(dictation.failure == message)

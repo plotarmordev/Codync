@@ -22,9 +22,7 @@ const WINDOW: u16 = 1_600;
 /// Read on phones as well as on the computer, so it names the computer rather than "this computer".
 fn not_linked() -> String {
     let computer = crate::service::host_name();
-    format!(
-        "No speech model is linked on {computer}. Link a speech server you run in Codync on {computer}: Settings, Voice chat."
-    )
+    format!("No speech model is linked on {computer}. Link one in Codync on that computer: Settings, Voice chat.")
 }
 
 fn server(store: &Store) -> Option<String> {

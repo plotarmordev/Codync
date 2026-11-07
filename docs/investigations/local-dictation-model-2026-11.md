@@ -1,6 +1,6 @@
 # Local dictation: which model and runtime (November 2026)
 
-The **This computer** dictation engine transcribes on the computer running the host. This is how its model and runtime were chosen.
+The **This computer** dictation engine transcribes on the user's own computers, never a provider's. This is how its model and runtime were chosen, and why the user now links a speech server of their own.
 
 ## Setup
 
@@ -76,4 +76,14 @@ Both miss "TestFlight" ("test flight"); Bark also writes "pr" and "iphone" in lo
 
 ## Choice: English only, on Bark 3.0
 
-Dictation on this computer became English only: Underdog Bark 3.0 (the CC BY 4.0 Q8_0 GGUF) on transcribe.cpp, linked into the host and run in the host's process on Metal. No server, port, Python or package to install; the user downloads the model file. On English speech it matches the host's Whisper on short dictation and is twice as fast, but on the long code-heavy clip it makes more errors than Whisper with an English prompt (12.9% against 7.1%), can't take the names hint, and writes no capitals or punctuation. Only Macs build it in (the host's Linux builds are musl, with no C++ toolchain for ggml), so other hosts answer that dictation on this computer needs a Mac.
+Dictation on this computer became English only: Underdog Bark 3.0 (the CC BY 4.0 Q8_0 GGUF) on transcribe.cpp, linked into the host and run in the host's process on Metal. No server, port, Python or package to install; the user downloads the model file. On English speech it matches the host's Whisper on short dictation and is twice as fast, but on the long code-heavy clip it makes more errors than Whisper with an English prompt (12.9% against 7.1%), can't take the names hint, and writes no capitals or punctuation. Only Macs build it in (the host's Linux builds are musl, with no C++ toolchain for ggml), so other hosts answer that dictation on this computer needs a Mac. A linked speech server replaced it ([below](#choice-a-speech-server-the-user-links)).
+
+## Choice: a speech server the user links
+
+Building one model into the host left every choice above to Codync: the language (Bark is English only), the licence (Conway's later revisions are non-commercial), a 740 MB download, and Macs only. Every runtime measured here except transcribe.cpp already serves OpenAI's `POST /v1/audio/transcriptions` (whisper.cpp's `whisper-server --inference-path /v1/audio/transcriptions`; Speaches and other faster-whisper and MLX servers by default), so the host now sends dictation to a server the user runs and links in Voice chat settings, and the user picks the model: Whisper for Chinese, Bark or Parakeet for English, a GPU computer on the same network for a laptop host.
+
+- What leaves the host: each 20 s piece as one multipart request with the transcription hint, the names hint, `temperature=0` and `response_format=json`, nothing else; the host reads `text` back. No model name is sent (whisper-server serves one model and ignores it).
+- Audio never leaves the user's computers: the host resolves the server's name at each request and goes on only when every address is loopback, private (RFC 1918, IPv6 unique local), link-local or Tailscale's 100.64.0.0/10, then connects only to those addresses, without a proxy and without following redirects, so neither a DNS change nor a redirect can send the audio out.
+- Linking sends one second of silence first, so a wrong address or a server that isn't running is refused with the reason before anything is saved. Only the computer itself can link or unlink (like provider keys); phones show the linked address or how to link one.
+- The loudness check stays: Whisper writes "Thank you." or "you" for silence; a recording whose loudest 100 ms stays under -45 dBFS never reaches the server, and whisper.cpp's markers (`[BLANK_AUDIO]`, `(music)`) come back as no text.
+- Measured through the host's `voiceTranscribe` with Whisper large-v3-turbo on `whisper-server` (Metal) on loopback: a 4 s English sentence came back word for word in 0.16 s.

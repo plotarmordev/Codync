@@ -75,19 +75,23 @@ starting a call or switching chats drops a dictation still recording or transcri
 recording's length counts toward the provider's minutes this month.
 
 **This computer** records the same way, and `voiceTranscribe` with `provider: "local"` has the host
-transcribe on its own model (`host/src/voice/local.rs`): [Underdog Bark 3.0](https://huggingface.co/ConwayResearch/Underdog-Bark-3.0)
-by Conway Research (CC BY 4.0, English only), as the Q8_0 GGUF at
-`<data dir>/speech/underdog-bark-3.0-Q8_0.gguf`, run in the host's own process by
-[transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) on Metal. It loads on first use and
-stays loaded. It takes no prompt; a recording that never gets louder than -45 dBFS is answered with no text
-without reaching the model, which would write "Yeah." for it. Macs only: building the host on a Mac
-needs `cmake` (transcribe.cpp compiles its ggml runtime). Other hosts answer that dictation on this
-computer needs a Mac. No key, no minutes, no network call out, and it never waits on the keyring.
-`localDictation` → `{ready, message}` says whether it can run (hosts before
-it answer "unknown method", and the apps say to update Codync on the computer); before recording, the mic
-checks it and, if not ready, shows `message` (where to download the model) as the dictation's failure. It's a dictation engine only,
-never a call engine. Why this model and runtime:
-[local dictation model](../investigations/local-dictation-model-2026-11.md).
+send each piece to a speech server the user runs and links (`host/src/voice/local.rs`): any server
+answering OpenAI's `POST /v1/audio/transcriptions` (whisper.cpp's `whisper-server --inference-path
+/v1/audio/transcriptions`, Speaches, …), on the computer or another of the user's computers on the
+same network, with whatever model the user picked. The host resolves the server's name at each
+request and sends audio only when every address is loopback, private, link-local or Tailscale's
+100.64.0.0/10, then connects only to those addresses with no proxy and no redirects, so audio never
+leaves the user's computers. A recording that never gets louder than -45 dBFS is answered with no
+text without reaching the server (Whisper writes "Thank you." for silence), and whisper.cpp's
+`[BLANK_AUDIO]`-style markers come back as no text. No key, no minutes, and it never waits on the
+keyring. `setSpeechServer {url}` → `{ready, message, server}` links the server once it transcribes a
+second of silence (the error says why not) or, with an empty `url`, unlinks it; only the computer
+itself may call it, so the desktop app's **This computer** card in Voice chat settings has the
+address field and the phones show the linked address or how to link one. `localDictation` →
+`{ready, message, server}` says whether one is linked (hosts before it answer "unknown method", and
+the apps say to update Codync on the computer); before recording, the mic checks it and, if not
+ready, shows `message` as the dictation's failure. It's a dictation engine only, never a call
+engine. Why a linked server: [local dictation model](../investigations/local-dictation-model-2026-11.md).
 
 - Desktop (`views/thread/dictation.ts`, the model, tested with a stub platform; the helper,
   microphone and host wired in `dictation-platform.ts`; pieces in `dictation-pieces.ts`; menu in
@@ -246,8 +250,8 @@ shows the provider's name next to the dots whenever audio leaves the device.
   `codync.db` with the vault key from Keychain / Secret Service), so one key serves the iPhone and the
   desktop app. It reaches the host once, over the encrypted channel, and never leaves it again; it is never
   logged and never sent to the relay or our cloud.
-- Host methods (control scope): `voiceStatus` (which providers have a key), `localDictation` (whether this
-  computer's own model can transcribe; never waits on the keyring), `setVoiceKey
+- Host methods (control scope): `voiceStatus` (which providers have a key), `localDictation` (whether a
+  speech server is linked; never waits on the keyring), `setSpeechServer {url}` (loopback only), `setVoiceKey
   {provider, key}` (checked with one credential mint before it's kept; empty removes it),
   `voiceSession {provider, model, voice}` → `{credential}`, `voiceModels {provider}` → `{models,
   transcribe, speech}`, `voiceTranscribe {provider, model, audio}` (base64 16 kHz WAV) → `{text}`,

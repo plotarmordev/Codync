@@ -23,6 +23,7 @@ class SharedAudioTest {
             return startable
         }
         override fun pause() { log += "pause"; playing = false }
+        override fun seek(seconds: Double) { log += "seek $seconds"; position = seconds }
         override fun release() { log += "release"; playing = false }
     }
 
@@ -113,5 +114,27 @@ class SharedAudioTest {
         speaker.ended!!(false)
         assertEquals(AudioPhase.Paused, audio.phase)
         assertEquals(7.0, audio.elapsed, 0.0)
+    }
+
+    @Test fun `seeking holds the playhead to the sound and keeps it playing or paused`() = runBlocking {
+        audio.seek(3.0)
+        assertTrue("nothing to seek before the sound loads", speaker.log.isEmpty())
+        val tap = launch { audio.toggle() }
+        yield()
+        fetch.complete(File("note.m4a"))
+        tap.join()
+        audio.seek(20.0)
+        audio.seek(-5.0)
+        audio.seek(60.0)
+        assertEquals(listOf("seek 20.0", "seek 0.0", "seek 48.0"), speaker.log.drop(2))
+        assertEquals(AudioPhase.Playing, audio.phase)
+        assertEquals(48.0, audio.elapsed, 0.0)
+        audio.toggle()
+        audio.seek(12.0)
+        assertEquals(AudioPhase.Paused, audio.phase)
+        assertEquals(12.0, audio.elapsed, 0.0)
+        // Playing again picks up where it was moved to.
+        audio.toggle()
+        assertEquals(12.0, audio.elapsed, 0.0)
     }
 }

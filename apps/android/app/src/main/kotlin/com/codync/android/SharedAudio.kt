@@ -36,6 +36,8 @@ internal interface Sound {
     /** Whether it started (another app may hold the audio focus). */
     fun start(): Boolean
     fun pause()
+    /** Moves its playhead (seconds), playing or paused. */
+    fun seek(seconds: Double)
     fun release()
 }
 
@@ -76,10 +78,17 @@ internal class SharedAudio(
                 open(file) { ended -> if (ended) finished() else if (phase == AudioPhase.Playing) interrupted() }
                     .also { sound = it; duration = it.duration }
             }
-            elapsed = 0.0
-            if (ready.start()) phase = AudioPhase.Playing else { drop(); phase = AudioPhase.Failed }
+            if (ready.start()) { elapsed = ready.position; phase = AudioPhase.Playing } else { drop(); phase = AudioPhase.Failed }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { drop(); phase = AudioPhase.Failed }
+    }
+
+    /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */
+    fun seek(seconds: Double) {
+        val current = sound ?: return
+        if (duration <= 0.0) return
+        elapsed = seconds.coerceIn(0.0, duration)
+        current.seek(elapsed)
     }
 
     /** Played to the end: back to a replayable start, the duration kept. */
@@ -142,6 +151,8 @@ private class MediaSound(private val manager: AudioManager, file: File, private 
         if (player.isPlaying) player.pause()
         manager.abandonAudioFocusRequest(focus)
     }
+
+    override fun seek(seconds: Double) = player.seekTo((seconds * 1000).toLong(), MediaPlayer.SEEK_CLOSEST)
 
     override fun release() {
         player.release()

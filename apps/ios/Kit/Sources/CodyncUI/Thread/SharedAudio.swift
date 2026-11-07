@@ -73,6 +73,13 @@ final class SharedAudio {
         finish()
     }
 
+    /// Moves a loaded sound's playhead, held to its length; playing or paused, it stays so.
+    func seek(to seconds: TimeInterval) {
+        guard let player, let duration else { return }
+        player.currentTime = min(max(seconds, 0), duration)
+        elapsed = player.currentTime
+    }
+
     private func pause() {
         guard player != nil else { state = .idle; return }
         elapsed = player?.currentTime ?? 0

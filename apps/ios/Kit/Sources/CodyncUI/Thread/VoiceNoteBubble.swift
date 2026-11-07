@@ -27,7 +27,7 @@ struct VoiceNoteBubble: View {
         // The 44 pt hit area overflows the 24 pt glyph, so the glyph lines up with the text under it, as on a card.
         return HStack(spacing: 12) {
             AudioPlayButton(state: audio.state, action: play).padding(-10)
-            if let duration = audio.duration { AudioProgress(elapsed: audio.elapsed, duration: duration) }
+            if let duration = audio.duration { AudioProgress(elapsed: audio.elapsed, duration: duration, seek: audio.seek) }
             // Steady digits, so the bar's end doesn't move as the clock runs.
             Text(caption).font(.caption2.monospacedDigit()).foregroundStyle(audio.state == .failed ? Palette.danger : Palette.secondary)
         }
@@ -40,6 +40,7 @@ struct VoiceNoteBubble: View {
             Button(audio.state == .playing ? L10n.tr("Pause") : L10n.tr("Play"), action: play)
             Button(model.fileDownloads.isDownloading(file.id) ? L10n.tr("Cancel download") : L10n.tr("Download"), action: self.download)
         }
+        .audioSeekAdjustable(audio)
     }
 
     private func play() {

@@ -12,6 +12,8 @@ export interface AudioSnapshot {
 export interface Sound {
   play(): Promise<void>
   pause(): void
+  /** Moves its playhead (seconds), playing or paused. */
+  seek(seconds: number): void
   dispose(): void
 }
 
@@ -73,6 +75,14 @@ export class SharedAudio {
     this.disposed = true
     this.drop()
     this.phase = 'idle'
+  }
+
+  /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */
+  seek(seconds: number) {
+    if (!this.sound || this.duration <= 0) return
+    this.elapsed = Math.min(Math.max(seconds, 0), this.duration)
+    this.sound.seek(this.elapsed)
+    this.changed(this.snapshot)
   }
 
   private async play() {

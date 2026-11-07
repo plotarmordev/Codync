@@ -14,7 +14,7 @@ export function useSharedAudio(file: SharedFile, entryId: string) {
     open: (data, events) => audioElement(data, events),
   }, setSnapshot))
   useEffect(() => () => audio.dispose(), [audio])
-  return { snapshot, toggle: () => void audio.toggle() }
+  return { snapshot, toggle: () => void audio.toggle(), seek: (seconds: number) => audio.seek(seconds) }
 }
 
 function audioElement(data: Uint8Array, events: SoundEvents): Sound {
@@ -27,6 +27,7 @@ function audioElement(data: Uint8Array, events: SoundEvents): Sound {
   return {
     play: () => player.play(),
     pause: () => player.pause(),
+    seek: (seconds) => { player.currentTime = seconds },
     dispose: () => URL.revokeObjectURL(player.src),
   }
 }

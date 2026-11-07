@@ -82,6 +82,7 @@
 }
 .voice-note .file-card-progress {
   flex: 1;
+  min-width: 0;
   margin: 0;
 }
 /* Steady digits, so the bar's end doesn't move as the clock runs. */
@@ -98,22 +99,46 @@
   overflow-wrap: anywhere;
 }
 
-/* The sound's clock made visible: a bar that fills left to right. */
-.file-card-progress {
-  height: 4px;
-  margin-top: 6px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--tertiary) 30%, transparent);
-  overflow: hidden;
+/* The sound's clock made visible and movable: a 4 px bar filling left to right, in a 24 px strip that takes the
+   pointer (the margins keep the layout at the bar's height). Its knob shows while the pointer is on it. */
+@property --played {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
 }
-.file-card-progress > div {
-  height: 100%;
+.file-card-progress {
+  appearance: none;
+  height: 24px;
+  margin: -4px 0 -10px;
+  background: transparent;
+  cursor: pointer;
+  transition: --played 0.2s linear;
+}
+.file-card-progress:active {
+  transition: none;
+}
+.file-card-progress::-webkit-slider-runnable-track {
+  height: 4px;
   border-radius: 2px;
+  background: linear-gradient(to right, var(--text) calc(var(--played) * 100%), color-mix(in srgb, var(--tertiary) 30%, transparent) 0);
+}
+.file-card-progress::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4px;
+  border-radius: 50%;
   background: var(--text);
-  transition: width 0.2s linear;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.file-card-progress:hover::-webkit-slider-thumb,
+.file-card-progress:active::-webkit-slider-thumb {
+  opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
-  .file-card-progress > div { transition: none; }
+  .file-card-progress,
+  .file-card-progress::-webkit-slider-thumb { transition: none; }
 }
 /* The play button's 36 px target overflows the file icon's 24 px slot, so names line up across cards. The slot
    keeps its size while the sound loads. */

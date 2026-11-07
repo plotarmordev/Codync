@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SharedFile } from '@shared/models'
 import type { DownloadState } from '../../store/file-downloads.ts'
-import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock } from './file-card.ts'
+import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock, seekKeyTarget } from './file-card.ts'
 import type { AudioSnapshot } from './shared-audio.ts'
 
 const file = (size: number): SharedFile => ({ id: 'f1', name: 'venue-floor-plan.pdf', size, sha256: 'a'.repeat(64) })
@@ -74,8 +74,18 @@ test("picking Download from a voice note's menu by keyboard never plays it", () 
   assert.equal(card('F10', false, false), undefined)
 })
 
-test("a click on a card's name or caption runs its first action; one on its own buttons only theirs", () => {
-  const inside = (button: object | null) => ({ closest: (selector: string) => (selector === 'button' ? button : null) })
+test('arrow keys move a loaded voice note five seconds; other keys and an unloaded sound move nothing', () => {
+  assert.equal(seekKeyTarget('ArrowRight', audio('paused', 7, 48)), 12)
+  assert.equal(seekKeyTarget('ArrowLeft', audio('playing', 7, 48)), 2)
+  assert.equal(seekKeyTarget('ArrowUp', audio('paused', 7, 48)), undefined)
+  assert.equal(seekKeyTarget('ArrowRight', audio('idle')), undefined)
+  assert.equal(seekKeyTarget('ArrowRight', undefined), undefined)
+})
+
+test("a click on a card's name or caption runs its first action; one on its own buttons or bar only theirs", () => {
+  // A click target inside the card, under an element with this tag (or none).
+  const inside = (tag: string | null) => ({ closest: (selector: string) => (tag && selector.split(', ').includes(tag) ? {} : null) })
   assert.equal(clickRunsFirstAction(inside(null)), true)
-  assert.equal(clickRunsFirstAction(inside({})), false)
+  assert.equal(clickRunsFirstAction(inside('button')), false)
+  assert.equal(clickRunsFirstAction(inside('input')), false)
 })

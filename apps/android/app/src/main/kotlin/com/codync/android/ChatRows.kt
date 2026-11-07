@@ -310,6 +310,7 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth().clearAndSetSemantics {
             contentDescription = "${translate("Voice note")}, $caption"
+            audioSeek(audio)
             customActions = listOf(
                 CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true },
                 CustomAccessibilityAction(translate(if (busy) "Cancel download" else "Download")) { save(); true })

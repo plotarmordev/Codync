@@ -3,7 +3,8 @@ import CodyncKit
 import Foundation
 import Observation
 
-/// Plays a sound a bot shared (a voice note), fetched from the computer; one card's player.
+/// Plays a sound a bot shared (a voice note), fetched from the computer; one player per file card or
+/// voice-note bubble.
 @MainActor
 @Observable
 final class SharedAudio {

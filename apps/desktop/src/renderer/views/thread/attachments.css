@@ -62,6 +62,19 @@
   outline: 2px solid var(--secondary);
   outline-offset: 2px;
 }
+/* A message's voice note, at the top of its bubble: no card of its own, the text follows under it. */
+.voice-note {
+  min-width: 220px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-m);
+}
+.voice-note:focus-visible {
+  outline: 2px solid var(--secondary);
+  outline-offset: 2px;
+}
+.voice-note .file-card-progress {
+  margin: 0 0 6px;
+}
 .file-card-image {
   display: flex;
   align-self: flex-start;

@@ -56,6 +56,8 @@ public struct EntryData: Codable, Hashable, Sendable {
     public var attachments: [Attachment]?
     /// Immutable files explicitly sent by the bot.
     public var files: [SharedFile]?
+    /// agent: the message is a voice note, played inside its bubble above the text.
+    public var voiceNote: Bool?
     /// notice: a finished voice call's length.
     public var callSeconds: Int?
     /// The voice call it was said in (user), answered during (agent), or that it ends (notice); the chat shows those
@@ -135,6 +137,13 @@ extension EntryData {
                 groups.append((r.emoji, [r.bot]))
             }
         }
+    }
+
+    /// The sound a voice-note message plays inside its bubble: its first file, when the host marked the message
+    /// and the chat can play it. A sound shared without the mark stays a file card.
+    public var voiceNoteFile: SharedFile? {
+        guard voiceNote == true, let file = files?.first, file.showsAsAudio else { return nil }
+        return file
     }
 }
 

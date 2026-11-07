@@ -1,6 +1,8 @@
 package com.codync.android
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.material3.Text
@@ -21,11 +24,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.codync.android.core.Entry
@@ -56,6 +64,7 @@ import kotlinx.coroutines.launch
     Column(Modifier.fillMaxWidth().clip(RoundedRectangle(16.dp)).background(Palette.bubbleAgent)
         .clearAndSetSemantics {
             contentDescription = "${file.name}, $caption"
+            audioSeek(player)
             customActions = listOfNotNull(
                 player?.let { audio -> CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true } },
                 CustomAccessibilityAction(translate(if (busy) "Cancel download" else "Download")) { save(); true },
@@ -94,9 +103,10 @@ import kotlinx.coroutines.launch
     }
 }
 
-/** The thin progress bar of a playing voice note, filled left to right, read again about four times a second while
- *  it plays. */
-@Composable internal fun AudioProgress(audio: SharedAudio) {
+/** The progress bar of a playing voice note, filled left to right, read again about four times a second while it
+ *  plays; as wide as [modifier] lets it, the whole row by default. Tap or drag it to move there: its 48 dp touch strip
+ *  overflows the 4 dp bar without taking up layout, as the play button's does. */
+@Composable internal fun AudioProgress(audio: SharedAudio, modifier: Modifier = Modifier.fillMaxWidth()) {
     LaunchedEffect(audio, audio.phase) {
         audio.syncElapsed()
         while (audio.phase == AudioPhase.Playing) {
@@ -104,9 +114,24 @@ import kotlinx.coroutines.launch
             audio.syncElapsed()
         }
     }
-    Box(Modifier.fillMaxWidth().height(3.dp).clip(Capsule()).background(Palette.tertiary)) {
-        Box(Modifier.fillMaxWidth((audio.elapsed / audio.duration).toFloat().coerceIn(0f, 1f)).height(3.dp).clip(Capsule()).background(Palette.text))
+    val seekTo = { x: Float, width: Int -> audio.seek(audio.duration * (x / width).coerceIn(0f, 1f)) }
+    Box(modifier.height(4.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxWidth().requiredHeight(48.dp)
+            .pointerInput(audio) { detectTapGestures { seekTo(it.x, size.width) } }
+            .pointerInput(audio) { detectHorizontalDragGestures { change, _ -> seekTo(change.position.x, size.width) } },
+            contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(Capsule()).background(Palette.tertiary)) {
+                Box(Modifier.fillMaxWidth((audio.elapsed / audio.duration).toFloat().coerceIn(0f, 1f)).height(4.dp).clip(Capsule()).background(Palette.text))
+            }
+        }
     }
+}
+
+/** TalkBack reads a voice note's position and moves it (swipe up/down or the volume keys) once its length is known. */
+internal fun SemanticsPropertyReceiver.audioSeek(audio: SharedAudio?) {
+    if (audio == null || audio.duration <= 0.0) return
+    progressBarRangeInfo = ProgressBarRangeInfo(audio.elapsed.toFloat(), 0f..audio.duration.toFloat())
+    setProgress { audio.seek(it.toDouble()); true }
 }
 
 /** Seconds as `m:ss` (`h:mm:ss` past an hour). */

@@ -310,16 +310,17 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth().clearAndSetSemantics {
             contentDescription = "${translate("Voice note")}, $caption"
+            audioSeek(audio)
             customActions = listOf(
                 CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true },
                 CustomAccessibilityAction(translate(if (busy) "Cancel download" else "Download")) { save(); true })
             onClick(label = translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true }
         }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             SharedAudioButton(audio, play)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                if (audio.duration > 0.0) AudioProgress(audio)
-                Text(caption, style = Type.caption2, color = if (audio.phase == AudioPhase.Failed) Palette.danger else Palette.secondary)
-            }
+            if (audio.duration > 0.0) AudioProgress(audio, Modifier.weight(1f))
+            // Steady digits, so the bar's end doesn't move as the clock runs.
+            Text(caption, style = Type.caption2.copy(fontFeatureSettings = "tnum"),
+                color = if (audio.phase == AudioPhase.Failed) Palette.danger else Palette.secondary)
         }
         if (text.isNotEmpty()) MarkdownText(text, selectable)
     }

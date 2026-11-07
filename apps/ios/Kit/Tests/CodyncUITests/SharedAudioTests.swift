@@ -92,6 +92,26 @@ private func silentWAV() -> Data {
     }
 }
 
+@MainActor @Test func seekingHoldsTheVoiceNotesPlayheadToItsLengthAndKeepsItPlayingOrPaused() async {
+    await playing { audio, load, store, note in
+        audio.seek(to: 0.5)
+        #expect(audio.elapsed == 0, "nothing to seek before the sound loads")
+        let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+        #expect(await load.asked())
+        load.answer(silentWAV())
+        await tap.value
+
+        audio.seek(to: 0.5)
+        #expect(abs(audio.elapsed - 0.5) < 0.01)
+        audio.seek(to: -3)
+        #expect(audio.elapsed == 0)
+        await audio.toggle(note, entryId: "entry", model: store)
+        audio.seek(to: 9)
+        #expect(abs(audio.elapsed - (audio.duration ?? 0)) < 0.01)
+        #expect(audio.state == .paused)
+    }
+}
+
 @MainActor @Test func aVoiceNoteCardCaptionPutsItsFailureOverTheDownloadThePositionAndTheSize() {
     let size: Int64 = 1_250_000
     #expect(FileDownloadCard.detail(.failed("Couldn't download."), play: .failed, duration: 12, size: size)

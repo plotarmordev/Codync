@@ -10,6 +10,7 @@ function setup() {
   const sound = {
     play: async () => { log.push('play'); events.playing(true) },
     pause: () => { log.push('pause'); events.playing(false) },
+    seek: (seconds: number) => void log.push(`seek ${seconds}`),
     dispose: () => void log.push('dispose'),
   }
   const platform: SharedAudioPlatform = {
@@ -98,4 +99,22 @@ test('a sound that fails mid-play drops its progress with the player', async () 
   events().time(7, 48)
   events().failed()
   assert.deepEqual(audio.snapshot, { phase: 'failed', elapsed: 0, duration: 0 })
+})
+
+test('seeking holds the playhead to the sound and keeps it playing or paused', async () => {
+  const { audio, log, loads, events } = setup()
+  audio.seek(3)
+  assert.deepEqual(log, [], 'nothing to seek before the sound loads')
+  const tap = audio.toggle()
+  loads[0](new Uint8Array([1]))
+  await tap
+  events().time(7, 48)
+  audio.seek(20)
+  audio.seek(-5)
+  audio.seek(60)
+  assert.deepEqual(log.slice(2), ['seek 20', 'seek 0', 'seek 48'])
+  assert.deepEqual(audio.snapshot, { phase: 'playing', elapsed: 48, duration: 48 })
+  await audio.toggle()
+  audio.seek(12)
+  assert.deepEqual(audio.snapshot, { phase: 'paused', elapsed: 12, duration: 48 })
 })

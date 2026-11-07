@@ -14,6 +14,7 @@ class FileCardCaptionTest {
         override val duration = 48.0
         override fun start(): Boolean { playing = true; return true }
         override fun pause() { playing = false }
+        override fun seek(seconds: Double) { position = seconds }
         override fun release() {}
     }
 

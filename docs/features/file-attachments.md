@@ -76,9 +76,12 @@ voice note) up to 20 MB gets a play/pause button in place of its icon. For eithe
 client reads the whole file into memory through the same `readFile` chunks, checks size
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
 read leaves the placeholder. While a sound loads its button shows a spinner; once loaded
-its caption reads elapsed / total time over a progress bar. A sound that can't be read
-or decoded goes back to play and its caption reads "Couldn't play. Tap to retry." (click
-on desktop), with no dialog; the next tap reads it again. Every client shows sizes as
+its caption reads elapsed / total time over a progress bar. Tapping or dragging the bar
+(clicking on desktop) moves the sound there, playing or paused; its touch area runs past the
+4 pt bar without taking layout, and VoiceOver/TalkBack adjust or the arrow keys move it five
+seconds. A sound that can't be read or decoded goes back to play and its caption reads
+"Couldn't play. Tap to retry." (click on desktop), with no dialog; the next tap reads it
+again. Every client shows sizes as
 Apple's `ByteCountFormatter` does (decimal units, rounded half up from the byte count),
 and screen readers get one element per card, with play, view and download as its
 actions. On desktop the card is one keyboard stop: Enter or Space does its first action

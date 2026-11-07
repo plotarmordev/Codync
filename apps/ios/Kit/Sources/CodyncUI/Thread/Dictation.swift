@@ -219,7 +219,6 @@ final class Dictation {
         recording = (engine, model, Data())
         startedAt = .now
         listening = true
-
     }
 
     private func recorded(_ pcm: Data, level: Float, generation: Int) {

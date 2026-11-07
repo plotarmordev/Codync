@@ -7,6 +7,7 @@ import { ModalHeader, SheetPage } from '../../components/Overlay'
 import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { usePref } from '../../lib/prefs'
+import { useModel } from '../../lib/observable'
 import { useStore } from '../../store/context'
 import { useScreenViewed } from '../../store/analytics'
 import { errorText, liveClient } from './parts'
@@ -333,27 +334,30 @@ function ProviderVoiceSettings({ provider, dictationOnly = false }: { provider: 
 
 /**
  * Dictation on the computer's own speech model: no key, no models to pick, nothing billed. The
- * footer says what to install while the model isn't there (hosts before it say to update).
+ * footer says what to install while the model isn't there (hosts before it say to update), or why
+ * the check couldn't run; it checks again when the computer (re)connects.
  */
 function LocalDictationSettings() {
   const store = useStore()
-  const [local, setLocal] = useState<{ ready: boolean; message: string | null } | null>(null)
+  useModel(store)
+  const online = store.connection.kind === 'online'
+  const [note, setNote] = useState<string | null>(null)
   useEffect(() => {
     let cancelled = false
     void (async () => {
       const client = liveClient(store)
-      if (!client) return
+      if (!client) return setNote(`Not connected to ${store.hostName}.`)
       try {
-        const status = voice.localDictation(await voice.voiceStatus(client))
-        if (!cancelled) setLocal(status)
-      } catch {
-        // Dictating reports this check's failure itself; here it just leaves the note.
+        const local = voice.localDictation(await voice.voiceStatus(client))
+        if (!cancelled) setNote(local.ready ? null : local.message)
+      } catch (e) {
+        if (!cancelled) setNote(errorText(e))
       }
     })()
     return () => void (cancelled = true)
-  }, [store])
+  }, [online])
   return (
-    <CardSection title="This computer" footer={local && !local.ready ? (local.message ?? undefined) : undefined}>
+    <CardSection title="This computer" footer={note ?? undefined}>
       <Text size="footnote" tone="secondary">
         Your computer transcribes what you say with its own speech model; the audio never leaves your computer.
       </Text>

@@ -54,8 +54,9 @@ import kotlin.math.sqrt
 /** A shared file being opened in its viewer, and the message that shared it. */
 internal data class OpenFile(val entryId: String, val botId: String, val file: SharedFile)
 
-/** A Markdown, text or PDF file a bot shared, read inside the app while `item` is set, with Download in its header. */
-@Composable internal fun FileViewerSheet(item: OpenFile?, store: AppStore, dismiss: () -> Unit) {
+/** A Markdown, text or PDF file a bot shared, read inside the app while `item` is set, with Download in its header.
+ * `openPdf` reads a PDF's pages (a test's stand-in). */
+@Composable internal fun FileViewerSheet(item: OpenFile?, store: AppStore, openPdf: (File) -> PdfDocument = ::PdfFile, dismiss: () -> Unit) {
     CodyncSheet(item, dismiss) { (entryId, botId, file) ->
         Column(Modifier.fillMaxSize().background(Palette.background)) {
             ModalHeader(file.name) {
@@ -64,7 +65,7 @@ internal data class OpenFile(val entryId: String, val botId: String, val file: S
                     Symbol("arrow.down.to.line", size = 20.dp, tint = Palette.text)
                 }
             }
-            Box(Modifier.weight(1f).fillMaxWidth()) { FileBody(entryId, file, store) }
+            Box(Modifier.weight(1f).fillMaxWidth()) { FileBody(entryId, file, store, openPdf) }
         }
     }
 }
@@ -73,17 +74,17 @@ internal data class OpenFile(val entryId: String, val botId: String, val file: S
 private sealed interface Opened {
     data object Loading : Opened
     data class Text(val text: String) : Opened
-    data class Pdf(val document: PdfFile) : Opened
+    data class Pdf(val document: PdfDocument) : Opened
     data class Message(val text: String, val limit: String = "") : Opened
 }
 
-@Composable private fun FileBody(entryId: String, file: SharedFile, store: AppStore) {
+@Composable private fun FileBody(entryId: String, file: SharedFile, store: AppStore, openPdf: (File) -> PdfDocument) {
     val preview = file.preview ?: return
     val opened by produceState<Opened>(Opened.Loading, file.id) {
         value = if (!file.opensInline) Opened.Message(TOO_BIG, limit(preview)) else try {
             val source = store.sharedFile(entryId, file)
             withContext(Dispatchers.IO) {
-                if (preview == FilePreview.Pdf) Opened.Pdf(PdfFile(source))
+                if (preview == FilePreview.Pdf) Opened.Pdf(openPdf(source))
                 else utf8(source.readBytes())?.let(Opened::Text) ?: Opened.Message("This file isn't UTF-8 text. Download it to open it in another app.")
             }
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -122,7 +123,7 @@ private fun utf8(bytes: ByteArray): String? = try {
 } catch (_: CharacterCodingException) { null }
 
 /** A PDF's pages, each drawn at the viewer's width as it scrolls into view; `failed` when one can't be drawn. */
-@Composable private fun PdfPages(pdf: PdfFile, failed: () -> Unit) = BoxWithConstraints(Modifier.fillMaxSize()) {
+@Composable private fun PdfPages(pdf: PdfDocument, failed: () -> Unit) = BoxWithConstraints(Modifier.fillMaxSize()) {
     val width = with(LocalDensity.current) { (maxWidth - 24.dp).roundToPx() }
     LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items(pdf.pageCount) { index ->
@@ -151,16 +152,24 @@ internal fun pageBitmapSize(width: Int, ratio: Float): IntSize {
     return IntSize((height * ratio * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1))
 }
 
+/** A PDF's pages for its viewer. */
+internal interface PdfDocument : AutoCloseable {
+    val pageCount: Int
+    /** Page `index`'s width / height. */
+    fun aspectRatio(index: Int): Float
+    /** Page `index` drawn for a viewer `width` pixels wide on white, or null once the viewer has closed. */
+    fun render(index: Int, width: Int): Bitmap?
+}
+
 /** Android's PDF renderer over one file: it draws one page at a time, so every use holds its lock. */
-private class PdfFile(file: File) {
+private class PdfFile(file: File) : PdfDocument {
     private val renderer = PdfRenderer(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY))
     private val ratios = List(renderer.pageCount) { index -> renderer.openPage(index).use { it.width.toFloat() / it.height } }
     private var closed = false
-    val pageCount get() = ratios.size
-    fun aspectRatio(index: Int) = ratios[index]
+    override val pageCount get() = ratios.size
+    override fun aspectRatio(index: Int) = ratios[index]
 
-    /** Page `index` drawn for a viewer `width` pixels wide on white, or null once the viewer has closed. */
-    @Synchronized fun render(index: Int, width: Int): Bitmap? {
+    @Synchronized override fun render(index: Int, width: Int): Bitmap? {
         if (closed) return null
         val size = pageBitmapSize(width, ratios[index])
         return renderer.openPage(index).use { page ->
@@ -171,5 +180,5 @@ private class PdfFile(file: File) {
         }
     }
 
-    @Synchronized fun close() { closed = true; renderer.close() }
+    @Synchronized override fun close() { closed = true; renderer.close() }
 }

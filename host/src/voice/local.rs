@@ -148,35 +148,42 @@ fn voiced(wav: &[u8]) -> bool {
         .any(|w| w.iter().map(|b| f32::from(i16::from_le_bytes(*b)) / 32_768.0).map(|s| s * s).sum::<f32>() >= floor)
 }
 
-/// Words Whisper writes, alone in brackets or parentheses, for what isn't speech (`[BLANK_AUDIO]`,
-/// `(upbeat music)`, `[ Silence ]`); a span of anything else is the speaker's own.
-const CAPTION_WORDS: [&str; 17] = [
-    "blank",
-    "audio",
-    "music",
+/// What Whisper writes, in brackets or parentheses, for what isn't speech (`[BLANK_AUDIO]`,
+/// `(upbeat music)`, `[ Silence ]`), in lowercase with its words joined by single spaces.
+const MARKERS: [&str; 17] = [
+    "blank audio",
     "silence",
+    "music",
+    "music playing",
+    "upbeat music",
+    "soft music",
+    "background music",
     "inaudible",
     "applause",
     "laughter",
     "laughs",
     "laughing",
     "noise",
+    "background noise",
     "static",
-    "upbeat",
-    "soft",
-    "background",
-    "sound",
     "sighs",
     "coughs",
 ];
 
-fn is_caption(inner: &str) -> bool {
-    let mut words = inner.split(|c: char| c == '_' || c.is_whitespace()).filter(|w| !w.is_empty()).peekable();
-    words.peek().is_some() && words.all(|w| CAPTION_WORDS.contains(&w.to_lowercase().as_str()))
+fn is_marker(inner: &str) -> bool {
+    let words: Vec<&str> = inner.split(|c: char| c == '_' || c.is_whitespace()).filter(|w| !w.is_empty()).collect();
+    MARKERS.contains(&words.join(" ").to_lowercase().as_str())
 }
 
-/// The transcript without Whisper's markers for silence and sounds: each bracketed or parenthesized
-/// span made only of caption words. Every other bracket and parenthetical stays as spoken.
+/// A span stands alone with nothing but whitespace (or the text's start) before it and no letter or
+/// digit right after it, so `samples[audio]` and `Hello[MUSIC]world` are words, not markers.
+fn stands_alone(before: &str, after: &str) -> bool {
+    before.chars().next_back().is_none_or(char::is_whitespace)
+        && after.chars().next().is_none_or(|c| !c.is_alphanumeric())
+}
+
+/// The transcript without Whisper's markers for silence and sounds. Every other bracket and
+/// parenthetical stays as spoken.
 fn spoken(text: &str) -> String {
     let mut kept = String::new();
     let mut rest = text;
@@ -184,11 +191,17 @@ fn spoken(text: &str) -> String {
         let close = if rest[open..].starts_with('[') { ']' } else { ')' };
         let Some(len) = rest[open + 1..].find(close) else { break };
         let end = open + 1 + len;
+        let after = &rest[end + 1..];
         kept.push_str(&rest[..open]);
-        if !is_caption(&rest[open + 1..end]) {
+        if stands_alone(&kept, after) && is_marker(&rest[open + 1..end]) {
+            kept.truncate(kept.trim_end().len());
+            if !after.starts_with(['.', ',', '!', '?', ';', ':']) {
+                kept.push(' ');
+            }
+        } else {
             kept.push_str(&rest[open..=end]);
         }
-        rest = &rest[end + 1..];
+        rest = after;
     }
     kept.push_str(rest);
     kept.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -335,5 +348,16 @@ mod tests {
         assert_eq!(spoken("Set the value to [1, 2, 3]."), "Set the value to [1, 2, 3].");
         assert_eq!(spoken("Use arr[0] instead."), "Use arr[0] instead.");
         assert_eq!(spoken("(play some music)"), "(play some music)");
+        assert_eq!(spoken("Use samples[audio] instead."), "Use samples[audio] instead.");
+        assert_eq!(spoken("Set mode to (soft)."), "Set mode to (soft).");
+    }
+
+    #[test]
+    fn removing_a_marker_keeps_the_words_around_it_apart() {
+        assert_eq!(spoken("Hello[MUSIC]world."), "Hello[MUSIC]world.");
+        assert_eq!(spoken("Hello [MUSIC]world."), "Hello [MUSIC]world.");
+        assert_eq!(spoken("Hello [MUSIC] world."), "Hello world.");
+        assert_eq!(spoken("Ship it [MUSIC]."), "Ship it.");
+        assert_eq!(spoken("Hello\n[BLANK_AUDIO]\nworld."), "Hello world.");
     }
 }

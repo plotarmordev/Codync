@@ -30,7 +30,7 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
         }
         "voiceStatus" => crate::voice::status(&hub.store)?,
         // Never waits on the keyring: dictation on the user's own speech server needs no key.
-        "localDictation" => crate::voice::local::status(&hub.store),
+        "localDictation" => crate::voice::local::status(&hub.store, matches!(caller, Caller::Local)),
         "setSpeechServer" => crate::voice::local::link(&hub.store, b["url"].as_str().unwrap_or_default()).await?,
         "setVoiceKey" => {
             let provider = crate::voice::Provider::parse(str_arg(&b, "provider")?)?;

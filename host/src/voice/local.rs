@@ -19,8 +19,12 @@ const SPEECH_RMS: f32 = 0.0056;
 /// 100 ms at 16 kHz.
 const WINDOW: u16 = 1_600;
 
-/// Read on phones as well as on the computer, so it names the computer rather than "this computer".
-fn not_linked() -> String {
+/// Where to link a speech server: in Settings for Codync on this computer; a phone or another
+/// computer is told which computer, since the model runs there and not on the device reading it.
+fn not_linked(here: bool) -> String {
+    if here {
+        return "No speech model is linked on this computer. Link one in Settings, Voice chat.".into();
+    }
     let computer = crate::service::host_name();
     format!("No speech model is linked on {computer}. Link one in Codync on that computer: Settings, Voice chat.")
 }
@@ -29,14 +33,15 @@ fn server(store: &Store) -> Option<String> {
     store.kv_get(SERVER_KEY).filter(|s| !s.is_empty())
 }
 
-/// `{ready, message, server}` for `localDictation`: the linked server, or what to do without one.
-pub fn status(store: &Store) -> Value {
+/// `{ready, message, server}` for `localDictation`: the linked server, or what to do without one,
+/// worded for a caller on this computer (`here`) or elsewhere.
+pub fn status(store: &Store, here: bool) -> Value {
     let server = server(store);
-    json!({"ready": server.is_some(), "message": server.is_none().then(not_linked), "server": server})
+    json!({"ready": server.is_some(), "message": server.is_none().then(|| not_linked(here)), "server": server})
 }
 
-/// `setSpeechServer`: links the server at `url` once it transcribes a short silence, or unlinks it
-/// when `url` is empty.
+/// `setSpeechServer` (only on this computer): links the server at `url` once it transcribes a
+/// short silence, or unlinks it when `url` is empty.
 pub async fn link(store: &Store, url: &str) -> Result<Value> {
     let url = url.trim();
     if url.is_empty() {
@@ -45,12 +50,12 @@ pub async fn link(store: &Store, url: &str) -> Result<Value> {
         post(store, url, &super::wav(&[0; 16_000], 16_000)).await?;
         store.kv_set(SERVER_KEY, url)?;
     }
-    Ok(status(store))
+    Ok(status(store, true))
 }
 
 /// Speech to text for one utterance (a 16 kHz mono 16-bit WAV) on the linked server.
 pub async fn transcribe(store: &Store, wav: &[u8]) -> Result<Value> {
-    let url = server(store).ok_or_else(|| anyhow!(not_linked()))?;
+    let url = server(store).ok_or_else(|| anyhow!(not_linked(false)))?;
     if !voiced(wav) {
         return Ok(json!({"text": ""}));
     }
@@ -217,7 +222,13 @@ mod tests {
             }
         });
         let store = memory_store();
-        assert_eq!(status(&store)["message"], not_linked());
+        let computer = crate::service::host_name();
+        let elsewhere = status(&store, false)["message"].as_str().unwrap_or_default().to_owned();
+        assert!(elsewhere.contains(&format!("on {computer}.")), "a phone is told which computer: {elsewhere}");
+        assert_eq!(
+            status(&store, true)["message"],
+            "No speech model is linked on this computer. Link one in Settings, Voice chat."
+        );
         assert!(transcribe(&store, &recording(&[0; 160])).await.is_err());
 
         let linked = link(&store, &url).await.unwrap();
@@ -229,7 +240,7 @@ mod tests {
         let unlinked = link(&store, "").await.unwrap();
         assert_eq!(
             (unlinked["ready"].as_bool(), unlinked["message"].as_str()),
-            (Some(false), Some(not_linked().as_str()))
+            (Some(false), Some(not_linked(true).as_str()))
         );
     }
 

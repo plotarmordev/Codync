@@ -55,7 +55,7 @@ pub async fn link(store: &Store, url: &str, model: &str) -> Result<Value> {
         store.kv_delete(SERVER_KEY)?;
         store.kv_delete(MODEL_KEY)?;
     } else {
-        post(store, url, model, &super::wav(&[0; 32_000], 16_000)).await?;
+        post(store, url, model, &super::wav(&vec![0; 32_000], 16_000)).await?;
         store.kv_set(SERVER_KEY, url)?;
         store.kv_set(MODEL_KEY, model)?;
     }

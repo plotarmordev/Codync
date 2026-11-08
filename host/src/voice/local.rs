@@ -132,11 +132,26 @@ fn voiced(wav: &[u8]) -> bool {
         .any(|w| w.iter().map(|b| f32::from(i16::from_le_bytes(*b)) / 32_768.0).map(|s| s * s).sum::<f32>() >= floor)
 }
 
-/// The transcript without whisper.cpp's markers for silence and sounds (`[BLANK_AUDIO]`, `(music)`).
+/// The transcript without whisper.cpp's markers for silence and sounds: every `[BLANK_AUDIO]`-style
+/// tag, and a transcript that is only a caption like `(music)`. Words beside a tag, and a spoken
+/// parenthetical (it has sentence punctuation, or sits among other words), stay.
 fn spoken(text: &str) -> String {
-    let text = text.trim();
-    let marker = (text.starts_with('[') && text.ends_with(']')) || (text.starts_with('(') && text.ends_with(')'));
-    if marker { String::new() } else { text.to_owned() }
+    let mut words = String::new();
+    let mut rest = text;
+    while let Some((before, tagged)) = rest.split_once('[')
+        && let Some((_, after)) = tagged.split_once(']')
+    {
+        words.push_str(before);
+        words.push(' ');
+        rest = after;
+    }
+    words.push_str(rest);
+    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    let caption = words
+        .strip_prefix('(')
+        .and_then(|w| w.strip_suffix(')'))
+        .is_some_and(|inner| !inner.contains(['(', ')', '.', ',', '!', '?']));
+    if caption { String::new() } else { words }
 }
 
 #[cfg(test)]
@@ -248,6 +263,14 @@ mod tests {
     fn whisper_markers_are_not_speech() {
         assert_eq!(spoken(" [BLANK_AUDIO] "), "");
         assert_eq!(spoken("(music)"), "");
+        assert_eq!(spoken("(upbeat music)"), "");
         assert_eq!(spoken(" Ship it. "), "Ship it.");
+    }
+
+    #[test]
+    fn speech_beside_a_marker_and_spoken_parentheticals_stay() {
+        assert_eq!(spoken("[BLANK_AUDIO] Hello, ship the fix. [BLANK_AUDIO]"), "Hello, ship the fix.");
+        assert_eq!(spoken("(Please keep this parenthetical.)"), "(Please keep this parenthetical.)");
+        assert_eq!(spoken("Run the tests (all of them) first."), "Run the tests (all of them) first.");
     }
 }

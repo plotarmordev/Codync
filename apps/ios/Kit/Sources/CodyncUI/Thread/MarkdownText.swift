@@ -35,8 +35,8 @@ public struct MarkdownText: View, Equatable {
     }
 }
 
-/// One block of a reply.
-private struct MarkdownBlock: View {
+/// One block of a reply (or of a shared Markdown file, in `FileViewer`).
+struct MarkdownBlock: View {
     let block: MarkdownBlocks.Block
 
     @ViewBuilder var body: some View {

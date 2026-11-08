@@ -16,6 +16,8 @@ struct ChatRow: View {
     var addFallback: (() -> Void)?
     /// An artifact card's artifact, full size.
     var openArtifact: ((ArtifactRef) -> Void)?
+    /// A shared file readable on the phone, in the chat's viewer.
+    var openFile: ((FileViewerTarget) -> Void)?
     /// A voice call's line: the call's conversation.
     var openCall: (() -> Void)?
     @Environment(BotStore.self) private var model
@@ -34,7 +36,7 @@ struct ChatRow: View {
         case "agent":
             VStack(alignment: .leading, spacing: 4) {
                 if chat?.isGroup == true, groupStart { AuthorLabel(botId: entry.data.author) }
-                AgentBubble(entry: entry, openTrace: openTrace, reply: reply, openArtifact: openArtifact)
+                AgentBubble(entry: entry, openTrace: openTrace, reply: reply, openArtifact: openArtifact, openFile: openFile)
                 ReactionsRow(entry: entry)
                     .padding(.leading, chat?.isGroup == true ? 34 : 0)
             }
@@ -193,6 +195,7 @@ struct AgentBubble: View {
     let openTrace: () -> Void
     var reply: (() -> Void)?
     var openArtifact: ((ArtifactRef) -> Void)?
+    var openFile: ((FileViewerTarget) -> Void)?
     @Environment(BotStore.self) private var model
 
     var body: some View {
@@ -203,7 +206,7 @@ struct AgentBubble: View {
                 } else if let voiceNote = entry.data.voiceNoteFile {
                     VoiceNoteBubble(entry: entry, file: voiceNote)
                 } else if let files = entry.data.files, !files.isEmpty {
-                    ForEach(files) { file in FileDownloadCard(entry: entry, file: file) }
+                    ForEach(files) { file in FileDownloadCard(entry: entry, file: file, openFile: openFile) }
                 } else {
                     MarkdownText(entry.data.text ?? "").equatable()
                         .padding(.horizontal, 16)

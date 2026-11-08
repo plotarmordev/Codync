@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { filePreview } from '@shared/file-preview'
 import { showsAsAudio, showsAsImage, type Entry, type SharedFile } from '@shared/models'
 import { useStore } from '../../store/context'
 import { Icon } from '../../components/Icon'
@@ -8,6 +9,7 @@ import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { AttachmentImage, AttachmentViewer, attachmentSymbol, type ImageSource } from './Attachments'
 import { cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, downloadAction, seekKeyTarget } from './file-card'
+import { FileViewer } from './FileViewer'
 import type { AudioSnapshot } from './shared-audio'
 import { useSharedAudio } from './use-shared-audio'
 import './attachments.css'
@@ -68,17 +70,19 @@ function FileCard({ entry, file, audio, toggle, seek, icon }: {
   </>
 }
 
-/** A shared file's keyboard and screen-reader stop: its caption, its actions with their menu, and the picture viewer. */
+/** A shared file's keyboard and screen-reader stop: its caption, its actions with their menu, and the picture or file viewer. */
 function useFileStop(entry: Entry, file: SharedFile, audio?: AudioSnapshot, toggle?: () => void, seek?: (seconds: number) => void) {
   const store = useStore()
   const state = store.fileDownloads.states.get(file.id)
   const busy = state?.kind === 'downloading'
   const [viewing, setViewing] = useState(false)
+  const [reading, setReading] = useState(false)
   const menu = useContextMenu()
   const image: ImageSource = { file, entryId: entry.id }
   const view = () => setViewing(true)
   const download = () => store.fileDownloads.toggle(store.client, entry.id, file)
-  const actions = () => cardActions({ state, audio, toggle, view: showsAsImage(file) ? view : undefined, download })
+  const read = () => setReading(true)
+  const actions = () => cardActions({ state, audio, toggle, view: showsAsImage(file) ? view : filePreview(file) ? read : undefined, download })
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return
     const seconds = seekKeyTarget(e.key, audio)
@@ -113,6 +117,7 @@ function useFileStop(entry: Entry, file: SharedFile, audio?: AudioSnapshot, togg
     overlays: <>
       <AnchoredMenu open={menu.open} onClose={menu.close} point={menu.point} items={actions} />
       <AttachmentViewer source={viewing ? image : null} close={() => setViewing(false)} />
+      <FileViewer entryId={entry.id} file={reading ? file : null} close={() => setReading(false)} />
     </>,
   }
 }

@@ -18,6 +18,7 @@ public struct ThreadView: View {
     @State var openCall: Entry?
     @State var editingGroup = false
     @State var details: DetailsRequest?
+    @State var openFile: FileViewerTarget?
     @State var calling = false
     @State var callSpeaking = false
     @State var interruptCall: (() -> Void)?
@@ -72,12 +73,13 @@ public struct ThreadView: View {
                 if model.takeVoiceCallRequest(for: botId) { startShortcutCall() }
             }
             // The details sheet's Library presents its own downloads.
-            .fileExportSheet(model, botId: botId, active: details == nil)
+            .fileExportSheet(model, botId: botId, active: details == nil && openFile == nil)
             .codyncSheet(isPresented: $showTrace) {
                 TraceView(botId: botId)
             }
             .codyncSheet(item: $botChat) { BotConversationView(botId: botId, peerId: $0.id) }
             .codyncSheet(item: $openArtifact) { ArtifactView(target: $0) }
+            .codyncSheet(item: $openFile) { FileViewer(file: $0.file, entryId: $0.entryId, botId: $0.botId) }
             .codyncSheet(item: $openCall) { CallConversationView(line: $0) }
             .codyncSheet(item: $details) { request in
                 BotDetailsView(botId: request.botId ?? botId, request: request) { artifact in
@@ -95,6 +97,7 @@ public struct ThreadView: View {
         showTrace = false
         botChat = nil
         openArtifact = nil
+        openFile = nil
         editingGroup = false
         details = nil
         if model.fileDownloads.export?.botId == botId { model.fileDownloads.dismissExport() }
@@ -119,6 +122,7 @@ public struct ThreadView: View {
                         // In a group, the bot whose agent failed.
                         addFallback: { details = DetailsRequest(botId: e.data.author ?? e.botId) },
                         openArtifact: { openArtifact = ArtifactTarget(botId: e.botId, id: $0.id, title: $0.title) },
+                        openFile: { openFile = $0 },
                         openCall: { openCall = e })
                     .equatable()
             }

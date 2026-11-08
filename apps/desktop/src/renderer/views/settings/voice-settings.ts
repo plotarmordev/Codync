@@ -188,8 +188,12 @@ export async function localDictation(c: HostClient): Promise<LocalDictation> {
 /** Checks the key with the provider before the computer keeps it; an empty key removes it. */
 export const setVoiceKey = (c: HostClient, p: VoiceProvider, key: string) => c.call<VoiceStatus>('setVoiceKey', { provider: p, key }, 30_000)
 
-/** Links the speech server at `url` after the computer checks it with a test transcription; empty unlinks. Loopback-only, like `setVoiceKey`. */
-export const setSpeechServer = (c: HostClient, url: string) => c.call<LocalDictation>('setSpeechServer', { url }, 30_000)
+/**
+ * Links the speech server at `url`, asking it for `model` (empty: the one it serves), after the computer checks it with a test
+ * transcription; an empty `url` unlinks. Loopback-only, like `setVoiceKey`.
+ */
+export const setSpeechServer = (c: HostClient, url: string, model = '') =>
+  c.call<LocalDictation>('setSpeechServer', { url, model }, 30_000)
 
 /** A short-lived credential for one call's audio session. */
 export const voiceSession = async (c: HostClient, p: VoiceProvider, model: string, voice: string) =>

@@ -347,6 +347,7 @@ function LocalDictationSettings() {
   const [local, setLocal] = useState<voice.LocalDictation | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [url, setUrl] = useState('')
+  const [model, setModel] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
   const canLink = store.client?.transport instanceof LoopbackTransport
@@ -371,21 +372,23 @@ function LocalDictationSettings() {
     return () => void (cancelled = true)
   }, [online])
 
-  /** The computer tries a transcription on the address before it keeps it; an empty one unlinks. */
-  const link = (address: string) => {
+  /** The computer tries a transcription on the address (with `chosen` model, if any) before it keeps it; an empty one unlinks. */
+  const link = (address: string, chosen = '') => {
     const client = liveClient(store)
     if (busy || !client) return
     setBusy(true)
     setFailure(null)
     voice
-      .setSpeechServer(client, address)
+      .setSpeechServer(client, address, chosen)
       .then((l) => {
         show(l)
         setUrl('')
+        setModel('')
       })
       .catch((e: unknown) => setFailure(errorText(e)))
       .finally(() => setBusy(false))
   }
+  const submit = () => url.trim() && link(url.trim(), model.trim())
 
   // Where the link field shows, it already says what to do; elsewhere the host says where to link one.
   const footer = canLink && local !== null && !local.ready ? undefined : note ?? undefined
@@ -422,23 +425,38 @@ function LocalDictationSettings() {
                     autoComplete="off"
                     className="settings-key-input"
                     onChange={(e) => setUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && url.trim() && link(url.trim())}
+                    onKeyDown={(e) => e.key === 'Enter' && submit()}
                   />
                   {busy ? (
                     <Spinner />
                   ) : (
-                    <Button onClick={() => link(url.trim())} disabled={!url.trim()}>
+                    <Button onClick={submit} disabled={!url.trim()}>
                       Link
                     </Button>
                   )}
                 </HStack>
-                <Reveal show={failure !== null}>
-                  <HStack as="span" gap={5} className="settings-key-result failed">
-                    <Icon name="exclamationmark.circle.fill" size={10} />
-                    {failure}
-                  </HStack>
-                </Reveal>
+                <input
+                  type="text"
+                  aria-label="Speech model"
+                  placeholder="Model, if the server serves several (e.g. Systran/faster-whisper-large-v3)"
+                  value={model}
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="settings-key-input"
+                  onChange={(e) => setModel(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && submit()}
+                />
               </VStack>,
+            ]
+          : []),
+        ...(canLink
+          ? [
+              <Reveal key="failure" show={failure !== null}>
+                <HStack as="span" gap={5} className="settings-key-result failed">
+                  <Icon name="exclamationmark.circle.fill" size={10} />
+                  {failure}
+                </HStack>
+              </Reveal>,
             ]
           : []),
       ]}

@@ -12,6 +12,9 @@ use std::time::Duration;
 use url::Url;
 
 const SERVER_KEY: &str = "speech-server";
+/// The model to ask the server for: servers serving several (Speaches) need one; whisper-server
+/// serves one and ignores it.
+const MODEL_KEY: &str = "speech-server-model";
 const TIMEOUT: Duration = Duration::from_mins(2);
 /// Whisper writes "Thank you." or "you" for silence or faint room noise; a recording whose loudest
 /// 100 ms stays under this RMS (-45 dBFS; room noise is about -60, speech -30 to -10) has no speech.
@@ -33,6 +36,10 @@ fn server(store: &Store) -> Option<String> {
     store.kv_get(SERVER_KEY).filter(|s| !s.is_empty())
 }
 
+fn model(store: &Store) -> String {
+    store.kv_get(MODEL_KEY).unwrap_or_default()
+}
+
 /// `{ready, message, server}` for `localDictation`: the linked server, or what to do without one,
 /// worded for a caller on this computer (`here`) or elsewhere.
 pub fn status(store: &Store, here: bool) -> Value {
@@ -40,15 +47,17 @@ pub fn status(store: &Store, here: bool) -> Value {
     json!({"ready": server.is_some(), "message": server.is_none().then(|| not_linked(here)), "server": server})
 }
 
-/// `setSpeechServer` (only on this computer): links the server at `url` once it transcribes a
-/// short silence, or unlinks it when `url` is empty.
-pub async fn link(store: &Store, url: &str) -> Result<Value> {
-    let url = url.trim();
+/// `setSpeechServer` (only on this computer): links the server at `url`, asking it for `model` if
+/// one is given, once it transcribes a second of silence; or unlinks it when `url` is empty.
+pub async fn link(store: &Store, url: &str, model: &str) -> Result<Value> {
+    let (url, model) = (url.trim(), model.trim());
     if url.is_empty() {
         store.kv_delete(SERVER_KEY)?;
+        store.kv_delete(MODEL_KEY)?;
     } else {
-        post(store, url, &super::wav(&[0; 16_000], 16_000)).await?;
+        post(store, url, model, &super::wav(&[0; 32_000], 16_000)).await?;
         store.kv_set(SERVER_KEY, url)?;
+        store.kv_set(MODEL_KEY, model)?;
     }
     Ok(status(store, true))
 }
@@ -59,16 +68,20 @@ pub async fn transcribe(store: &Store, wav: &[u8]) -> Result<Value> {
     if !voiced(wav) {
         return Ok(json!({"text": ""}));
     }
-    let text = post(store, &url, wav).await?;
+    let text = post(store, &url, &model(store), wav).await?;
     Ok(json!({"text": spoken(&text)}))
 }
 
 /// One transcription request to the server at `url`; its transcript, or why it gave none.
-async fn post(store: &Store, url: &str, wav: &[u8]) -> Result<String> {
+async fn post(store: &Store, url: &str, model: &str, wav: &[u8]) -> Result<String> {
     let parsed = Url::parse(url).map_err(|_| anyhow!("`{url}` isn't a web address"))?;
     let client = pinned(&parsed).await?;
     let prompt = format!("{TRANSCRIBE_HINT} {}", names_hint(&spoken_names(store)));
-    let (boundary, body) = multipart(&[("prompt", &prompt), ("temperature", "0"), ("response_format", "json")], wav);
+    let mut fields = vec![("prompt", prompt.as_str()), ("temperature", "0"), ("response_format", "json")];
+    if !model.is_empty() {
+        fields.push(("model", model));
+    }
+    let (boundary, body) = multipart(&fields, wav);
     let res = client
         .post(parsed)
         .header("Content-Type", format!("multipart/form-data; boundary={boundary}"))
@@ -76,8 +89,11 @@ async fn post(store: &Store, url: &str, wav: &[u8]) -> Result<String> {
         .send()
         .await
         .map_err(|_| anyhow!("The speech server at {url} isn't answering. Check that it's running."))?;
+    if res.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY && model.is_empty() {
+        bail!("The speech server at {url} needs a model: enter the one it serves.");
+    }
     if !res.status().is_success() {
-        bail!("The speech server at {url} answered {}. Check its address.", res.status());
+        bail!("The speech server at {url} answered {}. Check its address and model.", res.status());
     }
     let v: Value = res.json().await.unwrap_or_default();
     v["text"]
@@ -210,17 +226,18 @@ mod tests {
             "not a url",
         ] {
             let store = memory_store();
-            let e = link(&store, url).await.expect_err(url);
+            let e = link(&store, url, "").await.expect_err(url);
             assert!(server(&store).is_none(), "{url} linked: {e:#}");
         }
     }
 
-    #[tokio::test]
-    async fn a_linked_server_transcribes_and_unlinking_says_how_to_link_again() {
+    /// A server like Speaches: it serves several models, so a request without `model` gets 422.
+    async fn model_required_server(model: &'static str) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/v1/audio/transcriptions", listener.local_addr().unwrap());
         tokio::spawn(async move {
+            let field = format!("name=\"model\"\r\n\r\n{model}\r\n");
             loop {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 let mut seen = Vec::new();
@@ -228,14 +245,25 @@ mod tests {
                 while !seen.ends_with(b"--\r\n") {
                     socket.read_buf(&mut seen).await.unwrap();
                 }
-                let body = r#"{"text":" Hello from my own model. "}"#;
+                let (status, body) = if String::from_utf8_lossy(&seen).contains(&field) {
+                    ("200 OK", r#"{"text":" Hello from my own model. "}"#)
+                } else {
+                    ("422 Unprocessable Entity", r#"{"detail":"model: Field required"}"#)
+                };
                 let reply = format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                     body.len()
                 );
                 socket.write_all(reply.as_bytes()).await.unwrap();
             }
         });
+        url
+    }
+
+    #[tokio::test]
+    async fn a_linked_server_transcribes_with_its_model_and_unlinking_says_how_to_link_again() {
+        let model = "Systran/faster-whisper-large-v3";
+        let url = model_required_server(model).await;
         let store = memory_store();
         let computer = crate::service::host_name();
         let elsewhere = status(&store, false)["message"].as_str().unwrap_or_default().to_owned();
@@ -246,17 +274,22 @@ mod tests {
         );
         assert!(transcribe(&store, &recording(&[0; 160])).await.is_err());
 
-        let linked = link(&store, &url).await.unwrap();
+        let e = link(&store, &url, "").await.expect_err("a server that needs a model");
+        assert!(e.to_string().contains("needs a model"), "{e:#}");
+        assert!(server(&store).is_none());
+
+        let linked = link(&store, &url, model).await.unwrap();
         assert_eq!((linked["ready"].as_bool(), linked["server"].as_str()), (Some(true), Some(url.as_str())));
         let speech: Vec<i16> = (0..8_000).map(|i| if i / 40 % 2 == 0 { 3_000 } else { -3_000 }).collect();
         assert_eq!(transcribe(&store, &recording(&speech)).await.unwrap()["text"], "Hello from my own model.");
         assert_eq!(transcribe(&store, &recording(&[0; 8_000])).await.unwrap()["text"], "");
 
-        let unlinked = link(&store, "").await.unwrap();
+        let unlinked = link(&store, "", "").await.unwrap();
         assert_eq!(
             (unlinked["ready"].as_bool(), unlinked["message"].as_str()),
             (Some(false), Some(not_linked(true).as_str()))
         );
+        assert!(store.kv_get(MODEL_KEY).is_none(), "unlinking forgets the model");
     }
 
     #[test]

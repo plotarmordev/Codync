@@ -58,7 +58,7 @@ internal fun AppStore.dictationService(context: Context) = DictationService(voic
             DictationEngine.Local -> localDictation().let { if (it.ready) DictationGate.Open else DictationGate.Blocked(it.reason()) }
         }
     },
-    openMic = { AndroidMic(context) }, transcribe = ::transcribeDictation)
+    openMic = { ClipMic.debugClip(context) ?: AndroidMic(context) }, transcribe = ::transcribeDictation)
 
 /** The recording in pieces, a few transcribed at a time and joined in order; a provider's count toward this month's minutes. */
 private suspend fun AppStore.transcribeDictation(pcm: ByteArray, engine: DictationEngine): String = coroutineScope {

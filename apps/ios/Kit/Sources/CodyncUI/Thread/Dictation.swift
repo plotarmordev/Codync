@@ -40,7 +40,15 @@ struct DictationService {
                 }
             },
             allowMic: { await AVAudioApplication.requestRecordPermission() },
-            openMic: { engine, heard in Dictation.openMic(engine, bufferSize: 2048) { MicTap.pcm16k(from: $0, out: heard) } },
+            openMic: { engine, heard in
+                #if DEBUG
+                if let clip = DictationClip.fromEnvironment {
+                    DictationClip.play(clip, into: heard)
+                    return true
+                }
+                #endif
+                return Dictation.openMic(engine, bufferSize: 2048) { MicTap.pcm16k(from: $0, out: heard) }
+            },
             transcribe: { pcm, engine, model in
                 let said = try await Dictation.transcribe(pcm, engine: engine, on: model)
                 // The computer's speech server spends no provider minutes.

@@ -148,26 +148,50 @@ fn voiced(wav: &[u8]) -> bool {
         .any(|w| w.iter().map(|b| f32::from(i16::from_le_bytes(*b)) / 32_768.0).map(|s| s * s).sum::<f32>() >= floor)
 }
 
-/// The transcript without whisper.cpp's markers for silence and sounds: every `[BLANK_AUDIO]`-style
-/// tag, and a transcript that is only a caption like `(music)`. Words beside a tag, and a spoken
-/// parenthetical (it has sentence punctuation, or sits among other words), stay.
+/// Words Whisper writes, alone in brackets or parentheses, for what isn't speech (`[BLANK_AUDIO]`,
+/// `(upbeat music)`, `[ Silence ]`); a span of anything else is the speaker's own.
+const CAPTION_WORDS: [&str; 17] = [
+    "blank",
+    "audio",
+    "music",
+    "silence",
+    "inaudible",
+    "applause",
+    "laughter",
+    "laughs",
+    "laughing",
+    "noise",
+    "static",
+    "upbeat",
+    "soft",
+    "background",
+    "sound",
+    "sighs",
+    "coughs",
+];
+
+fn is_caption(inner: &str) -> bool {
+    let mut words = inner.split(|c: char| c == '_' || c.is_whitespace()).filter(|w| !w.is_empty()).peekable();
+    words.peek().is_some() && words.all(|w| CAPTION_WORDS.contains(&w.to_lowercase().as_str()))
+}
+
+/// The transcript without Whisper's markers for silence and sounds: each bracketed or parenthesized
+/// span made only of caption words. Every other bracket and parenthetical stays as spoken.
 fn spoken(text: &str) -> String {
-    let mut words = String::new();
+    let mut kept = String::new();
     let mut rest = text;
-    while let Some((before, tagged)) = rest.split_once('[')
-        && let Some((_, after)) = tagged.split_once(']')
-    {
-        words.push_str(before);
-        words.push(' ');
-        rest = after;
+    while let Some(open) = rest.find(['[', '(']) {
+        let close = if rest[open..].starts_with('[') { ']' } else { ')' };
+        let Some(len) = rest[open + 1..].find(close) else { break };
+        let end = open + 1 + len;
+        kept.push_str(&rest[..open]);
+        if !is_caption(&rest[open + 1..end]) {
+            kept.push_str(&rest[open..=end]);
+        }
+        rest = &rest[end + 1..];
     }
-    words.push_str(rest);
-    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
-    let caption = words
-        .strip_prefix('(')
-        .and_then(|w| w.strip_suffix(')'))
-        .is_some_and(|inner| !inner.contains(['(', ')', '.', ',', '!', '?']));
-    if caption { String::new() } else { words }
+    kept.push_str(rest);
+    kept.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
@@ -297,13 +321,19 @@ mod tests {
         assert_eq!(spoken(" [BLANK_AUDIO] "), "");
         assert_eq!(spoken("(music)"), "");
         assert_eq!(spoken("(upbeat music)"), "");
+        assert_eq!(spoken("[ Silence ]"), "");
+        assert_eq!(spoken("Ship it [MUSIC] now."), "Ship it now.");
         assert_eq!(spoken(" Ship it. "), "Ship it.");
     }
 
     #[test]
-    fn speech_beside_a_marker_and_spoken_parentheticals_stay() {
+    fn speech_beside_a_marker_brackets_and_parentheticals_stay() {
         assert_eq!(spoken("[BLANK_AUDIO] Hello, ship the fix. [BLANK_AUDIO]"), "Hello, ship the fix.");
         assert_eq!(spoken("(Please keep this parenthetical.)"), "(Please keep this parenthetical.)");
+        assert_eq!(spoken("(Please keep this parenthetical)"), "(Please keep this parenthetical)");
         assert_eq!(spoken("Run the tests (all of them) first."), "Run the tests (all of them) first.");
+        assert_eq!(spoken("Set the value to [1, 2, 3]."), "Set the value to [1, 2, 3].");
+        assert_eq!(spoken("Use arr[0] instead."), "Use arr[0] instead.");
+        assert_eq!(spoken("(play some music)"), "(play some music)");
     }
 }

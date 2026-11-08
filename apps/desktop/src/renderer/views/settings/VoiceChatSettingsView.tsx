@@ -392,6 +392,15 @@ function LocalDictationSettings() {
 
   // Where the link field shows, it already says what to do; elsewhere the host says where to link one.
   const footer = canLink && local !== null && !local.ready ? undefined : note ?? undefined
+  // Under the row that linked or unlinked, so a closed one leaves no empty row in the card.
+  const failed = (
+    <Reveal show={failure !== null}>
+      <HStack as="span" gap={5} className="settings-key-result failed">
+        <Icon name="exclamationmark.circle.fill" size={10} />
+        {failure}
+      </HStack>
+    </Reveal>
+  )
   return (
     <CardSection title={voice.localEngineName(store === app.local, store.hostName)} footer={footer}>
       {[
@@ -401,16 +410,19 @@ function LocalDictationSettings() {
         ...(local === null || (canLink && !local.ready)
           ? []
           : [
-              <ValueRow key="server" label="Speech server">
-                {canLink && local.server ? (
-                  <>
-                    <Text truncate title={local.server}>{local.server}</Text>
-                    {busy ? <Spinner /> : <IconButton title="Unlink" icon="trash" onClick={() => link('')} />}
-                  </>
-                ) : (
-                  <Text tone="secondary">{local.ready ? 'Linked' : 'Not linked'}</Text>
-                )}
-              </ValueRow>,
+              <VStack key="server" gap={8}>
+                <ValueRow label="Speech server">
+                  {canLink && local.server ? (
+                    <>
+                      <Text truncate title={local.server}>{local.server}</Text>
+                      {busy ? <Spinner /> : <IconButton title="Unlink" icon="trash" onClick={() => link('')} />}
+                    </>
+                  ) : (
+                    <Text tone="secondary">{local.ready ? 'Linked' : 'Not linked'}</Text>
+                  )}
+                </ValueRow>
+                {canLink && failed}
+              </VStack>,
             ]),
         ...(canLink && local !== null && !local.ready
           ? [
@@ -446,17 +458,8 @@ function LocalDictationSettings() {
                   onChange={(e) => setModel(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && submit()}
                 />
+                {failed}
               </VStack>,
-            ]
-          : []),
-        ...(canLink
-          ? [
-              <Reveal key="failure" show={failure !== null}>
-                <HStack as="span" gap={5} className="settings-key-result failed">
-                  <Icon name="exclamationmark.circle.fill" size={10} />
-                  {failure}
-                </HStack>
-              </Reveal>,
             ]
           : []),
       ]}

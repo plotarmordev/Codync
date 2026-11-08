@@ -71,13 +71,10 @@ const val LOCAL_UPDATE_MESSAGE = "Update Codync on your computer to dictate with
 
 /**
  * Whether a speech server is linked for [DictationEngine.Local] dictation (the host's `localDictation`
- * method): [server] is its transcription endpoint when one is linked, and [message] says what to
- * do without one, with [reason] falling back to the update note when the host sent none (a host
- * before the method answers 404 instead).
+ * method); if not, [message] says what to do, and [reason] falls back to the update note when the
+ * host sent none (a host before the method answers 404 instead).
  */
-@Serializable data class LocalDictation(val ready: Boolean = false, val message: String? = null,
-    /** The linked speech server's endpoint; null when none is linked, and absent on hosts before `setSpeechServer`. */
-    val server: String? = null) {
+@Serializable data class LocalDictation(val ready: Boolean = false, val message: String? = null) {
     fun reason(): String = message ?: LOCAL_UPDATE_MESSAGE
 }
 

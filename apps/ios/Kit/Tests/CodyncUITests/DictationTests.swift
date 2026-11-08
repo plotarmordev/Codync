@@ -286,14 +286,12 @@ private extension Dictation {
     #expect(VoiceProvider.allCases.allSatisfy { DictationEngine.provider($0) != .local })
 }
 
-/// `localDictation` decodes the linked `server` (absent on older hosts), and a not-ready computer
-/// without a reason reads as "update your computer".
+/// `localDictation` decodes, and a not-ready computer without a reason reads as "update your computer".
 @MainActor @Test func localDictationDecodesAndDefaultsToAnUpdateNote() throws {
     let decoder = JSONDecoder()
-    let linked = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":true,"message":null,"server":"http://127.0.0.1:8080/v1/audio/transcriptions"}"#.utf8))
-    #expect(linked.ready && linked.server == "http://127.0.0.1:8080/v1/audio/transcriptions")
     let notReady = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":false,"message":"Install the model."}"#.utf8))
-    #expect(!notReady.ready && notReady.server == nil && notReady.reason == "Install the model.")
+    #expect(!notReady.ready && notReady.reason == "Install the model.")
+    #expect(try decoder.decode(LocalDictation.self, from: Data(#"{"ready":true,"message":null,"server":"http://127.0.0.1:8080/v1/audio/transcriptions"}"#.utf8)).ready)
     let silent = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":false}"#.utf8))
     #expect(!silent.ready && silent.reason == VoiceStatus.localUpdateMessage)
 }

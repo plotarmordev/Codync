@@ -129,8 +129,6 @@ public struct VoiceStatus: Decodable, Sendable {
 public struct LocalDictation: Decodable, Sendable {
     public var ready: Bool
     public var message: String?
-    /// The linked server's transcription endpoint; absent on hosts before the field.
-    public var server: String? = nil
 
     public var reason: String { message ?? VoiceStatus.localUpdateMessage }
 }

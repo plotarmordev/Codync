@@ -334,9 +334,9 @@ function ProviderVoiceSettings({ provider, dictationOnly = false }: { provider: 
 
 /**
  * Dictation on the computer's linked speech server, titled after that computer: no key, no models to pick, nothing billed.
- * Loopback (Codync on that computer itself) links and unlinks the server; elsewhere the card
- * shows the link or the host's message. The check runs again when the computer (re)connects;
- * its errors and link errors show in the footer / result line like the key entry's.
+ * Loopback (Codync on that computer itself) shows the server's address and links and unlinks it; elsewhere the card
+ * shows only whether one is linked, or the host's message, like the phones. The check runs again when the computer
+ * (re)connects; its errors and link errors show in the footer / result line like the key entry's.
  */
 function LocalDictationSettings() {
   const app = useApp()
@@ -395,14 +395,20 @@ function LocalDictationSettings() {
         <Text key="body" size="footnote" tone="secondary">
           Your speech model transcribes what you say. Codync sends the audio only to the speech server you link on your computer or your own network, so it never leaves your computers.
         </Text>,
-        ...(local?.server
-          ? [
-              <ValueRow key="server" label="Speech server" detail="Linked">
-                <Text truncate title={local.server}>{local.server}</Text>
-                {canLink ? busy ? <Spinner /> : <IconButton title="Unlink" icon="trash" onClick={() => link('')} /> : null}
+        ...(local === null || (canLink && !local.ready)
+          ? []
+          : [
+              <ValueRow key="server" label="Speech server">
+                {canLink && local.server ? (
+                  <>
+                    <Text truncate title={local.server}>{local.server}</Text>
+                    {busy ? <Spinner /> : <IconButton title="Unlink" icon="trash" onClick={() => link('')} />}
+                  </>
+                ) : (
+                  <Text tone="secondary">{local.ready ? 'Linked' : 'Not linked'}</Text>
+                )}
               </ValueRow>,
-            ]
-          : []),
+            ]),
         ...(canLink && local !== null && !local.ready
           ? [
               <VStack key="link" gap={8}>

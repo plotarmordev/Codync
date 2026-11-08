@@ -88,8 +88,9 @@ text without reaching the server (Whisper writes "Thank you." for silence), and 
 keyring. `setSpeechServer {url}` → `{ready, message, server}` links the server once it transcribes a
 second of silence (the error says why not) or, with an empty `url`, unlinks it; only the computer
 itself may call it, so the desktop app's **This computer** card in Voice chat settings has the
-address field, and the phones and other computers' apps show the linked address or how to link one
-in a card under that computer's name; the host's `message` names the computer too, since a phone shows it. `localDictation` →
+address field and shows the linked address; the phones and other computers' apps show only whether
+one is linked (**Linked** / **Not linked**) and how to link one, in a card under that computer's name;
+the host's `message` names the computer too, since a phone shows it. `localDictation` →
 `{ready, message, server}` says whether one is linked (hosts before it answer "unknown method", and
 the apps say to update Codync on the computer); before recording, the mic checks it and, if not
 ready, shows `message` as the dictation's failure. It's a dictation engine only, never a call

@@ -85,6 +85,12 @@ xcodegen generate --spec apps/project.yml
 xcodebuild build -project apps/Codync.xcodeproj -scheme "iOS Dev" -configuration DevDebug -derivedDataPath build/dd -destination 'platform=iOS,id=<device-id>'
 ```
 
+A build started outside a macOS login session, such as an agent run by a LaunchDaemon, exits 133 while Xcode fetches WebRTC: SwiftPM downloads binary targets with URLSession, which traps there. Put the pinned packages' binary archives into SwiftPM's cache before building; SwiftPM then copies them and still checks their checksums:
+
+```sh
+python3 tools/swiftpm-artifacts.py
+```
+
 Use `iOS Dev` for development and `iOS` for production, with a connected device or simulator in Xcode. Do not edit `project.pbxproj` directly. Keep normal simulator signing: Clerk uses Keychain, and unsigned simulator builds can fail initialization with OSStatus -34018.
 
 Install the device build and replace the old iPhone process (substitute its device ID):

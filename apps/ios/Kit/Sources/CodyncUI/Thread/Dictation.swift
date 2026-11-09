@@ -141,12 +141,17 @@ final class Dictation {
             do {
                 let said = try await service.transcribe(recording.pcm, recording.engine, recording.model)
                 guard generation == self.generation else { return }
-                edit? { Self.join($0, said) }
+                // The pill gives the box its width back first: text set in the same update is sized for the
+                // pill's narrower box and keeps that height.
+                withAnimation(Motion.morph) { transcribing = false } completion: { [weak self] in
+                    guard generation == self?.generation else { return }
+                    edit? { Self.join($0, said) }
+                }
             } catch {
                 guard generation == self.generation else { return }
                 failure = error.localizedDescription
+                transcribing = false
             }
-            transcribing = false
         }
     }
 

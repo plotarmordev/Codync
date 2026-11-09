@@ -94,18 +94,23 @@ private extension Dictation {
 }
 
 /// The pill's stop has the recording transcribed, and the words go after what's in the box when
-/// they arrive, words typed while waiting included.
+/// they arrive, words typed while waiting included. They land once the pill has gone, so the box
+/// is sized for its full width.
 @MainActor @Test func aRecordingIsTranscribedAfterWhatTheBoxHoldsThen() async {
     let transcript = Pending<String>(), mic = Mic()
     await dictating(transcript: transcript, mic: mic) { dictation, store in
         var box = "Fix the bug"
-        await dictation.dictate(Dictation.minBytes, from: mic, on: store) { box = $0(box) }
+        var pillUpWhenWritten = false
+        await dictation.dictate(Dictation.minBytes, from: mic, on: store) {
+            pillUpWhenWritten = dictation.transcribing
+            box = $0(box)
+        }
         #expect(dictation.transcribing && !dictation.listening)
         #expect(await transcript.asked())
         box += " now"
         transcript.answer("in the parser")
-        #expect(await until { !dictation.transcribing })
-        #expect(box == "Fix the bug now in the parser")
+        #expect(await until { box == "Fix the bug now in the parser" })
+        #expect(!pillUpWhenWritten)
         #expect(dictation.failure == nil)
     }
 }

@@ -6,6 +6,13 @@ any left). tools/asc-submit.py reads the released version's section;
 a version without one gets a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.42.0
+### zh-Hant
+- 聽寫可以選你的電腦（以電腦名稱列出）：由你自己架設的語音模型轉成文字（在電腦版 Codync 的語音設定中連結），不需要金鑰，聲音不會離開你的電腦。
+
+### en-US
+- Dictation can use your computer, listed under its name: a speech model you run yourself transcribes what you say (link it in Voice chat settings in Codync on your computer), with no key, and the audio never leaves your computers.
+
 ## 2.38.1
 ### zh-Hant
 - 語音訊息載入時會顯示轉圈，播放時顯示已播放時間、總長度與進度條。

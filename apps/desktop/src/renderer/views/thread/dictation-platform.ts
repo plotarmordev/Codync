@@ -25,7 +25,7 @@ export function dictationPlatform(host: (() => Promise<HostClient>) | null = nul
     async checkReady(target) {
       if (target !== 'local') return configured(await voiceStatus(await client()), target)
       const local = await localDictation(await client())
-      if (!local.ready) throw new Error(local.message ?? 'The speech model is not installed on this computer.')
+      if (!local.ready) throw new Error(local.message ?? 'No speech model is linked on this computer.')
       return true
     },
     configureKey,

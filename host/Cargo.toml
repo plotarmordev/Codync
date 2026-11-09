@@ -1,6 +1,6 @@
 [package]
 name = "codync-host"
-version = "2.38.1"
+version = "2.42.0"
 edition = "2024"
 # iroh (codync-network) needs 1.91.
 rust-version = "1.91"
@@ -70,7 +70,6 @@ zip = { version = "9.2.0", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6.3", features = ["apple-native"] }
-transcribe-cpp = "0.4.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"] }

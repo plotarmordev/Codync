@@ -69,9 +69,10 @@ public enum VoiceProvider: String, CaseIterable, Codable, Sendable {
     }
 }
 
-/// What transcribes dictation into the message box: a provider on the user's own key, or this
-/// computer's own speech model (`voiceTranscribe` with provider "local"; no key, no minutes).
-/// Dictation only: never a call engine. `nil` in the `dictationEngine` pref stays on-device.
+/// What transcribes dictation into the message box: a provider on the user's own key, or the
+/// speech server linked on the computer (`voiceTranscribe` with provider "local"; no key, no
+/// minutes), shown under the computer's name. Dictation only: never a call engine. `nil` in the
+/// `dictationEngine` pref stays on-device.
 public enum DictationEngine: Equatable, Sendable {
     case provider(VoiceProvider)
     case local
@@ -87,13 +88,6 @@ public enum DictationEngine: Equatable, Sendable {
         switch self {
         case .provider(let provider): provider.rawValue
         case .local: "local"
-        }
-    }
-
-    public var name: String {
-        switch self {
-        case .provider(let provider): provider.name
-        case .local: "This computer"
         }
     }
 }
@@ -119,7 +113,7 @@ public struct VoiceStatus: Decodable, Sendable {
         public var defaults: VoiceDefaults?
     }
 
-    /// What an older host without `localDictation` hears when "This computer" is picked.
+    /// What an older host without `localDictation` hears when the local engine is picked.
     public static let localUpdateMessage = "Update Codync on your computer to dictate with its own speech model."
 
     public var providers: [Provider]
@@ -129,9 +123,9 @@ public struct VoiceStatus: Decodable, Sendable {
     }
 }
 
-/// Whether the computer's own speech model can transcribe "This computer" dictation (the host's
-/// `localDictation` method), and if it can't, what it needs: its `message`, or the update note
-/// when the computer sent none (a host before the method answers 404 instead).
+/// Whether the computer's linked speech server can transcribe local-engine dictation (the
+/// host's `localDictation` method), and if it can't, what it needs: its `message`, or the update
+/// note when the computer sent none (a host before the method answers 404 instead).
 public struct LocalDictation: Decodable, Sendable {
     public var ready: Bool
     public var message: String?
@@ -158,8 +152,9 @@ public struct VoiceModels: Codable, Sendable {
 public extension HostClient {
     func voiceStatus() async throws -> VoiceStatus { try await call("voiceStatus") }
 
-    /// Whether the computer can transcribe "This computer" dictation itself. Never asks for the
-    /// keys `voiceStatus` waits on; a host before it answers 404, which reads as "update".
+    /// Whether the computer's linked speech server is ready to transcribe local-engine
+    /// dictation. Never asks for the keys `voiceStatus` waits on; a host before it answers 404,
+    /// which reads as "update".
     func localDictation() async throws -> LocalDictation {
         do {
             return try await call("localDictation")
@@ -186,7 +181,7 @@ public extension HostClient {
     }
 
     /// Speech to text for one utterance (a WAV file). `provider` is a provider's raw value, or
-    /// "local" for the computer's own speech model (no key, no model to pick).
+    /// "local" for the linked speech server (no key, no model to pick).
     func voiceTranscribe(provider: String, model: String, wav: Data) async throws -> String {
         struct Text: Decodable { var text: String }
         let t: Text = try await call("voiceTranscribe", ["provider": provider, "model": model,

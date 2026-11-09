@@ -59,10 +59,9 @@ import Testing
     }
 }
 
-/// "This computer" is offered beside the mic's dictation engines only, never among call engines.
-@Test @MainActor func thisComputerIsDictationOnly() {
+/// The computer's speech server is offered beside the mic's dictation engines only, never among call engines.
+@Test @MainActor func theComputersSpeechServerIsDictationOnly() {
     defer { UserDefaults.standard.removeObject(forKey: VoiceSettings.dictationEngineKey) }
-    #expect(DictationEngine.local.name == "This computer")
     #expect(DictationEngine.local.pref == "local")
 
     // Call engines are `VoiceProvider`s (the call engine picker's options): "local" isn't one.

@@ -8,7 +8,7 @@ enum DictationGate {
     case open
     /// No key for a provider: the mic button opens settings instead.
     case needsKey
-    /// The computer says why it can't transcribe (its speech model isn't installed, say).
+    /// The computer says why it can't transcribe (no speech server is linked, say).
     case blocked(String)
 }
 
@@ -40,10 +40,18 @@ struct DictationService {
                 }
             },
             allowMic: { await AVAudioApplication.requestRecordPermission() },
-            openMic: { engine, heard in Dictation.openMic(engine, bufferSize: 2048) { MicTap.pcm16k(from: $0, out: heard) } },
+            openMic: { engine, heard in
+                #if DEBUG
+                if let clip = DictationClip.fromEnvironment {
+                    DictationClip.play(clip, into: heard)
+                    return true
+                }
+                #endif
+                return Dictation.openMic(engine, bufferSize: 2048) { MicTap.pcm16k(from: $0, out: heard) }
+            },
             transcribe: { pcm, engine, model in
                 let said = try await Dictation.transcribe(pcm, engine: engine, on: model)
-                // "This computer" spends no provider minutes.
+                // The computer's speech server spends no provider minutes.
                 if case .provider(let provider) = engine {
                     VoiceUsage.add(seconds: pcm.count / MicTap.bytesPerSecond, for: provider)
                 }
@@ -56,7 +64,7 @@ struct DictationService {
 /// after what was already typed, and the recording pill's stop, or the recognizer finishing on a
 /// pause, stops it; it uses the call's language setting. With an engine picked beside the mic, it
 /// records, and the pill's stop has the computer transcribe all of it, on the user's key for a
-/// provider or with the computer's own speech model for "This computer"; the transcript goes
+/// provider or on the speech server linked on the computer; the transcript goes
 /// after what's in the box by then.
 @MainActor @Observable
 final class Dictation {
@@ -133,12 +141,17 @@ final class Dictation {
             do {
                 let said = try await service.transcribe(recording.pcm, recording.engine, recording.model)
                 guard generation == self.generation else { return }
-                edit? { Self.join($0, said) }
+                // The pill gives the box its width back first: text set in the same update is sized for the
+                // pill's narrower box and keeps that height.
+                withAnimation(Motion.morph) { transcribing = false } completion: { [weak self] in
+                    guard generation == self?.generation else { return }
+                    edit? { Self.join($0, said) }
+                }
             } catch {
                 guard generation == self.generation else { return }
                 failure = error.localizedDescription
+                transcribing = false
             }
-            transcribing = false
         }
     }
 

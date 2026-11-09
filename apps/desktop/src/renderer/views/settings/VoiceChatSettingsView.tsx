@@ -8,7 +8,7 @@ import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { usePref } from '../../lib/prefs'
 import { useModel } from '../../lib/observable'
-import { useStore } from '../../store/context'
+import { useApp, useStore } from '../../store/context'
 import { useScreenViewed } from '../../store/analytics'
 import { errorText, liveClient } from './parts'
 import * as voice from './voice-settings'
@@ -333,34 +333,136 @@ function ProviderVoiceSettings({ provider, dictationOnly = false }: { provider: 
 }
 
 /**
- * Dictation on the computer's own speech model: no key, no models to pick, nothing billed. The
- * footer says what to install while the model isn't there (hosts before it say to update), or why
- * the check couldn't run; it checks again when the computer (re)connects.
+ * Dictation on the computer's linked speech server, titled after that computer: no key, no models to pick, nothing billed.
+ * Loopback (Codync on that computer itself) shows the server's address and links and unlinks it; elsewhere the card
+ * shows only whether one is linked, or the host's message, like the phones. The check runs again when the computer
+ * (re)connects; its errors and link errors show in the footer / result line like the key entry's.
  */
 function LocalDictationSettings() {
+  const app = useApp()
   const store = useStore()
   useModel(store)
   const online = store.connection.kind === 'online'
+  /** The computer's answer while it hasn't given one yet. */
+  const [local, setLocal] = useState<voice.LocalDictation | null>(null)
   const [note, setNote] = useState<string | null>(null)
+  const [url, setUrl] = useState('')
+  const [model, setModel] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
+  const canLink = store.client?.transport instanceof LoopbackTransport
+
+  const show = (l: voice.LocalDictation) => {
+    setLocal(l)
+    setNote(l.ready ? null : l.message)
+  }
+
   useEffect(() => {
     let cancelled = false
     void (async () => {
       const client = liveClient(store)
       if (!client) return setNote(`Not connected to ${store.hostName}.`)
       try {
-        const local = await voice.localDictation(client)
-        if (!cancelled) setNote(local.ready ? null : local.message)
+        const l = await voice.localDictation(client)
+        if (!cancelled) show(l)
       } catch (e) {
         if (!cancelled) setNote(errorText(e))
       }
     })()
     return () => void (cancelled = true)
   }, [online])
+
+  /** The computer tries a transcription on the address (with `chosen` model, if any) before it keeps it; an empty one unlinks. */
+  const link = (address: string, chosen = '') => {
+    const client = liveClient(store)
+    if (busy || !client) return
+    setBusy(true)
+    setFailure(null)
+    voice
+      .setSpeechServer(client, address, chosen)
+      .then((l) => {
+        show(l)
+        setUrl('')
+        setModel('')
+      })
+      .catch((e: unknown) => setFailure(errorText(e)))
+      .finally(() => setBusy(false))
+  }
+  const submit = () => url.trim() && link(url.trim(), model.trim())
+
+  // Where the link field shows, it already says what to do; elsewhere the host says where to link one.
+  const footer = canLink && local !== null && !local.ready ? undefined : note ?? undefined
+  // Under the row that linked or unlinked, so a closed one leaves no empty row in the card.
+  const failed = (
+    <Reveal show={failure !== null}>
+      <HStack as="span" gap={5} className="settings-key-result failed">
+        <Icon name="exclamationmark.circle.fill" size={10} />
+        {failure}
+      </HStack>
+    </Reveal>
+  )
   return (
-    <CardSection title="This computer" footer={note ?? undefined}>
-      <Text size="footnote" tone="secondary">
-        Your computer transcribes what you say in English with its own speech model; the audio never leaves your computer.
-      </Text>
+    <CardSection title={voice.localEngineName(store === app.local, store.hostName)} footer={footer}>
+      {[
+        <Text key="body" size="footnote" tone="secondary">
+          Your speech model transcribes what you say. Codync sends the audio only to the speech server you link on your computer or your own network, so it never leaves your computers.
+        </Text>,
+        ...(local === null || (canLink && !local.ready)
+          ? []
+          : [
+              <VStack key="server" gap={8}>
+                <ValueRow label="Speech server">
+                  {canLink && local.server ? (
+                    <>
+                      <Text truncate title={local.server}>{local.server}</Text>
+                      {busy ? <Spinner /> : <IconButton title="Unlink" icon="trash" onClick={() => link('')} />}
+                    </>
+                  ) : (
+                    <Text tone="secondary">{local.ready ? 'Linked' : 'Not linked'}</Text>
+                  )}
+                </ValueRow>
+                {canLink && failed}
+              </VStack>,
+            ]),
+        ...(canLink && local !== null && !local.ready
+          ? [
+              <VStack key="link" gap={8}>
+                <HStack gap={8} className="settings-row">
+                  <input
+                    type="text"
+                    aria-label="Speech server address"
+                    placeholder="http://127.0.0.1:8080/v1/audio/transcriptions"
+                    value={url}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="settings-key-input"
+                    onChange={(e) => setUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && submit()}
+                  />
+                  {busy ? (
+                    <Spinner />
+                  ) : (
+                    <Button onClick={submit} disabled={!url.trim()}>
+                      Link
+                    </Button>
+                  )}
+                </HStack>
+                <input
+                  type="text"
+                  aria-label="Speech model"
+                  placeholder="Model, if the server serves several (e.g. Systran/faster-whisper-large-v3)"
+                  value={model}
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="settings-key-input"
+                  onChange={(e) => setModel(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && submit()}
+                />
+                {failed}
+              </VStack>,
+            ]
+          : []),
+      ]}
     </CardSection>
   )
 }

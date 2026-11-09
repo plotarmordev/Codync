@@ -94,18 +94,23 @@ private extension Dictation {
 }
 
 /// The pill's stop has the recording transcribed, and the words go after what's in the box when
-/// they arrive, words typed while waiting included.
+/// they arrive, words typed while waiting included. They land once the pill has gone, so the box
+/// is sized for its full width.
 @MainActor @Test func aRecordingIsTranscribedAfterWhatTheBoxHoldsThen() async {
     let transcript = Pending<String>(), mic = Mic()
     await dictating(transcript: transcript, mic: mic) { dictation, store in
         var box = "Fix the bug"
-        await dictation.dictate(Dictation.minBytes, from: mic, on: store) { box = $0(box) }
+        var pillUpWhenWritten = false
+        await dictation.dictate(Dictation.minBytes, from: mic, on: store) {
+            pillUpWhenWritten = dictation.transcribing
+            box = $0(box)
+        }
         #expect(dictation.transcribing && !dictation.listening)
         #expect(await transcript.asked())
         box += " now"
         transcript.answer("in the parser")
-        #expect(await until { !dictation.transcribing })
-        #expect(box == "Fix the bug now in the parser")
+        #expect(await until { box == "Fix the bug now in the parser" })
+        #expect(!pillUpWhenWritten)
         #expect(dictation.failure == nil)
     }
 }
@@ -206,18 +211,19 @@ private extension Dictation {
     }
 }
 
-/// "This computer" without its speech model installed says what the computer reported, as a
+/// The local engine with no speech server linked says what the computer reported, as a
 /// dictation failure — not the missing-key settings prompt — and never opens the microphone.
 @MainActor @Test func localDictationWithoutTheModelSaysWhy() async {
     let mic = Mic()
-    await dictating(picked: .local, check: { .blocked("Install the Whisper model in Codync on your Mac.") }, mic: mic) { dictation, store in
+    let message = "No speech model is linked on Mac. Link one in Codync on that computer: Settings, Voice chat."
+    await dictating(picked: .local, check: { .blocked(message) }, mic: mic) { dictation, store in
         await dictation.start(after: "", model: store) { _ in }
-        #expect(dictation.failure == "Install the Whisper model in Codync on your Mac.")
+        #expect(dictation.failure == message)
         #expect(!dictation.needsKey && !dictation.listening && mic.heard == nil)
     }
 }
 
-/// A "This computer" recording is transcribed by the host's own speech model: `localDictation`
+/// A local-engine recording is transcribed by the linked speech server: `localDictation`
 /// says it's ready, the pieces go out with provider "local" and no model, and no usage minutes are
 /// counted for any provider.
 @MainActor @Test func aLocalRecordingIsTranscribedOnTheComputer() async throws {
@@ -225,7 +231,7 @@ private extension Dictation {
     let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let remote = FakeRemote(.ready(.direct))
-    await remote.setCanned("localDictation", #"{"ready":true,"message":null}"#)
+    await remote.setCanned("localDictation", #"{"ready":true,"message":null,"server":"http://127.0.0.1:8080/v1/audio/transcriptions"}"#)
     await remote.setCanned("voiceTranscribe", #"{"text":"heard on this computer"}"#)
     let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in remote }
     defer { store.retire() }
@@ -265,12 +271,11 @@ private extension Dictation {
     #expect(usage.isEmpty)
 }
 
-/// The pref's value maps to the engine: "local" is "This computer" (dictation only, never a call
-/// engine), a provider's raw value is its engine, and "device" / unknown stays on-device.
+/// The pref's value maps to the engine: "local" is the computer's linked speech server (dictation
+/// only, never a call engine), a provider's raw value is its engine, and "device" / unknown stays on-device.
 @MainActor @Test func theDictationEnginePrefMapsEngines() {
     defer { UserDefaults.standard.removeObject(forKey: VoiceSettings.dictationEngineKey) }
     #expect(DictationEngine(pref: "local") == .local)
-    #expect(DictationEngine(pref: "local")?.name == "This computer")
     #expect(DictationEngine(pref: "openai") == .provider(.openAI))
     #expect(DictationEngine(pref: "device") == nil && DictationEngine(pref: "bogus") == nil)
 
@@ -291,12 +296,12 @@ private extension Dictation {
     let decoder = JSONDecoder()
     let notReady = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":false,"message":"Install the model."}"#.utf8))
     #expect(!notReady.ready && notReady.reason == "Install the model.")
-    #expect(try decoder.decode(LocalDictation.self, from: Data(#"{"ready":true}"#.utf8)).ready)
+    #expect(try decoder.decode(LocalDictation.self, from: Data(#"{"ready":true,"message":null,"server":"http://127.0.0.1:8080/v1/audio/transcriptions"}"#.utf8)).ready)
     let silent = try decoder.decode(LocalDictation.self, from: Data(#"{"ready":false}"#.utf8))
     #expect(!silent.ready && silent.reason == VoiceStatus.localUpdateMessage)
 }
 
-/// A computer from before `localDictation` (it answers 404, unknown method) blocks "This computer"
+/// A computer from before `localDictation` (it answers 404, unknown method) blocks the local engine
 /// with the update note instead of failing.
 @MainActor @Test func anOldComputerAsksForAnUpdate() async throws {
     let suite = "DictationTests.\(UUID().uuidString)"

@@ -100,7 +100,7 @@ Unlock the phone when required. Build, install, launch, and visual inspection ar
 
 | Component | Commands | Requirements |
 | --- | --- | --- |
-| Host | `cd host && cargo build` | rustup; `host/rust-toolchain.toml` pins the version CI uses (a Homebrew `rust` ahead of rustup on PATH ignores it); on a Mac also `cmake` (`brew install cmake`), for the local dictation runtime |
+| Host | `cd host && cargo build` | rustup; `host/rust-toolchain.toml` pins the version CI uses (a Homebrew `rust` ahead of rustup on PATH ignores it) |
 | Host checks | `cd host && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` | Local agent credentials are unnecessary for unit tests |
 | iOS Kit | `cd apps/ios/Kit && xcodebuild test -scheme CodyncKit-Package -destination 'platform=iOS Simulator,id=<sim-id>'` | Swift 6 / Xcode; iOS-only package |
 | iOS app-hosted | `xcodebuild test -project apps/Codync.xcodeproj -scheme "iOS Dev" -destination 'platform=iOS Simulator,id=<sim-id>' -derivedDataPath build/dd` | Tests in `apps/ios/AppTests` that need the running app (a window, WebKit's media stack); it installs Codync Dev on that simulator, so pick one you don't keep signed in |

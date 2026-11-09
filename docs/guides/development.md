@@ -103,6 +103,7 @@ Unlock the phone when required. Build, install, launch, and visual inspection ar
 | Host | `cd host && cargo build` | rustup; `host/rust-toolchain.toml` pins the version CI uses (a Homebrew `rust` ahead of rustup on PATH ignores it) |
 | Host checks | `cd host && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test` | Local agent credentials are unnecessary for unit tests |
 | iOS Kit | `cd apps/ios/Kit && xcodebuild test -scheme CodyncKit-Package -destination 'platform=iOS Simulator,id=<sim-id>'` | Swift 6 / Xcode; iOS-only package |
+| iOS app-hosted | `xcodebuild test -project apps/Codync.xcodeproj -scheme "iOS Dev" -destination 'platform=iOS Simulator,id=<sim-id>' -derivedDataPath build/dd` | Tests in `apps/ios/AppTests` that need the running app (a window, WebKit's media stack); it installs Codync Dev on that simulator, so pick one you don't keep signed in |
 | Desktop | `cd apps/desktop && npm ci && npm run typecheck && npm test` | Node and npm; CI uses Node 24 |
 | Cloud | `cd cloud && npm ci && npm test && npm run typecheck` | Node and npm; CI uses Node 24 |
 | Cloud integration | `cd cloud && env -u CODYNC_CLOUD npm run e2e` | Built host; see [Cloudflare testing](cloudflare-testing.md) |

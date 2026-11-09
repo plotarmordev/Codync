@@ -99,6 +99,38 @@
   overflow-wrap: anywhere;
 }
 
+/* A shared file open in its sheet (FileViewer.tsx): notes centered, contents padded like the chat. */
+.file-viewer {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  display: grid;
+  place-items: center;
+}
+.file-viewer-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  overflow: auto;
+}
+.file-viewer-text {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: var(--text-callout);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.file-viewer-pdf,
+.file-viewer-video {
+  flex: 1;
+  min-height: 0;
+  border: none;
+}
+.file-viewer-video {
+  width: 100%;
+  background: #000;
+}
+
 /* The sound's clock made visible and movable: a 4 px bar filling left to right, in a 24 px strip that takes the
    pointer (the margins keep the layout at the bar's height). Its knob shows while the pointer is on it. */
 @property --played {

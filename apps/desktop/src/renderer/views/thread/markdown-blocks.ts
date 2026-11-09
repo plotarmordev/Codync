@@ -18,6 +18,10 @@ const cells = (line: string) => {
   return row.split('|').map((c) => c.trim())
 }
 
+/** A table's widest row; a reduce, since spreading a 10 MB table's rows into `Math.max` overflows the stack. */
+export const tableColumns = ({ header, rows }: { header: string[]; rows: string[][] }) =>
+  rows.reduce((columns, row) => Math.max(columns, row.length), header.length)
+
 export function parseMarkdown(source: string): Block[] {
   const blocks: Block[] = []
   let paragraph: string[] = []

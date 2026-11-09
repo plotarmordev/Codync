@@ -45,10 +45,12 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** A file a bot shared, as iOS `FileDownloadCard`: an image shows itself (tap for full size), a voice note plays, then its
- *  name and size, and a button to download (or cancel). One accessibility element: `<name>, <caption>` plus the actions. */
+/** A file a bot shared, as iOS `FileDownloadCard`: an image shows itself (tap for full size), a voice note plays, a Markdown,
+ *  text or PDF file opens on tap, then its name and size, and a button to download (or cancel). One accessibility element:
+ *  `<name>, <caption>` plus the actions. */
 @Composable internal fun FileDownloadCard(entry: Entry, file: SharedFile, state: AppState, store: AppStore) {
     var viewing by remember { mutableStateOf(false) }
+    var reading by remember { mutableStateOf<OpenFile?>(null) }
     val player = if (file.showsAsAudio) rememberSharedAudio(entry, file, store) else null
     val scope = rememberCoroutineScope()
     val translate = translator()
@@ -57,7 +59,8 @@ import kotlinx.coroutines.launch
     val caption = detail(file, download, player, translate)
     val play = { player?.let { scope.launch { it.toggle() } }; Unit }
     val save = { if (busy) store.cancelFile(file.id) else store.saveFile(entry.id, entry.botId, file) }
-    val view = if (file.showsAsImage) ({ viewing = true }) else null
+    val open = if (file.preview != null) ({ reading = OpenFile(entry.id, entry.botId, file) }) else null
+    val view = if (file.showsAsImage) ({ viewing = true }) else open
     Column(Modifier.fillMaxWidth().clip(RoundedRectangle(16.dp)).background(Palette.bubbleAgent)
         .clearAndSetSemantics {
             contentDescription = "${file.name}, $caption"
@@ -74,20 +77,25 @@ import kotlinx.coroutines.launch
         }.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (file.showsAsImage) SharedImage(file, entry.id, 720, state, store, Modifier.sizeIn(maxHeight = 280.dp)
             .clip(RoundedRectangle(10.dp)).plainButton { viewing = true })
-        FileRow(file, download, player, caption, save, play)
+        FileRow(file, download, player, caption, save, play, open)
     }
 
     SharedImageSheet(file.takeIf { viewing }, entry.id, state, store) { viewing = false }
+    FileViewerSheet(reading, store) { reading = null }
 }
 
+/** Its icon (or a voice note's play button), name and caption, which `open` a readable file on tap, and the download button. */
 @Composable private fun FileRow(file: SharedFile, download: FileDownloadState?, audio: SharedAudio?, caption: String,
-    save: () -> Unit, play: () -> Unit) {
+    save: () -> Unit, play: () -> Unit, open: (() -> Unit)?) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (audio != null) SharedAudioButton(audio, play) else Symbol(AttachmentIcon.symbol(file.name), size = 24.dp, tint = Palette.secondary)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(file.name, style = Type.subheadline.semibold, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(caption, style = Type.caption2, color = if (audio?.phase == AudioPhase.Failed) Palette.danger else Palette.secondary)
-            if (audio != null && audio.duration > 0.0) AudioProgress(audio)
+        Row(Modifier.weight(1f).then(if (open != null) Modifier.plainButton(action = open) else Modifier),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (audio != null) SharedAudioButton(audio, play) else Symbol(AttachmentIcon.symbol(file.name), size = 24.dp, tint = Palette.secondary)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(file.name, style = Type.subheadline.semibold, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(caption, style = Type.caption2, color = if (audio?.phase == AudioPhase.Failed) Palette.danger else Palette.secondary)
+                if (audio != null && audio.duration > 0.0) AudioProgress(audio)
+            }
         }
         Box(Modifier.size(48.dp).plainButton(action = save), contentAlignment = Alignment.Center) {
             Symbol(if (download is FileDownloadState.Downloading) "xmark" else "arrow.down.to.line", size = 20.dp, tint = Palette.text)

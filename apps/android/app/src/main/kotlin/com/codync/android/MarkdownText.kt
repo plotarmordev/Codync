@@ -66,7 +66,8 @@ val LocalNetworkImages = staticCompositionLocalOf<ImageLoader> { error("Missing 
     if (selectable) SelectionContainer(content = content) else content()
 }
 
-@Composable private fun MarkdownBlock(block: Block, ink: Color) {
+/** One block of a reply (or of a shared Markdown file, in `FileViewer`). */
+@Composable internal fun MarkdownBlock(block: Block, ink: Color) {
     val code = Palette.text.copy(alpha = 0.08f)
     when (block) {
         is Block.Paragraph -> Text(inline(block.text, code), style = Type.body, color = ink)

@@ -84,6 +84,7 @@ Codync/
 - `Widgets` (`apps/ios/Widgets/`) — usage widget + bot Live Activity (bundle id `com.pokai.Codync.ios.LiveActivity`)
 - `apps/android/` — Android app (`com.pokai.Codync.android`, Dev `.dev`; Gradle modules `app`, `core`, `design`; CI `.github/workflows/android.yml`)
 - `CodyncKit` (`apps/ios/Kit/`) — the iPhone app's Swift package: `CodyncKit` + `CodyncUI` libraries (tests: `xcodebuild test -scheme CodyncKit-Package` on an iOS simulator)
+- `iOSAppTests` (`apps/ios/AppTests/`) — tests that need the running iPhone app (a window, WebKit's media stack), hosted by Codync Dev (`xcodebuild test -scheme "iOS Dev"`)
 
 ## Where to make a change
 

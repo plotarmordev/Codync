@@ -3,7 +3,8 @@ import { filePreview } from '@shared/file-preview'
 import { showsAsAudio, showsAsImage, type Entry, type SharedFile } from '@shared/models'
 import { useStore } from '../../store/context'
 import { Icon } from '../../components/Icon'
-import { AnchoredMenu, IconButtonBase, useContextMenu } from '../../components/Overlay'
+import { AnchoredMenu, useContextMenu } from '../../components/Menu'
+import { IconButtonBase } from '../../components/Overlay'
 import { Spinner } from '../../components/Controls'
 import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
@@ -13,7 +14,6 @@ import { FileViewer } from './FileViewer'
 import type { AudioSnapshot } from './shared-audio'
 import { useSharedAudio } from './use-shared-audio'
 import './attachments.css'
-
 export function FileDownloadCard({ entry, file }: { entry: Entry; file: SharedFile }) {
   return showsAsAudio(file) ? <AudioFileCard entry={entry} file={file} /> : <FileCard entry={entry} file={file} />
 }

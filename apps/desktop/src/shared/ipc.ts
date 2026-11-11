@@ -35,6 +35,8 @@ export interface HostSnapshot {
 export interface CallError {
   status: number
   message: string
+  /** An account computer that isn't connected to the relay (a cloud computer asleep, or one that's off). */
+  offline?: boolean
 }
 
 /** A computer in the account, as the encrypted channel needs it: its ID and pinned signing key. */
@@ -93,7 +95,7 @@ export interface TraySummary {
   textSize: number
   usageIconStyle: 'character' | 'original'
   /** The menu bar is a system menu, so the main process translates its labels from this. */
-  language: 'en' | 'zh' | 'zh-Hant' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'pt-BR' | 'ru'
+  language: 'en' | 'zh' | 'zh-Hant' | 'ja' | 'ko' | 'fr' | 'de' | 'es' | 'pt-BR' | 'ru' | 'it'
 }
 
 /** Things the tray menu (or the app menu) asks the window to do. */
@@ -183,6 +185,12 @@ export interface CodyncBridge {
     /** SSE on a loopback host: each `data:` line, then `onEnd` (with an error when it failed). */
     stream(url: string, token: string, onData: (line: string) => void, onEnd: (error: CallError | null) => void): () => void
   }
+  /** An account computer over the relay's encrypted channel, with the same calls and streams as `host`. */
+  channel: {
+    call(computerId: string, signKey: string, method: string, body: unknown, timeoutMs: number): Promise<unknown>
+    /** `path`: `/events?…` or `/term/{id}`, as on a loopback host. */
+    stream(computerId: string, signKey: string, path: string, onData: (line: string) => void, onEnd: (error: CallError | null) => void): () => void
+  }
   account: {
     state(): Promise<AccountState>
     onChange(cb: (s: AccountState) => void): () => void
@@ -241,17 +249,10 @@ export interface CodyncBridge {
   /** The Codync cloud's `/v1` API with the signed-in session (and the device key for `signed`). */
   cloud: {
     request(method: string, path: string, body: unknown, signed: boolean): Promise<{ ok: true; value: unknown } | { ok: false; error: { status: number; code: string; message: string | null } }>
-    /** Asks the computer to let this install in; resolves once it shows the code. Rejects with a `CallError`. */
-    requestAccess(computer: AccountComputer): Promise<AccessTicket>
-  }
-  /** An account computer's host API over the end-to-end encrypted channel, through the account's relay. */
-  remote: {
-    /** One call (host `POST /api/<method>`). Rejects with a `CallError`. */
-    call(computer: AccountComputer, method: string, body: unknown, timeoutMs: number): Promise<unknown>
-    /** A subscription (`events`, `term`): each event as a JSON line, then `onEnd`. */
-    stream(computer: AccountComputer, kind: string, body: unknown, onData: (line: string) => void, onEnd: (error: CallError | null) => void): () => void
-    /** Closes the computer's channel, once nothing here uses it. */
-    close(computerId: string): void
+    /** Asks a Codync Cloud computer for this device's access and waits for its answer (it approves by itself). */
+    requestAccess(computerId: string): Promise<{ ok: true; value: { status: string } } | { ok: false; error: { status: number; code: string; message: string | null } }>
+    /** Asks another account computer for this device's access; answers once it shows the code a person compares there. */
+    askForAccess(computer: AccountComputer): Promise<{ ok: true; value: AccessTicket } | { ok: false; error: { status: number; code: string; message: string | null } }>
   }
   updates: {
     state(): Promise<UpdateState>
@@ -275,6 +276,9 @@ export interface CodyncBridge {
     cancel(id: string): Promise<void>
   }
   app: {
+    /** Whether someone is looking at this window (shown, and the computer in use), then each change. */
+    attended(): Promise<boolean>
+    onAttended(cb: (attended: boolean) => void): () => void
     /** Error tracking: an uncaught error in this window (shared/error-report.ts). */
     reportError(report: ErrorReport): void
     openExternal(url: string): void

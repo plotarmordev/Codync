@@ -19,14 +19,14 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } })
 
 const cloudCalls: string[] = []
-let answerAccess!: (ticket: AccessTicket) => void
+let answerAccess!: (result: { ok: true; value: AccessTicket }) => void
 Object.assign(globalThis, {
   localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
   window: { addEventListener() {}, codync: {
     appVersion: '2.38.0',
     cloud: {
       request: async (method: string, path: string) => { cloudCalls.push(`${method} ${path}`); return { ok: true, value: {} } },
-      requestAccess: () => new Promise<AccessTicket>((resolve) => { answerAccess = resolve }),
+      askForAccess: () => new Promise((resolve) => { answerAccess = resolve }),
     },
   } },
 })
@@ -40,7 +40,7 @@ test('a request withdrawn before the computer answers is taken off the computer 
   const asking = access.ask(studio)
   access.cancel('studio')
   assert.deepEqual(cloudCalls, [], 'no ticket yet: nothing to delete')
-  answerAccess({ requestId: 'r1', code: '123456', expiresAt: Date.now() + 60_000 })
+  answerAccess({ ok: true, value: { requestId: 'r1', code: '123456', expiresAt: Date.now() + 60_000 } })
   await asking
   await new Promise((r) => setImmediate(r))
   assert.deepEqual(cloudCalls, ['DELETE v1/access-requests/r1'])

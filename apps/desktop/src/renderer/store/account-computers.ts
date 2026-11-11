@@ -1,6 +1,6 @@
 import type { AccessTicket } from '@shared/ipc'
 import type { Computer } from '@shared/models'
-import { RelayTransport } from '../client/host-client'
+import { ChannelTransport } from '../client/host-client'
 import { Observable } from '../lib/observable'
 import { account } from './account'
 import type { AppModel } from './app-model'
@@ -36,12 +36,11 @@ export class AccountComputers extends Observable {
       const plan = relayPlan(this.app.cloud.computers, this.app.local?.computer.id ?? null, this.attached, (id) => this.app.store(id))
       this.attached = plan.kept
       for (const id of plan.detach) this.app.detach(id)
-      for (const id of plan.close) window.codync.remote.close(id)
       for (const c of plan.attach) {
         const cached = this.app.computers.find((x) => x.id === c.computerId)
         const computer: Computer = { id: c.computerId, name: c.name, signKey: c.signKey, urls: [], cloud: account.cloudURL, device: c.device ?? null, color: cached?.color ?? null }
         this.attached.add(c.computerId)
-        this.app.attach(computer, new BotStore(computer, false, () => new RelayTransport({ id: c.computerId, signKey: c.signKey })))
+        this.app.attach(computer, new BotStore(computer, false, () => new ChannelTransport(c.computerId, c.signKey)))
       }
     } finally {
       this.syncing = false
@@ -55,7 +54,9 @@ export class AccountComputers extends Observable {
     const asking: Asking = { ticket: null }
     this.set(id, asking)
     try {
-      const ticket = await window.codync.cloud.requestAccess({ id, signKey: computer.signKey })
+      const res = await window.codync.cloud.askForAccess({ id, signKey: computer.signKey })
+      if (!res.ok) throw new CloudError(res.error.status, res.error.code, res.error.message)
+      const ticket = res.value
       // Withdrawn while the computer was still answering: take it off its screen too.
       if (this.asking.get(id) !== asking) return withdraw(ticket)
       asking.ticket = ticket

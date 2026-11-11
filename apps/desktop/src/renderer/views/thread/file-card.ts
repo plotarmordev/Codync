@@ -1,5 +1,6 @@
 import type { SharedFile } from '@shared/models'
-import type { MenuItem } from '../../components/Overlay'
+import type { MenuItem } from '../../components/Menu'
+import { trNow } from '../../lib/l10n.ts'
 import type { DownloadState } from '../../store/file-downloads'
 import type { AudioSnapshot } from './shared-audio'
 
@@ -33,11 +34,14 @@ export function clock(seconds: number) {
 
 /** What the download button does now (also the Library's file rows). */
 export function downloadAction(state: DownloadState | undefined) {
-  return state?.kind === 'downloading' ? 'Cancel download' : state?.kind === 'failed' ? 'Retry download' : state?.kind === 'saved' ? 'Save again' : 'Download'
+  return state?.kind === 'downloading' ? trNow('Cancel download') : state?.kind === 'failed' ? trNow('Retry download') : state?.kind === 'saved' ? trNow('Save again') : trNow('Download')
 }
 
+/** A card's menu row: always an action, never a submenu. */
+type CardAction = Extract<MenuItem, { action: () => void }>
+
 /** The download's menu item, titled for what it does now. */
-export function downloadItem(state: DownloadState | undefined, download: () => void): MenuItem {
+export function downloadItem(state: DownloadState | undefined, download: () => void): CardAction {
   return { title: downloadAction(state), icon: state?.kind === 'downloading' ? 'xmark' : 'arrow.down.to.line', action: download }
 }
 
@@ -48,7 +52,7 @@ export function cardActions({ state, audio, toggle, view, download }: {
   toggle?: () => void
   view?: () => void
   download: () => void
-}): MenuItem[] {
+}): CardAction[] {
   const playing = audio?.phase === 'playing'
   return [
     ...(toggle ? [{ title: playing ? 'Pause' : 'Play', icon: playing ? 'pause.circle' : 'play.circle', action: toggle }] : []),

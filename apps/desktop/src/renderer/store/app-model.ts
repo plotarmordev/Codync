@@ -9,6 +9,7 @@ import { analytics } from './analytics'
 import { BotStore } from './bot-store'
 import { AccountComputers } from './account-computers'
 import { CloudModel } from './cloud'
+import { CloudComputerModel } from './cloud-computer'
 import { DeviceComputerOrder } from './computer-order'
 import { ComputerAccess } from './computer-access'
 
@@ -74,6 +75,8 @@ export class AppModel extends Observable {
   readonly cloud: CloudModel
   /** The account's other computers this app opens through the relay, and its requests for access to them. */
   readonly accountComputers: AccountComputers
+  /** The account's Codync Cloud computer (Settings → Computers & devices). */
+  readonly cloudComputer: CloudComputerModel
 
   constructor(private mirrors = true) {
     super()
@@ -86,6 +89,7 @@ export class AppModel extends Observable {
       this.subscribe(sync)
       this.cloud.subscribe(sync)
     }
+    this.cloudComputer = new CloudComputerModel(this)
     account.subscribe(() => this.noteAccount())
   }
 
@@ -251,10 +255,10 @@ export class AppModel extends Observable {
       .filter((ask) => !this.answeredPairings.has(ask.id))
   }
 
-  decidePairing(ask: PairingAsk, approve: boolean) {
+  decidePairing(ask: PairingAsk, approve: boolean, join?: boolean) {
     this.answeredPairings.add(ask.id)
     this.changed()
-    const answer = ask.store.ready().then((client) => client.call('decidePairing', { requestId: ask.request.requestId, approve }, 30_000))
+    const answer = ask.store.ready().then((client) => client.call('decidePairing', { requestId: ask.request.requestId, approve, join }, 30_000))
     // The host may not have the answer: the question comes back.
     return undoOnFailure(answer, () => {
       this.answeredPairings.delete(ask.id)

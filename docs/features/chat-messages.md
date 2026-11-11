@@ -18,7 +18,9 @@ it has no pointer tooltip or link-opening action.
 - The agent's own reply text (`agent_message_chunk`) stays in the trace when the turn sent
   text through `send_message`. A turn that sent nothing (an agent that ignores the tool, or has no MCP) falls back to
   the old rule: its last text becomes the turn's final message, unless that text is `(pass)`: a message that
-  needs neither words nor a reaction gets nothing, as in a group.
+  needs neither words nor a reaction gets nothing, as in a group. In a turn a steered message joined, what the agent
+  wrote after its last `send_message` or reaction becomes a final message too, since either may have answered only
+  what came before that message.
 - File cards are separate final entries. Sharing a file preserves an intended final text
   reply; a files-only turn uses its filename for the completion summary. See
   [file attachments](file-attachments.md#files-from-a-bot). Artifact cards (`publish_artifact`) are final entries the
@@ -118,6 +120,12 @@ once the turn ends, its last message's `↳ N steps` line counts them the same w
   go of a full sweep (`PullToRefresh.swift`) reconnects to the computer while the chat waits just
   below the turning arrow, then eases back. A pull that isn't full refreshes nothing. The desktop
   reconnects from the computer menu instead.
+- Android: the phone stores each chat on disk and holds only a window of it in memory: the newest
+  300 messages of the open chat and the 5 opened last, the newest 30 rows of every other chat.
+  Earlier messages load once the top of the chat is on screen: rows the phone already stored come
+  first, then a page from the computer, and the window grows by 200 messages each time. It stops at
+  3,000 messages or a per-chat memory budget (tool-heavy chats sooner); the iPhone pages to the
+  first message. `apps/maestro/history.yaml` scrolls a long chat back to its first message on both phones.
 - The terminal UI lists the same messages; its steps line goes under the turn's last message.
 
 - Electron keeps the activity row mounted during its 0.42 s exit and animates its height,

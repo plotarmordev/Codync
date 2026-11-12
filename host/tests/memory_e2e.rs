@@ -207,11 +207,12 @@ async fn dreaming_keeps_only_what_the_user_typed() {
         assert!(Instant::now() < deadline, "agent did not finish: {history}");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    // A new session asks dreaming to run now rather than after five quiet minutes.
+    // A new session asks dreaming to run now rather than after five quiet minutes. Its notes are logged before
+    // MEMORY.md, so the run is done once its MEMORY.md lines are.
     host.call("newSession", json!({"botId": bot})).await;
     let view = loop {
         let view = host.memory(&bot).await;
-        if view["dreams"][0]["files"].as_array().is_some_and(|f| !f.is_empty()) {
+        if view["dreams"][0]["added"].as_array().is_some_and(|a| !a.is_empty()) {
             break view;
         }
         assert!(Instant::now() < deadline, "dreaming didn't run: {view}");

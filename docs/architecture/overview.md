@@ -61,6 +61,8 @@ When a client needs data or behavior the host doesn't offer, add a host method o
 
 `api/` and `remote/channel.rs` share dispatch and caller checks. `hub.rs` coordinates actors and event publication; `store/` persists mutations and the global revision. Clients catch up from `rev`, then follow events. Duplicate sends are identified by `clientNonce`.
 
+Phone sync cursors belong to the host database, not its software version. Host updates and reconnects retain the cursor and cached entries; a different database or incompatible app cache rebuilds the mirror. Initial catch-up includes at most 200 entries per bot; older history is fetched only by paging a chat.
+
 `agent/bot/` serializes each bot's turns and owns its ACP process. Its chat and group turns use its main session; each routine run has one of its own. Group turns are queued on member bots; the group itself has no harness. See [groups and replies](../features/groups-and-replies.md), [collaboration](../features/bot-collaboration.md) and [context/memory](../features/context-and-memory.md).
 
 ## Client state and routing

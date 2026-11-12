@@ -801,7 +801,7 @@ mod tests {
             let id = format!("b{i}");
             let bot = serde_json::from_value(json!({"id": id, "name": id, "createdAt": 0})).unwrap();
             hub.store.save_bot(&bot).unwrap();
-            for turn in 0..50 {
+            for turn in 0..250 {
                 hub.store
                     .insert_entry(
                         &crate::store::Lane::main(&id),
@@ -818,7 +818,7 @@ mod tests {
         p.send(json!({"id": 1, "sub": "events", "b": {"since": 0, "client": "ios"}})).await;
         let hello = p.recv().await.unwrap();
         let catch_up = hello["ev"]["catchUp"].as_u64().unwrap();
-        assert!(catch_up <= 30 * 200 + 2, "a fresh client gets at most 200 entries per bot");
+        assert_eq!(catch_up, 30 * 201 + 1, "200 entries and one bot per chat, plus icons");
         let mut rev = hello["ev"]["rev"].as_i64().unwrap();
         for _ in 0..catch_up {
             let ev = p.recv().await.unwrap();
@@ -827,7 +827,7 @@ mod tests {
         // A message while the phone is away.
         let new = hub
             .store
-            .insert_entry(&crate::store::Lane::main("b0"), crate::store::EntryKind::User, 50, &json!({"text": "new"}))
+            .insert_entry(&crate::store::Lane::main("b0"), crate::store::EntryKind::User, 250, &json!({"text": "new"}))
             .unwrap();
         // Reconnecting asks from its rev: only what is newer comes back.
         let mut p = Phone::direct(&hub, key);
@@ -837,6 +837,52 @@ mod tests {
         assert_eq!(hello["ev"]["catchUp"], 2, "the icons snapshot and the new message");
         assert_eq!(p.recv().await.unwrap()["ev"]["type"], "icons");
         assert_eq!(p.recv().await.unwrap()["ev"]["entry"]["id"], new.id);
+    }
+
+    #[tokio::test]
+    async fn an_image_with_text_goes_over_a_busy_link() {
+        use base64::Engine as _;
+        let hub = temp_hub();
+        let target = format!("image-{}", uuid::Uuid::new_v4());
+        for i in 0..5 {
+            let id = if i == 0 { target.clone() } else { format!("b{i}") };
+            let bot = serde_json::from_value(json!({"id": id, "name": id, "createdAt": 0, "kind": "group"})).unwrap();
+            hub.store.save_bot(&bot).unwrap();
+            for turn in 0..200 {
+                hub.store
+                    .insert_entry(
+                        &crate::store::Lane::main(&id),
+                        crate::store::EntryKind::User,
+                        turn,
+                        &json!({"text": format!("m{turn}")}),
+                    )
+                    .unwrap();
+            }
+        }
+        let key = paired_phone(&hub).await;
+        let mut p = Phone::direct(&hub, key);
+        p.hello(&hub, false).await;
+        p.send(json!({"id": 1, "sub": "events", "b": {"since": 0, "client": "ios"}})).await;
+        // The catch-up is being written; the image and its message go over the same link.
+        let upload = uuid::Uuid::new_v4().to_string();
+        let mut image = vec![0; crypto::CHUNK + 32];
+        image[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        let uploaded = p
+            .call(
+                2,
+                "upload",
+                json!({"botId": target, "uploadId": upload, "name": "image.png",
+            "offset": 0, "data": base64::engine::general_purpose::STANDARD.encode(&image), "done": true}),
+            )
+            .await;
+        assert_eq!(uploaded["ok"]["attachment"]["size"], image.len(), "{uploaded}");
+        let sent = p.call(3, "send", json!({"botId": target, "text": "look", "attachments": [upload]})).await;
+        assert_eq!(sent["ok"]["entry"]["data"]["text"], "look", "{sent}");
+        assert_eq!(sent["ok"]["entry"]["data"]["attachments"][0]["name"], "image.png");
+        let row = hub.store.bot(&target).unwrap().unwrap();
+        let root = crate::chat::uploads::root(&row.config);
+        assert_eq!(crate::chat::uploads::read(&root, &upload, 0, image.len()).unwrap().0, image);
+        crate::chat::uploads::remove(&root, &upload).unwrap();
     }
 
     #[tokio::test]

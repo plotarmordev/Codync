@@ -429,15 +429,17 @@ async fn a_private_relay_gets_its_token_only_to_enroll_and_never_changes_account
 }
 
 /// A session whose sink is a real WebSocket, so what it sends can be read.
-async fn test_session(hub: Arc<Hub>) -> (Session, mpsc::Receiver<Value>) {
+async fn test_session(hub: Arc<Hub>) -> (Session, mpsc::UnboundedReceiver<Value>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let (out_tx, out_rx) = mpsc::channel(8);
+    let (out_tx, out_rx) = mpsc::unbounded_channel();
     tokio::spawn(async move {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
         while let Some(Ok(Message::Text(t))) = ws.next().await {
-            let _ = out_tx.send(serde_json::from_str(t.as_str()).unwrap()).await;
+            if out_tx.send(serde_json::from_str(t.as_str()).unwrap()).is_err() {
+                break;
+            }
         }
     });
     let (client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}")).await.unwrap();
@@ -458,22 +460,202 @@ async fn test_session(hub: Arc<Hub>) -> (Session, mpsc::Receiver<Value>) {
     (session, out_rx)
 }
 
+/// The device end of a relay link, doing the channel handshake over the relay's `Session`.
+struct RelayPhone {
+    key: SigningKey,
+    session: Session,
+    out: mpsc::UnboundedReceiver<Value>,
+    sealer: Option<crypto::Sealer>,
+    opener: Option<crypto::Opener>,
+    link: String,
+}
+
+impl RelayPhone {
+    async fn open(hub: &Arc<Hub>, key: SigningKey, link: &str) -> Self {
+        let (mut session, out) = test_session(hub.clone()).await;
+        let dk = b64(key.verifying_key().as_bytes());
+        session.on_message(&json!({"t": "open", "link": link, "dk": dk, "pair": false}).to_string()).await.unwrap();
+        Self { key, session, out, sealer: None, opener: None, link: link.to_owned() }
+    }
+
+    async fn send(&mut self, v: Value) {
+        let frames = self.sealer.as_mut().map(|sealer| sealer.seal(v.to_string().as_bytes()).unwrap());
+        for frame in frames.unwrap_or_else(|| vec![v]) {
+            let msg = json!({"t": "data", "link": self.link, "m": frame});
+            self.session.on_message(&msg.to_string()).await.unwrap();
+        }
+    }
+
+    async fn wire(&mut self) -> Value {
+        timeout(Duration::from_secs(5), async {
+            loop {
+                tokio::select! {
+                    biased;
+                    message = self.out.recv() => {
+                        let message = message.unwrap();
+                        assert_eq!(message["t"], "data", "link remains open: {message}");
+                        return message["m"].clone();
+                    }
+                    Some((link, message)) = self.session.outs.next() => {
+                        self.session.link_out(link, message).await.unwrap();
+                    }
+                }
+            }
+        })
+        .await
+        .expect("relay answers in time")
+    }
+
+    async fn hello(&mut self, hub: &Hub) {
+        let ek = StaticSecret::from(crypto::random::<32>());
+        let ek_pub = crypto::x25519_pub(&ek);
+        let n = crypto::random::<32>();
+        let dk = self.key.verifying_key().to_bytes();
+        let cid = hub.identity.cid_raw();
+        let sig = crypto::sign(&self.key, &crypto::hs1_input(&cid, &dk, &ek_pub, &n));
+        self.send(json!({"t": "hello", "v": 1, "dk": b64(&dk), "ek": b64(&ek_pub),
+            "n": b64(&n), "sig": b64(&sig), "pair": false}))
+            .await;
+        let w = self.wire().await;
+        let ek_h: [u8; 32] = crypto::unb64_n(w["ek"].as_str().unwrap()).unwrap();
+        let th = crypto::transcript_hash(&cid, &dk, &ek_pub, &n, &ek_h);
+        crypto::verify(&hub.identity.sign_pub(), &th, &crypto::unb64_n(w["sig"].as_str().unwrap()).unwrap()).unwrap();
+        let keys = crypto::channel_keys(&crypto::x25519(&ek, &ek_h).unwrap(), &th);
+        self.sealer = Some(crypto::Sealer::new(keys.d2h));
+        self.opener = Some(crypto::Opener::new(keys.h2d, 16 << 20));
+    }
+
+    async fn recv(&mut self) -> Value {
+        loop {
+            let v = self.wire().await;
+            if v["t"] == "f"
+                && let Some(bytes) = self.opener.as_mut().unwrap().open(&v).unwrap()
+            {
+                return serde_json::from_slice(&bytes).unwrap();
+            }
+        }
+    }
+}
+
 #[tokio::test]
-async fn an_overflowed_link_closes_and_the_device_can_connect_again() {
+async fn an_overflowed_link_reconnects_and_resumes_from_its_rev() {
     let hub = temp_hub();
-    let (mut s, mut out) = test_session(hub.clone()).await;
-    // A link whose channel isn't reading: its buffer is full.
-    let (tx, _rx) = mpsc::channel(1);
+    let key = SigningKey::from_bytes(&crypto::random());
+    let dk = b64(key.verifying_key().as_bytes());
+    hub.store
+        .put_device(&Device {
+            key: dk.clone(),
+            name: "Phone".into(),
+            platform: "ios".into(),
+            source: DeviceSource::Local,
+            grant_id: None,
+            scopes: vec![Scope::Control],
+            lease_until: None,
+            created_at: 0,
+            last_seen_at: None,
+            account: DeviceAccount::Unrecorded,
+        })
+        .unwrap();
+    let bot = serde_json::from_value(json!({"id": "b1", "name": "Bot", "createdAt": 0})).unwrap();
+    hub.store.save_bot(&bot).unwrap();
+    let old = hub
+        .store
+        .insert_entry(&crate::store::Lane::main("b1"), crate::store::EntryKind::User, 0, &json!({"text": "old"}))
+        .unwrap();
+    let mut p = RelayPhone::open(&hub, key, "L1").await;
+    p.hello(&hub).await;
+    p.send(json!({"id": 1, "sub": "events", "b": {"since": 0, "client": "ios"}})).await;
+    let initial = p.recv().await;
+    for _ in 0..initial["ev"]["catchUp"].as_u64().unwrap() {
+        p.recv().await;
+    }
+    let rev = initial["ev"]["rev"].as_i64().unwrap();
+    assert!(rev >= old.rev);
+    // Model a stalled channel after an authenticated connection, not a rejected handshake.
+    let (tx, _stalled) = mpsc::channel(1);
     tx.try_send(Value::Null).unwrap();
-    s.links.insert("L1".into(), tx);
-    s.on_message(&json!({"t": "data", "link": "L1", "m": {"t": "hello"}}).to_string()).await.unwrap();
+    p.session.links.insert("L1".into(), tx);
+    p.send(json!({"id": 2, "cancel": true})).await;
+    let RelayPhone { mut session, mut out, key, .. } = p;
     let close = timeout(Duration::from_secs(5), out.recv()).await.unwrap().unwrap();
     assert_eq!(
         (close["t"].as_str(), close["link"].as_str(), close["code"].as_u64()),
         (Some("close"), Some("L1"), Some(4008))
     );
-    assert!(!s.links.contains_key("L1"), "the overflowed link is gone");
-    // The device reconnects on a new link.
-    s.on_message(&json!({"t": "open", "link": "L2", "dk": "x", "pair": false}).to_string()).await.unwrap();
-    assert!(s.links.contains_key("L2"), "the device can connect again");
+    assert!(!session.links.contains_key("L1"), "the overflowed link is gone");
+    let dk = b64(key.verifying_key().as_bytes());
+    session.on_message(&json!({"t": "open", "link": "L2", "dk": dk, "pair": false}).to_string()).await.unwrap();
+    let mut p = RelayPhone { key, session, out, sealer: None, opener: None, link: "L2".into() };
+    p.hello(&hub).await;
+    let new = hub
+        .store
+        .insert_entry(&crate::store::Lane::main("b1"), crate::store::EntryKind::User, 1, &json!({"text": "new"}))
+        .unwrap();
+    p.send(json!({"id": 1, "sub": "events", "b": {"since": rev, "client": "ios"}})).await;
+    let hello = p.recv().await;
+    assert_eq!(hello["ev"]["catchUp"], 2, "the icons snapshot and the new message");
+    assert_eq!(p.recv().await["ev"]["type"], "icons");
+    assert_eq!(p.recv().await["ev"]["entry"]["id"], new.id);
+}
+
+#[tokio::test]
+async fn a_buffered_burst_does_not_overflow_during_catch_up() {
+    let hub = temp_hub();
+    let key = SigningKey::from_bytes(&crypto::random());
+    let dk = b64(key.verifying_key().as_bytes());
+    hub.store
+        .put_device(&Device {
+            key: dk,
+            name: "Phone".into(),
+            platform: "ios".into(),
+            source: DeviceSource::Local,
+            grant_id: None,
+            scopes: vec![Scope::Control],
+            lease_until: None,
+            created_at: 0,
+            last_seen_at: None,
+            account: DeviceAccount::Unrecorded,
+        })
+        .unwrap();
+    for i in 0..30 {
+        let id = format!("b{i}");
+        hub.store.save_bot(&serde_json::from_value(json!({"id": id, "name": id, "createdAt": 0})).unwrap()).unwrap();
+        for turn in 0..250 {
+            hub.store
+                .insert_entry(
+                    &crate::store::Lane::main(&id),
+                    crate::store::EntryKind::User,
+                    turn,
+                    &json!({"text": "history"}),
+                )
+                .unwrap();
+        }
+    }
+    let mut phone = RelayPhone::open(&hub, key, "busy").await;
+    phone.hello(&hub).await;
+    phone.send(json!({"id": 1, "sub": "events", "b": {"since": 0, "client": "ios"}})).await;
+    let hello = phone.recv().await;
+    assert_eq!(hello["ev"]["catchUp"], 30 * 201 + 1);
+    // Stop draining output until both bounded writer queues are full.
+    timeout(Duration::from_secs(5), async {
+        while phone.session.outs.iter().find(|(link, _)| link.as_str() == "busy").unwrap().1.as_ref().len() < 64 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    // No yield in the sender: this is the buffered socket burst the relay sees.
+    for id in 2..(LINK_BUFFER as u64 * 3) {
+        phone.send(json!({"id": id, "cancel": true})).await;
+        assert!(phone.session.links.contains_key("busy"), "a busy writer must not close a readable link");
+    }
+    for _ in 0..hello["ev"]["catchUp"].as_u64().unwrap() {
+        assert_eq!(phone.recv().await["id"], 1);
+    }
+    let rev = hello["ev"]["rev"].as_i64().unwrap();
+    phone.send(json!({"id": 1, "cancel": true})).await;
+    assert_eq!(phone.recv().await["end"], true);
+    phone.send(json!({"id": 2, "sub": "events", "b": {"since": rev, "client": "ios"}})).await;
+    assert_eq!(phone.recv().await["ev"]["catchUp"], 1);
+    assert_eq!(phone.recv().await["ev"]["type"], "icons");
 }

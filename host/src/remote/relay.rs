@@ -406,9 +406,14 @@ impl Session {
                 let m = if v["m"].is_object() { v["m"].clone() } else { Value::Null };
                 match tx.try_send(m) {
                     Ok(()) => {}
-                    Err(mpsc::error::TrySendError::Full(_)) => {
-                        tracing::warn!(link, "device link overflowed; closing it");
-                        self.close_link(link, RATE_LIMITED, "rateLimited").await?;
+                    Err(mpsc::error::TrySendError::Full(m)) => {
+                        // A socket can yield a whole buffered burst without suspending. Give the
+                        // channel a turn before treating that burst as a stalled device link.
+                        tokio::task::yield_now().await;
+                        if tx.try_send(m).is_err() {
+                            tracing::warn!(link, "device link overflowed; closing it");
+                            self.close_link(link, RATE_LIMITED, "rateLimited").await?;
+                        }
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
                         self.links.remove(link);

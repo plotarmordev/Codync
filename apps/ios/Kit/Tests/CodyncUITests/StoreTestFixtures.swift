@@ -161,9 +161,19 @@ actor FakeRemote: RemoteTransport {
     }
     private func addMailbox(_ c: AsyncStream<MailboxEvent>.Continuation) { mailboxSinks.append(c) }
 
+    /// The `since` each events stream asked for, in order.
+    private(set) var eventSinces: [Int64] = []
+
     nonisolated func stream(_ request: HostStreamRequest) -> AsyncThrowingStream<Data, Error> {
-        AsyncThrowingStream { c in Task { await self.addEvents(c) } }
+        AsyncThrowingStream { c in
+            Task {
+                if case let .events(since, _) = request { await self.recordSince(since) }
+                await self.addEvents(c)
+            }
+        }
     }
+
+    private func recordSince(_ since: Int64) { eventSinces.append(since) }
 
     nonisolated func states() -> AsyncStream<LinkState> {
         AsyncStream { c in Task { await self.addState(c) } }

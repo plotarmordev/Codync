@@ -3,8 +3,8 @@ import Foundation
 
 extension BotStore {
     private struct Cache: Codable {
-        /// App build + host version that wrote the cache; any change means refetch everything.
-        var stamp: String?
+        /// `mirrorFormat` of the app that wrote it; nil before the format was recorded, which is format 1.
+        var format: Int?
         var hostId: String?
         var rev: Int64
         var bots: [Bot]
@@ -12,7 +12,9 @@ extension BotStore {
         var icons: [String: CustomIcon]?
     }
 
-    static let appBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+    /// The shape of the cache. Raise it only when cached bots or entries can't be kept (a field they lack
+    /// that matters): app and host updates alone keep the cache and its `rev`.
+    static let mirrorFormat = 1
 
     /// Per app, context and computer (`SharedStore.Context.erase()` removes a context's files).
     private var cacheURL: URL {
@@ -20,11 +22,11 @@ extension BotStore {
     }
 
     func loadCache() {
-        // A cache from another app build still shows at once; the stamp mismatch makes the next
-        // hello fetch everything again underneath it.
+        // A cache in another format still shows at once; the first hello fetches everything again
+        // underneath it.
         guard let data = try? Data(contentsOf: cacheURL),
               let cache = try? JSONDecoder().decode(Cache.self, from: data) else { return }
-        cacheStamp = cache.stamp ?? ""
+        staleCache = (cache.format ?? 1) != Self.mirrorFormat
         hostId = cache.hostId
         rev = cache.rev
         bots = Dictionary(cache.bots.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -59,7 +61,7 @@ extension BotStore {
                 + list.filter { $0.id.hasPrefix("local-") && ["sending", "waiting", "held", "delivering", "failed"].contains($0.data.status) }
         }
         let cachedBots = bots.values.map { bot in var bot = bot; bot.customIcon = nil; return bot }
-        let cache = Cache(stamp: "\(Self.appBuild)/\(hello?.version ?? "")", hostId: hostId, rev: rev, bots: cachedBots, entries: kept, icons: icons)
+        let cache = Cache(format: Self.mirrorFormat, hostId: hostId, rev: rev, bots: cachedBots, entries: kept, icons: icons)
         if let data = try? JSONEncoder().encode(cache) {
             try? data.write(to: cacheURL, options: .atomic)
         }

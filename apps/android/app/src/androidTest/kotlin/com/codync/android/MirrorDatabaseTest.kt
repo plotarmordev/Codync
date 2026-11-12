@@ -23,7 +23,7 @@ class MirrorDatabaseTest {
     @After fun cleanup() { mirror.close(); directory.deleteRecursively() }
 
     @Test fun iconCacheTracksNewerRevisionsAndResetsWithTheHostDatabase() {
-        mirror.setStamp("old", "build")
+        mirror.setHost("old", MirrorDatabase.FORMAT)
         val first = CustomIcon("first")
         val latest = CustomIcon("latest", true)
         mirror.apply(MirrorEvent.Icons(mapOf("bot:b" to first), 1))
@@ -37,13 +37,13 @@ class MirrorDatabaseTest {
         assertEquals(latest, mirror.icons()["bot:b"])
         mirror.apply(MirrorEvent.Icons(emptyMap(), 3))
         assertTrue(mirror.icons().isEmpty())
-        mirror.setStamp("new", "build")
+        mirror.setHost("new", MirrorDatabase.FORMAT)
         mirror.apply(MirrorEvent.Icons(mapOf("bot:b" to first), 0))
         assertEquals(first, mirror.icons()["bot:b"])
     }
 
     @Test fun reconnectAcceptsSameHostRollbackAboveBotCursorAndRejectsOldSaveReplies() {
-        mirror.setStamp("same-host", "build")
+        mirror.setHost("same-host", MirrorDatabase.FORMAT)
         mirror.apply(MirrorEvent.BotChanged(Bot("b", "Bot", rev = 50)))
         val old = CustomIcon("old")
         mirror.apply(MirrorEvent.Icons(mapOf("bot:b" to old), 100))
@@ -107,22 +107,81 @@ class MirrorDatabaseTest {
     }
 
     @Test fun incompatibleCacheAndDatabaseReplacementRewindSafely() {
-        assertFalse(mirror.setStamp("old", "2.4/2.4"))
+        assertFalse(mirror.setHost("old", 1))
         mirror.apply(MirrorEvent.EntryChanged(entry(9)))
         mirror.save(PendingSend("unsent", "bot", text = "message", createdAt = 1))
         mirror.finishHistory("bot")
-        assertFalse(mirror.setStamp("old", "2.4/2.4"))
+        assertFalse(mirror.setHost("old", 1))
         assertEquals(1, mirror.snapshot().entries.size)
-        // The new host removed "message": the catch-up from 0 brings only what it still has.
-        assertTrue(mirror.setStamp("old", "2.5/2.4"))
+        // Another mirror format: the catch-up from 0 brings only what the host still has.
+        assertTrue(mirror.setHost("old", 2))
         assertEquals(0, mirror.snapshot().rev)
         assertFalse(mirror.historyComplete("bot"))
         assertEquals("unsent", mirror.snapshot().pending.single().nonce)
         mirror.apply(MirrorEvent.EntryChanged(Entry("kept", 2, "bot", rev = 10, kind = "user", data = buildJsonObject { put("text", "kept") })))
         assertEquals(listOf("kept"), mirror.snapshot().entries.map { it.id })
-        assertTrue(mirror.setStamp("new", "2.5/2.4"))
+        assertTrue(mirror.setHost("new", 2))
         assertEquals(0, mirror.snapshot().rev)
         assertTrue(mirror.snapshot().entries.isEmpty())
+    }
+
+    private fun hello(version: String, hostId: String = "host", iconsRevision: Long = 0) = buildJsonObject {
+        put("hostId", hostId); put("version", version); put("iconsRevision", iconsRevision)
+    }
+
+    @Test fun anAppAndHostUpdateKeepTheCursorOfAMirrorAnOlderAppWrote() {
+        mirror.apply(MirrorEvent.BotChanged(Bot("bot", "Bot", rev = 3)))
+        mirror.apply(MirrorEvent.EntryChanged(chat("bot", 4)))
+        // As 2.44.1 left it: no format, a stamp of its own version and the host's then.
+        mirror.writableDatabase.apply {
+            insertOrThrow("meta", null, ContentValues().apply { put("k", "hostId"); put("v", "host") })
+            insertOrThrow("meta", null, ContentValues().apply { put("k", "stamp"); put("v", "2.44.1/2.44.1") })
+        }
+        val before = mirror.snapshot()
+        assertEquals(4, before.rev)
+        // The updated app's first connect() hello reports an updated host too: the conversation and cursor stay.
+        assertFalse(mirror.connectedHello(hello("2.45.0", iconsRevision = 9), mirror.beginIconConnection()))
+        assertEquals(before.rev, mirror.snapshot().rev)
+        assertEquals(before.entries, mirror.snapshot().entries)
+        assertFalse(mirror.connectedHello(hello("2.45.1"), mirror.beginIconConnection()))
+        assertEquals(before.rev, mirror.snapshot().rev)
+    }
+
+    @Test fun aReconnectRetainsTheCommittedCursorAndHistoryFloor() {
+        // First connect() hello, then a catch-up of thirty chats with days of messages each.
+        assertFalse(mirror.connectedHello(hello("2.44.1"), mirror.beginIconConnection()))
+        var rev = 0L
+        val day = 1_700_000_000_000L
+        for (b in 0 until 30) {
+            mirror.apply(MirrorEvent.BotChanged(Bot("bot$b", "Bot $b", rev = ++rev)))
+            // Seqs 2..5: seq 1 never reached this phone, so its floor is 2.
+            for (t in 2..5) mirror.apply(MirrorEvent.EntryChanged(
+                Entry("e-bot$b-$t", t.toLong(), "bot$b", rev = ++rev, kind = "user", createdAt = day + t * 86_400_000,
+                    data = buildJsonObject { put("text", "m$t"); put("clientNonce", "n-bot$b-$t") })))
+        }
+        val head = rev
+        assertEquals(head, mirror.revision())
+
+        // The host updated in place and the link dropped: the reconnect's hello reports the new
+        // version, but the cursor this connect passes to events() is the committed one.
+        assertFalse(mirror.connectedHello(hello("2.45.0"), mirror.beginIconConnection()))
+        assertEquals(head, mirror.revision())
+        val before = mirror.snapshot(Residency(emptySet(), preview = 10)).entries
+        assertEquals(120, before.size)
+
+        // The reconnect's stream hello leads again; the gap it leaves (seq 1) is still paged, not hidden.
+        mirror.apply(MirrorEvent.Hello("host", head + 2, JsonObject(emptyMap()), null))
+        mirror.apply(MirrorEvent.EntryChanged(
+            Entry("e-bot0-1", 1, "bot0", rev = head + 1, kind = "user",
+                data = buildJsonObject { put("text", "rewritten"); put("clientNonce", "n-bot0-1") })))
+        assertFalse("a row below the floor waits for history paging", mirror.hasNonce("bot0", "n-bot0-1"))
+        // What the computer wrote while the phone was away lands from the cursor.
+        mirror.apply(MirrorEvent.EntryChanged(
+            Entry("e-bot0-6", 6, "bot0", rev = head + 2, kind = "user",
+                data = buildJsonObject { put("text", "while away"); put("clientNonce", "n-bot0-6") })))
+        val after = mirror.snapshot(Residency(setOf("bot0"), preview = 10, window = 10))
+        assertEquals(head + 2, after.rev)
+        assertEquals(listOf(2L, 3L, 4L, 5L, 6L), after.entries.filter { it.botId == "bot0" }.map { it.seq })
     }
 
     @Test fun interruptedSendRetainsItsNonceAndRequiresAnExplicitRetry() {
@@ -190,10 +249,10 @@ class MirrorDatabaseTest {
     }
 
     @Test fun aCatchUpFromTheStartKeepsEveryRowWhateverItsOrder() {
-        mirror.setStamp("host", "build/1")
+        mirror.setHost("host", MirrorDatabase.FORMAT)
         mirror.apply((10L..20L).map { MirrorEvent.EntryChanged(chat("bot", it)) })
-        // A new app or host version fetches the conversation again from rev 0, and a send's reply lands before the catch-up.
-        assertTrue(mirror.setStamp("host", "build/2"))
+        // A new mirror format fetches the conversation again from rev 0, and a send's reply lands before the catch-up.
+        assertTrue(mirror.setHost("host", MirrorDatabase.FORMAT + 1))
         mirror.receive(listOf(chat("bot", 30)))
         mirror.apply(MirrorEvent.Hello("host", 40, JsonObject(emptyMap()), null))
         // Sorted by rev, so an older row edited later arrives after a newer one.

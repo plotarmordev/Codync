@@ -104,12 +104,7 @@ fun AppStore.connect() {
                                 // This phone's picks (color, route, push) may have changed during those calls.
                                 changeComputer { current -> if (current.id == fromHost.id) fromHost.keepingDevicePicks(current) else current }
                                 val dropped = withContext(Dispatchers.IO) {
-                                    val mirror = requireNotNull(database)
-                                    val changed = mirror.setStamp(requireNotNull(hello["hostId"]?.jsonPrimitive?.content),
-                                        BuildConfig.VERSION_NAME + "/" + hello["version"]?.jsonPrimitive?.content)
-                                    mirror.applyIconReply(MirrorEvent.Icons(hello["icons"]?.let(::decodeCustomIcons).orEmpty(),
-                                        hello["iconsRevision"]?.jsonPrimitive?.longOrNull ?: 0), requireNotNull(iconEpoch))
-                                    changed
+                                    requireNotNull(database).connectedHello(hello, requireNotNull(iconEpoch))
                                 }
                                 // Dropped chats page their earlier messages again.
                                 mutableState.update { it.copy(historyEnd = if (dropped) emptyMap() else it.historyEnd) }
@@ -185,6 +180,18 @@ private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Lon
         }
     } finally { source.cancel() }
     throw IOException("The event subscription ended.")
+}
+
+/**
+ * The mirror's part of a ready link's `hello`: app and host updates keep the event cursor (only another host
+ * database or mirror format drops it), and its icons answer this connection's request.
+ * Returns whether the host id or format dropped the held conversation (reconnecting pages it again).
+ */
+internal fun MirrorDatabase.connectedHello(hello: JsonObject, iconEpoch: Long): Boolean {
+    val changed = setHost(requireNotNull(hello["hostId"]?.jsonPrimitive?.content), MirrorDatabase.FORMAT)
+    applyIconReply(MirrorEvent.Icons(hello["icons"]?.let(::decodeCustomIcons).orEmpty(),
+        hello["iconsRevision"]?.jsonPrimitive?.longOrNull ?: 0), iconEpoch)
+    return changed
 }
 
 /** What an event this app can't decode leads to, as on iOS: never skip data unread while fetching everything again can help. */

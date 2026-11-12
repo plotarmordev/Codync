@@ -87,6 +87,28 @@ test('an already-online computer stays refreshing until the replacement stream a
   store.retire()
 })
 
+test('a cache from an older app keeps its cursor across a host update; another format fetches everything', async () => {
+  const key = 'codync-mirror-local-test'
+  const cached = { hostId: 'h1', rev: 77, bots: [{ id: 'b1', name: 'Bot' }], entries: [] }
+  const since = async (cache: object) => {
+    storage.set(key, JSON.stringify(cache))
+    let resolve!: (sub: string) => void
+    const path = new Promise<string>((r) => { resolve = r })
+    const store = sync({
+      call: async () => ({ version: '2.30.0', name: 'Test', backends: [] }),
+      stream: (sub) => { resolve(sub); return () => {} },
+    })
+    store.start()
+    const query = new URLSearchParams((await path).split('?')[1])
+    store.retire()
+    storage.delete(key)
+    return query.get('since')
+  }
+  // Written by an older app for the host before its update: the stamp names both, the format is unrecorded.
+  assert.equal(await since({ ...cached, stamp: '2.28.0/2.29.0' }), '77')
+  assert.equal(await since({ ...cached, format: 2 }), '0')
+})
+
 test('a host failure and a removed computer both release the refresh waiter', async () => {
   const failing = sync({ call: async () => { throw new Error('Unavailable') }, stream: () => () => {} })
   await assert.rejects(failing.refreshStream(), /Unavailable/)

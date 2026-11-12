@@ -28,6 +28,11 @@ class MirrorDatabase(context: Context, directory: File, computerId: String) :
         private const val BYTES_PER_SHOWN = 20_000L
         /** Characters of stored payload a chat that isn't open may hold as its preview. */
         private const val PREVIEW_BYTES = 150_000L
+        /**
+         * The shape of the mirror's rows. Raise it only when held bots or entries can't be kept (a field they lack
+         * that matters): app and host updates alone keep the mirror and its cursor.
+         */
+        const val FORMAT = 1
 
         private fun file(directory: File, computerId: String): File {
             require(computerId.matches(Regex("[A-Za-z0-9_-]{22}")))
@@ -133,17 +138,18 @@ class MirrorDatabase(context: Context, directory: File, computerId: String) :
     @Synchronized fun revision(): Long = meta(readableDatabase, "rev")?.toLong() ?: 0
 
     /**
-     * Another computer database, app build or host version fetches the conversation again from rev 0, like iOS
+     * Another computer database or mirror [format] fetches the conversation again from rev 0, like iOS
      * and desktop: the catch-up brings only each chat's newest entries and never says one is gone, so the held
-     * ones go too (unsent messages stay). Returns whether they went.
+     * ones go too (unsent messages stay). App and host updates keep the cursor. A mirror from before the
+     * format was recorded is format 1. Returns whether they went.
      */
-    @Synchronized fun setStamp(hostId: String, stamp: String): Boolean = transaction { db ->
+    @Synchronized fun setHost(hostId: String, format: Int): Boolean = transaction { db ->
         val otherHost = meta(db, "hostId")?.let { it != hostId } == true
-        val otherStamp = meta(db, "stamp")?.let { it != stamp } == true
-        if (otherHost) reset(db) else if (otherStamp) dropConversation(db)
+        val otherFormat = meta(db, "hostId") != null && (meta(db, "format")?.toInt() ?: 1) != format
+        if (otherHost) reset(db) else if (otherFormat) dropConversation(db)
         setMeta(db, "hostId", hostId)
-        setMeta(db, "stamp", stamp)
-        otherHost || otherStamp
+        setMeta(db, "format", format.toString())
+        otherHost || otherFormat
     }
 
     @Synchronized fun apply(event: MirrorEvent) = apply(listOf(event))

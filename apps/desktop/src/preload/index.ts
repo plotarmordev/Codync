@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { sshBridge } from './ssh'
-import type { AccessTicket, CallError, CodyncBridge, HostSnapshot, TraySummary, WindowCommand } from '../shared/ipc'
+import type { CallError, CodyncBridge, HostSnapshot, TraySummary, WindowCommand } from '../shared/ipc'
 
 let streamId = 0
 const streams = new Map<string, { onData: (line: string) => void; onEnd: (error: CallError | null) => void }>()
@@ -10,6 +10,11 @@ ipcRenderer.on('host:stream:end', (_e, id: string, error: CallError | null) => {
   const s = streams.get(id)
   streams.delete(id)
   s?.onEnd(error)
+})
+// A page that goes (a reload, its window closing) closes its streams: the next page numbers its own from 1 again.
+window.addEventListener('pagehide', () => {
+  for (const id of streams.keys()) ipcRenderer.send('host:stream:close', id)
+  streams.clear()
 })
 
 function listen<T>(channel: string, cb: (value: T) => void) {
@@ -37,8 +42,9 @@ function openStream(prefix: string, args: unknown[], onData: (line: string) => v
 }
 
 // A dev sandbox starts past onboarding (`skip`: only a window that never chose is seeded) or back at
-// its welcome flow (`reset`); see tools/dev.mjs. Skipping also answers the GitHub star ask, which a
-// fresh sandbox would otherwise show at once as an installation that never saw the setup page.
+// its welcome flow (`reset`); see tools/dev.mjs. Skipping also answers the GitHub star ask and marks
+// What's new seen on this version, which a fresh sandbox would otherwise show at once as an installation
+// that never saw the setup page or as an update from before the feature.
 const devOnboarding = ipcRenderer.sendSync('app:devOnboarding') as 'skip' | 'reset' | null
 if (devOnboarding) {
   try {
@@ -46,10 +52,12 @@ if (devOnboarding) {
       localStorage.removeItem('macAccountOnboardingCompleted')
       localStorage.removeItem('computerAccessSetup')
       localStorage.removeItem('githubStarAsk')
+      localStorage.removeItem('whatsNewSeen')
     } else {
       if (localStorage.getItem('macAccountOnboardingCompleted') === null) localStorage.setItem('macAccountOnboardingCompleted', 'true')
       if (localStorage.getItem('computerAccessSetup') === null) localStorage.setItem('computerAccessSetup', '"later"')
       if (localStorage.getItem('githubStarAsk') === null) localStorage.setItem('githubStarAsk', '{"kind":"done"}')
+      if (localStorage.getItem('whatsNewSeen') === null) localStorage.setItem('whatsNewSeen', JSON.stringify(ipcRenderer.sendSync('app:version')))
     }
   } catch (error) {
     // Storage unavailable: the window just shows onboarding, which only costs a dev run a click.
@@ -73,6 +81,10 @@ const bridge: CodyncBridge = {
     restart: () => ipcRenderer.send('host:restart'),
     call: (baseURL, token, method, body, timeoutMs) => invoke('host:call', baseURL, token, method, body, timeoutMs),
     stream: (url, token, onData, onEnd) => openStream('host', [url, token], onData, onEnd),
+  },
+  channel: {
+    call: (computerId, signKey, method, body, timeoutMs) => invoke('channel:call', computerId, signKey, method, body, timeoutMs),
+    stream: (computerId, signKey, path, onData, onEnd) => openStream('channel', [computerId, signKey, path], onData, onEnd),
   },
   account: {
     state: () => ipcRenderer.invoke('account:state'),
@@ -116,12 +128,8 @@ const bridge: CodyncBridge = {
   },
   cloud: {
     request: (method, path, body, signed) => ipcRenderer.invoke('cloud:request', method, path, body, signed),
-    requestAccess: (computer) => invoke('cloud:requestAccess', computer) as Promise<AccessTicket>,
-  },
-  remote: {
-    call: (computer, method, body, timeoutMs) => invoke('remote:call', computer, method, body, timeoutMs),
-    stream: (computer, kind, body, onData, onEnd) => openStream('remote', [computer, kind, body], onData, onEnd),
-    close: (computerId) => ipcRenderer.send('remote:close', computerId),
+    requestAccess: (computerId) => ipcRenderer.invoke('cloud:requestAccess', computerId),
+    askForAccess: (computer) => ipcRenderer.invoke('cloud:askForAccess', computer),
   },
   updates: {
     state: () => ipcRenderer.invoke('updates:state'),
@@ -142,6 +150,8 @@ const bridge: CodyncBridge = {
     cancel: (id) => ipcRenderer.invoke('files:cancel', id),
   },
   app: {
+    attended: () => ipcRenderer.invoke('app:attended'),
+    onAttended: (cb) => listen('app:attended', cb),
     reportError: (report) => ipcRenderer.send('app:reportError', report),
     openExternal: (url) => ipcRenderer.send('app:openExternal', url),
     copy: (text) => ipcRenderer.send('app:copy', text),

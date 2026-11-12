@@ -3,6 +3,7 @@ import { VoiceKeyRouter, type VoiceKey } from '../../../shared/voice-shortcut.ts
 import { Observable } from '../../lib/observable.ts'
 import type { DictationTarget, VoiceProvider } from '../settings/voice-settings.ts'
 import { inOrder, joinDictated, MIN_SAMPLES, pieces } from './dictation-pieces.ts'
+import { trNow } from '../../lib/l10n.ts'
 
 /** The running dictation: one recognizer at a time, and a call stops dictation first. */
 let active: Dictation | null = null
@@ -107,7 +108,7 @@ export class Dictation extends Observable {
       this.recording = { target, pcm: [], stopMic: null }
       return void this.record(this.recording, ++this.generation)
     }
-    if (!speech) return this.fail(`${this.platform.noSpeech} Pick another engine beside the mic.`)
+    if (!speech) return this.fail(trNow('{error} Pick another engine beside the mic.').replaceAll('{error}', () => this.platform.noSpeech))
     this.off = speech.onEvent((e) => this.event(e))
     speech.start(this.platform.language())
     this.listen()

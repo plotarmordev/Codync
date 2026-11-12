@@ -16,6 +16,8 @@ pub mod registry;
 pub mod term;
 pub mod workspace;
 
-mod process;
+pub(crate) mod process;
+#[cfg(unix)]
+mod process_unix;
 #[cfg(windows)]
 mod process_windows;

@@ -32,9 +32,12 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -117,7 +120,8 @@ import com.kyant.shapes.Capsule
             // An artifact's viewer has its own box for the same draft; two would overwrite each other.
             else if (viewing == null) MessageComposer(bot, chatState, store, onCall = if (state.voice == null && state.actualConnection is LinkState.Ready) startCall else null,
                 onInterrupt = if (state.voice?.botId == bot.id && state.voice.state.phase == VoicePhase.Speaking) store::interruptVoice else null,
-                replyTo = replyTo, cancelReply = { replyId = null })
+                replyTo = replyTo, cancelReply = { replyId = null },
+                queued = queuedMessages(state.chatEntries(bot), bot.isWorking))
         }
     }) {
         Transcript(bot, chatState, store, connect, PaddingValues(start = 16.dp, end = 16.dp, top = top + 60.dp,
@@ -160,7 +164,7 @@ import com.kyant.shapes.Capsule
                     BotAvatar(bot, state.bots, 22.dp)
                     Text(bot.name, style = Type.system(13f).semibold, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                ConnectionSubtitle(state)
+                ConnectionSubtitle(state, devServerSummary(bot.devServers))
             }
         }
         // The corner is the computer: it pulses while this bot is operating it (watch, then take over).
@@ -183,9 +187,17 @@ import com.kyant.shapes.Capsule
     }
 }
 
-/** The link to the computer: route icon (or a spinner) and a word. */
-@Composable private fun ConnectionSubtitle(state: AppState) {
-    Row(Modifier.clearAndSetSemantics { contentDescription = "${state.hostName}, ${connectionDescription(state)}" }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+/** The link to the computer: route icon (or a spinner) and a word, then what the bot keeps running. */
+@Composable private fun ConnectionSubtitle(state: AppState, summary: DevServerSummary) {
+    val servers = when (summary) {
+        DevServerSummary.None -> null
+        DevServerSummary.Starting -> tr("Starting")
+        DevServerSummary.Failed -> tr("Failed to start")
+        is DevServerSummary.Running -> summary.text
+    }
+    val style = Type.system(10f).medium
+    val description = listOfNotNull(state.hostName, connectionDescription(state), servers).joinToString(", ")
+    Row(Modifier.clearAndSetSemantics { contentDescription = description }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.width(12.dp), contentAlignment = Alignment.Center) {
             when (val link = state.connection) {
                 LinkState.Connecting -> Spinner(8.dp)
@@ -193,29 +205,53 @@ import com.kyant.shapes.Capsule
                 else -> Symbol("wifi.slash", size = 11.dp, tint = Palette.secondary)
             }
         }
-        Text(connectionLabel(state), style = Type.system(10f).medium, color = Palette.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(connectionLabel(state), style = style, color = Palette.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (servers != null) {
+                Text("·", style = style, color = Palette.secondary)
+                if (summary == DevServerSummary.Starting) Spinner(8.dp)
+                Text(servers, style = style.monospacedDigit, color = if (summary == DevServerSummary.Failed) Palette.danger else Palette.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
+
+/** [bot]'s chat. What voice calls carried shows in each call's conversation instead. */
+private fun AppState.chatEntries(bot: Bot) = entries.filter { it.botId == bot.id && it.isChat }.hidingCalls()
 
 /** The messages: all this phone has, earlier ones from the computer near the top, following the newest. */
 @Composable private fun Transcript(bot: Bot, state: AppState, store: AppStore, connect: ConnectionRequestActions, padding: PaddingValues,
     indicatorTop: Dp, openRoutine: (String) -> Unit, reply: (Entry) -> Unit, addFallback: (Bot) -> Unit, openArtifact: (OpenArtifact) -> Unit,
     openCall: (String) -> Unit, openPeer: (String) -> Unit) {
-    // What voice calls carried shows in each call's conversation, not in the chat.
-    val entries = state.entries.filter { it.botId == bot.id && it.isChat }.hidingCalls()
+    val entries = state.chatEntries(bot)
     // A call's message that failed to send stays here, to be sent again.
     val pending = state.pending.filter { it.botId == bot.id && (it.call == null || it.status == SendStatus.Failed) }
-    val items = chatItems(entries, pending)
+    // Messages waiting behind the bot's work show above the composer instead.
+    val items = chatItems(entries, pending, busy = bot.isWorking)
     val working = bot.isWorking(bot.id) && state.connection is LinkState.Ready
-    val more = bot.id !in state.historyComplete
+    // The ceiling counts rows the chat shows. Tool and thought rows stay in memory for Trace, but they do not fill it.
+    val shown = entries.size
+    val floor = state.entries.filter { it.botId == bot.id }.minOfOrNull { it.seq } ?: Long.MAX_VALUE
+    val more = Residency.needsEarlier(shown, bot.id in state.historyEnd)
     val details by ThinkingDetails.enabled.collectAsStateWithLifecycle()
+    val list = rememberLazyListState()
+    var settled by remember { mutableStateOf(false) }
+    val paging = remember { EarlierPaging() }
     // Pull to refresh reconnects, like Reconnect in the roster's computer menu, until the link is back.
-    ConversationList(items.lastOrNull()?.id, entries.lastOrNull()?.rev, working, padding, store::refreshConnection, indicatorTop) {
+    ConversationList(list, items.lastOrNull()?.id, entries.lastOrNull()?.rev, working, padding, store::refreshConnection, indicatorTop,
+        onOpened = { settled = true }) {
         if (more) item("earlier") {
             Box(Modifier.fillMaxWidth().padding(vertical = 14.dp).clearAndSetSemantics { contentDescription = "Loading earlier messages" },
                 contentAlignment = Alignment.Center) { Spinner(14.dp) }
-            // A chat shorter than the screen never scrolls, so showing the row is the trigger.
-            LaunchedEffect(Unit) { if ("history" !in state.busy) store.loadHistory() }
+            // The list opens on the newest message, and this row is composed on that first frame. Page only after that
+            // scroll has finished and the row is still showing: a short chat never scrolls, so the row staying up is the trigger.
+            val loading = historyKey(bot.id) in state.busy
+            val visible by remember { derivedStateOf { list.layoutInfo.visibleItemsInfo.any { it.key == "earlier" } } }
+            LaunchedEffect(shown, floor, loading, settled, visible) {
+                if (paging.ask(settled, visible, loading, shown, floor)) store.loadHistory(paging::failed)
+            }
+            // Scrolled far away, the list drops the row before it recomposes as hidden.
+            DisposableEffect(paging) { onDispose(paging::left) }
         }
         // Shown while earlier messages may still load, as on the iPhone.
         if (items.isEmpty()) item("intro") { IntroCard(bot, state) }

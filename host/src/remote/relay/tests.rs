@@ -427,3 +427,53 @@ async fn a_private_relay_gets_its_token_only_to_enroll_and_never_changes_account
     let creds = hub.routines.credentials(&hub, &bot_id, &routine_id, false).unwrap();
     assert_eq!(creds["url"], Value::Null, "a private relay delivers no public webhook");
 }
+
+/// A session whose sink is a real WebSocket, so what it sends can be read.
+async fn test_session(hub: Arc<Hub>) -> (Session, mpsc::Receiver<Value>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let (out_tx, out_rx) = mpsc::channel(8);
+    tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+        while let Some(Ok(Message::Text(t))) = ws.next().await {
+            let _ = out_tx.send(serde_json::from_str(t.as_str()).unwrap()).await;
+        }
+    });
+    let (client, _) = tokio_tungstenite::connect_async(format!("ws://{addr}")).await.unwrap();
+    let (sink, _stream) = client.split();
+    let address = cloud::Address { url: "http://127.0.0.1".into(), token: None, kind: cloud::RelayKind::Codync };
+    let session = Session {
+        hub,
+        address,
+        sink,
+        links: HashMap::new(),
+        outs: StreamMap::new(),
+        pulls: JoinSet::new(),
+        assistant: JoinSet::new(),
+        held: None,
+        ready: true,
+        retried: false,
+    };
+    (session, out_rx)
+}
+
+#[tokio::test]
+async fn an_overflowed_link_closes_and_the_device_can_connect_again() {
+    let hub = temp_hub();
+    let (mut s, mut out) = test_session(hub.clone()).await;
+    // A link whose channel isn't reading: its buffer is full.
+    let (tx, _rx) = mpsc::channel(1);
+    tx.try_send(Value::Null).unwrap();
+    s.links.insert("L1".into(), tx);
+    s.on_message(&json!({"t": "data", "link": "L1", "m": {"t": "hello"}}).to_string()).await.unwrap();
+    let close = timeout(Duration::from_secs(5), out.recv()).await.unwrap().unwrap();
+    assert_eq!(
+        (close["t"].as_str(), close["link"].as_str(), close["code"].as_u64()),
+        (Some("close"), Some("L1"), Some(4008))
+    );
+    assert!(!s.links.contains_key("L1"), "the overflowed link is gone");
+    // The device reconnects on a new link.
+    s.on_message(&json!({"t": "open", "link": "L2", "dk": "x", "pair": false}).to_string()).await.unwrap();
+    assert!(s.links.contains_key("L2"), "the device can connect again");
+}

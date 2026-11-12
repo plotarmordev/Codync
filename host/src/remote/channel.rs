@@ -794,6 +794,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_reconnecting_phone_catches_up_from_its_rev_not_the_whole_history() {
+        let hub = temp_hub();
+        // 30 bots with days of history.
+        for i in 0..30 {
+            let id = format!("b{i}");
+            let bot = serde_json::from_value(json!({"id": id, "name": id, "createdAt": 0})).unwrap();
+            hub.store.save_bot(&bot).unwrap();
+            for turn in 0..50 {
+                hub.store
+                    .insert_entry(
+                        &crate::store::Lane::main(&id),
+                        crate::store::EntryKind::User,
+                        turn,
+                        &json!({"text": format!("m{turn}")}),
+                    )
+                    .unwrap();
+            }
+        }
+        let key = paired_phone(&hub).await;
+        let mut p = Phone::direct(&hub, key.clone());
+        p.hello(&hub, false).await;
+        p.send(json!({"id": 1, "sub": "events", "b": {"since": 0, "client": "ios"}})).await;
+        let hello = p.recv().await.unwrap();
+        let catch_up = hello["ev"]["catchUp"].as_u64().unwrap();
+        assert!(catch_up <= 30 * 200 + 2, "a fresh client gets at most 200 entries per bot");
+        let mut rev = hello["ev"]["rev"].as_i64().unwrap();
+        for _ in 0..catch_up {
+            let ev = p.recv().await.unwrap();
+            rev = rev.max(ev["ev"]["rev"].as_i64().unwrap_or(0));
+        }
+        // A message while the phone is away.
+        let new = hub
+            .store
+            .insert_entry(&crate::store::Lane::main("b0"), crate::store::EntryKind::User, 50, &json!({"text": "new"}))
+            .unwrap();
+        // Reconnecting asks from its rev: only what is newer comes back.
+        let mut p = Phone::direct(&hub, key);
+        p.hello(&hub, false).await;
+        p.send(json!({"id": 1, "sub": "events", "b": {"since": rev, "client": "ios"}})).await;
+        let hello = p.recv().await.unwrap();
+        assert_eq!(hello["ev"]["catchUp"], 2, "the icons snapshot and the new message");
+        assert_eq!(p.recv().await.unwrap()["ev"]["type"], "icons");
+        assert_eq!(p.recv().await.unwrap()["ev"]["entry"]["id"], new.id);
+    }
+
+    #[tokio::test]
     async fn a_new_relay_address_makes_phones_reconnect_and_read_it() {
         let hub = temp_hub();
         let key = paired_phone(&hub).await;

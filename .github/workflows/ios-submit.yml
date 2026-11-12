@@ -3,9 +3,12 @@ name: Submit iOS
 # On each v* tag that changes the iPhone app, starts the Xcode Cloud archive on that tag
 # (or on main while main is the tagged commit, when Xcode Cloud never heard of the tag),
 # waits for the upload and submits it for App Review. Host/macOS-only releases skip iOS.
+# A copy with the repository variable OWN_IOS_BUNDLE_ID also builds its own iPhone app on each
+# push to dev and, once its App Store Connect key is set, uploads it to TestFlight (apps/ios/README.md).
 on:
   push:
     tags: ["v*"]
+    branches: [dev]
   workflow_dispatch:
     inputs:
       version:
@@ -16,12 +19,12 @@ permissions:
   contents: read
   pull-requests: read
 
-concurrency:
-  group: ios-submit
-  cancel-in-progress: false
-
 jobs:
   submit:
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    concurrency:
+      group: ios-submit
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 200
     steps:
@@ -44,3 +47,26 @@ jobs:
           # A tag run waits for the build Xcode Cloud starts now, not an older upload.
           [[ "$GITHUB_EVENT_NAME" == push ]] && export SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           python3 tools/asc-submit.py "${VERSION#v}"
+
+  testflight:
+    if: github.ref == 'refs/heads/dev' && vars.OWN_IOS_BUNDLE_ID != ''
+    concurrency:
+      group: ios-testflight
+      # A newer push carries a higher build number, so the older run has nothing left to add.
+      cancel-in-progress: true
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The build number counts every commit.
+          fetch-depth: 0
+      - name: Build, and upload once the App Store Connect key is set
+        env:
+          OWN_IOS_BUNDLE_ID: ${{ vars.OWN_IOS_BUNDLE_ID }}
+          OWN_IOS_TEAM: ${{ vars.OWN_IOS_TEAM }}
+          OWN_IOS_APP_NAME: ${{ vars.OWN_IOS_APP_NAME }}
+          ASC_KEY_ID: ${{ secrets.OWN_IOS_ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.OWN_IOS_ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.OWN_IOS_ASC_PRIVATE_KEY }}
+        run: apps/ios/own-build.sh "$([[ -n $ASC_PRIVATE_KEY ]] && echo upload || echo check)"

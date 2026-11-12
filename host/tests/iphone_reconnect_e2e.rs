@@ -1,7 +1,8 @@
-//! The iPhone store reconnecting to a host that restarts, with ~30 chats and days of history: its
-//! catch-up is only what is new, and no link overflows. The phone side is
+//! The iPhone store reconnecting through a relay to a host that restarts, with ~30 chats and days of
+//! history: its catch-up is only what is new, and no relayed device link overflows. The phone side is
 //! `HostRestartCatchUpTests.swift`, run on a simulator; the two hand each other each step through
-//! files in one folder. Runs only when asked (macOS, Xcode):
+//! files in one folder. The relay is `private-relay/`, run from this checkout (after its `npm ci`).
+//! Runs only when asked (macOS, Xcode, Node):
 //! `CODYNC_IOS_SIMULATOR=<udid> cargo test --test iphone_reconnect_e2e -- --ignored`
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)] // test code: failing loudly is the point
 
@@ -9,6 +10,8 @@ mod common;
 
 use common::host::Host;
 use serde_json::json;
+use std::ffi::OsStr;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -22,8 +25,16 @@ const OVERFLOW: &str = "device link overflowed";
 #[ignore = "drives an iOS Simulator: CODYNC_IOS_SIMULATOR=<udid>"]
 async fn a_restarted_host_catches_the_iphone_up_only_on_what_is_new() {
     let simulator = std::env::var("CODYNC_IOS_SIMULATOR").expect("CODYNC_IOS_SIMULATOR names the simulator to test on");
-    let mut host = Host::start_reachable().await;
+    let relay = Relay::start();
+    // The host listens on loopback only, so the LAN and Tailscale addresses it hands out refuse the phone: the relay it is.
+    let mut host = Host::start_with(&[
+        ("CODYNC_CLOUD", OsStr::new("on")),
+        ("CODYNC_CLOUD_URL", OsStr::new(&relay.url)),
+        ("CODYNC_CLOUD_TOKEN", OsStr::new(&relay.token)),
+    ])
+    .await;
     let bots = seed(&mut host).await;
+    on_relay(&host).await;
     let dir = host.home.join("handoff");
     std::fs::create_dir_all(&dir).unwrap();
     let pairing = host.call("pairing", json!({})).await;
@@ -32,14 +43,13 @@ async fn a_restarted_host_catches_the_iphone_up_only_on_what_is_new() {
 
     approve_pairing(&host, &mut phone).await;
     handoff(&mut phone, &dir, "synced").await;
-    host.restart_in_place(no_overflow).await;
+    restart(&mut host, |_| {}).await;
     std::fs::write(dir.join("restarted"), "").unwrap();
 
     // Two messages arrive while the phone is closed, written as the host stops and starts again.
     handoff(&mut phone, &dir, "closed").await;
     let mut sent = vec![];
-    host.restart_in_place(|home| {
-        no_overflow(home);
+    restart(&mut host, |home| {
         let db = rusqlite::Connection::open(home.join("codync.db")).unwrap();
         sent = bots[..2].iter().map(|bot| insert(&db, bot, "while away", now_ms())).collect();
     })
@@ -51,6 +61,64 @@ async fn a_restarted_host_catches_the_iphone_up_only_on_what_is_new() {
     assert!(status.success(), "the phone's test failed: see the xcodebuild output above");
 }
 
+/// `private-relay/` on a free loopback port, with its own data and registration token.
+struct Relay {
+    child: Child,
+    data: PathBuf,
+    url: String,
+    token: String,
+}
+
+impl Relay {
+    fn start() -> Self {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../private-relay");
+        assert!(dir.join("node_modules").exists(), "run `npm ci` in private-relay first");
+        let data = std::env::temp_dir().join(format!("codync-relay-e2e-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&data).unwrap();
+        let token = uuid::Uuid::new_v4().simple().to_string();
+        let mut child = Command::new("node")
+            .current_dir(&dir)
+            .args(["--experimental-strip-types", "src/index.ts"])
+            .env("CODYNC_PRIVATE_RELAY_DATA", &data)
+            .env("CODYNC_PRIVATE_RELAY_TOKEN", &token)
+            .env("PORT", "0")
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("run node");
+        // Its one line on stdout, once it listens: `... listening on http://127.0.0.1:<port> for ...`. Ended before
+        // it, the line is empty and the reason is on stderr above.
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap()).read_line(&mut line).unwrap();
+        let url =
+            line.split_whitespace().find(|w| w.starts_with("http://")).expect("the relay didn't start").to_owned();
+        Self { child, data, url, token }
+    }
+}
+
+impl Drop for Relay {
+    fn drop(&mut self) {
+        common::stop(&mut self.child);
+        let _ = std::fs::remove_dir_all(&self.data);
+    }
+}
+
+/// Restarts the host, checking the run that ends overflowed no link, and waits until it is back on the relay.
+async fn restart(host: &mut Host, between: impl FnOnce(&Path)) {
+    host.restart(|home| {
+        no_overflow(home);
+        between(home);
+    })
+    .await;
+    on_relay(host).await;
+}
+
+async fn on_relay(host: &Host) {
+    common::eventually("the host is on the relay", Duration::from_secs(30), async || {
+        host.call("cloudStatus", json!({})).await["connected"] == true
+    })
+    .await;
+}
+
 /// `BOTS` chats of `MESSAGES_PER_BOT` messages each over the past five days, written straight into
 /// the database: sent through the host, each would start its bot's agent.
 async fn seed(host: &mut Host) -> Vec<String> {
@@ -58,7 +126,7 @@ async fn seed(host: &mut Host) -> Vec<String> {
     for b in 0..BOTS {
         bots.push(host.bot(&format!("Bot {b}"), "auto").await);
     }
-    host.restart_in_place(|home| {
+    host.restart(|home| {
         let db = rusqlite::Connection::open(home.join("codync.db")).unwrap();
         let total = BOTS * MESSAGES_PER_BOT;
         for m in 0..MESSAGES_PER_BOT {

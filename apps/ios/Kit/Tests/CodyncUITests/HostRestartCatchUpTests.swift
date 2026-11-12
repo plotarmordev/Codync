@@ -3,8 +3,8 @@ import Testing
 @testable import CodyncKit
 @testable import CodyncUI
 
-/// The real iPhone store and channel against a real host that restarts, driven by
-/// `host/tests/iphone_reconnect_e2e.rs`, which seeds the host and restarts it. Runs only from there:
+/// The real iPhone store and channel, through a relay, against a real host that restarts, driven by
+/// `host/tests/iphone_reconnect_e2e.rs`, which runs the relay, seeds the host and restarts it. Runs only from there:
 /// `TEST_RUNNER_CODYNC_RESTART_DIR=<dir>` is where the two sides hand each other each step.
 @MainActor @Test(.enabled(if: restartDir != nil), .timeLimit(.minutes(5)))
 func aRestartedHostCatchesTheIPhoneUpOnlyOnWhatIsNew() async throws {
@@ -18,8 +18,8 @@ func aRestartedHostCatchesTheIPhoneUpOnlyOnWhatIsNew() async throws {
     let pairing = try #require(link.url.flatMap(Pairing.init(url:)))
     let computer = try await HostConnector.pair(pairing, identity: identity, deviceName: "Restart test", platform: "ios",
                                                 certificate: nil, claim: nil).computer
-    let open = { () -> (BotStore, SubscriptionLog) in
-        let log = SubscriptionLog()
+    let open = { () -> (BotStore, LinkLog) in
+        let log = LinkLog()
         let store = BotStore(computer: computer, storage: storage) { current in
             Recorder(channel: try await HostConnector.connect(current, identity: identity), log: log)
         }
@@ -42,6 +42,7 @@ func aRestartedHostCatchesTheIPhoneUpOnlyOnWhatIsNew() async throws {
     let reconnect = await log.subscriptions
     #expect(reconnect.map { $0.since } == [0, synced])
     #expect(reconnect.last?.entries == [])
+    await expectOnlyRelay(log)
 
     // Closed, then opened again after two messages: the cache's rev picks up just those.
     store.retire()
@@ -54,6 +55,13 @@ func aRestartedHostCatchesTheIPhoneUpOnlyOnWhatIsNew() async throws {
     #expect(reopened.since == synced)
     #expect(reopened.entries.sorted() == sent.sorted())
     #expect(sent.allSatisfy { id in store.bots.keys.contains { store.chat($0).contains { $0.id == id } } })
+    await expectOnlyRelay(log)
+}
+
+/// The store connected, and only through the relay: the host's own addresses don't answer the simulator.
+private func expectOnlyRelay(_ log: LinkLog) async {
+    let routes = await log.routes
+    #expect(!routes.isEmpty && routes.allSatisfy { $0 == .relay }, "\(routes)")
 }
 
 private let restartDir = ProcessInfo.processInfo.environment["CODYNC_RESTART_DIR"].map(URL.init(fileURLWithPath:))
@@ -67,8 +75,14 @@ struct Subscription: Sendable {
     var complete: Bool { catchUp.map { seen >= $0 } ?? false }
 }
 
-actor SubscriptionLog {
+/// What one store's link did: the route of each connection, and what each events stream caught up on.
+actor LinkLog {
+    private(set) var routes: [HostRoute] = []
     private(set) var subscriptions: [Subscription] = []
+
+    func connected(_ route: HostRoute) {
+        routes.append(route)
+    }
 
     func open(since: Int64) -> Int {
         subscriptions.append(Subscription(since: since))
@@ -90,10 +104,10 @@ actor SubscriptionLog {
     }
 }
 
-/// The real channel, noting what each events stream catches up on.
+/// The real channel, noting each connection's route and what each events stream catches up on.
 struct Recorder: RemoteTransport {
     let channel: ChannelTransport
-    let log: SubscriptionLog
+    let log: LinkLog
 
     func stream(_ request: HostStreamRequest) -> AsyncThrowingStream<Data, Error> {
         guard case let .events(since, _) = request else { return channel.stream(request) }
@@ -118,7 +132,20 @@ struct Recorder: RemoteTransport {
     func call(_ method: String, body: Data, timeout: TimeInterval) async throws -> Data {
         try await channel.call(method, body: body, timeout: timeout)
     }
-    func states() -> AsyncStream<LinkState> { channel.states() }
+    /// Noted before the store sees it, so a store that is ready has its route in the log.
+    func states() -> AsyncStream<LinkState> {
+        let (states, log) = (channel.states(), log)
+        return AsyncStream { continuation in
+            let task = Task {
+                for await state in states {
+                    if case let .ready(route) = state { await log.connected(route) }
+                    continuation.yield(state)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
     func waitForRoute() async throws { try await channel.waitForRoute() }
     func computerUpdates() -> AsyncStream<Computer> { channel.computerUpdates() }
     func enqueue(botId: String, text: String, clientNonce: String, replyTo: String?) async throws {

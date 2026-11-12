@@ -24,24 +24,19 @@ pub fn client() -> reqwest::Client {
 /// Runs `codync-host serve` for `home` until it answers: the process and its base URL. A port
 /// picked here is only free for a moment; when something else takes it before the host binds, the
 /// host exits and this starts it again on another one.
+#[allow(dead_code, reason = "tests on `host::Host` start it through `serve_with`")]
 pub async fn serve(home: &Path) -> (Child, String) {
     serve_with(home, &[]).await
 }
 
 /// [`serve`] with `env` on top of the test host's own.
 pub async fn serve_with(home: &Path, env: &[(&str, &std::ffi::OsStr)]) -> (Child, String) {
-    serve_on(home, None, env).await
-}
-
-/// [`serve_with`] on `port` when given, so a restarted host is where a paired phone left it; it is tried
-/// again until it is free.
-pub async fn serve_on(home: &Path, port: Option<u16>, env: &[(&str, &std::ffi::OsStr)]) -> (Child, String) {
     let deadline = Instant::now() + Duration::from_secs(30);
     let _ = std::fs::create_dir_all(home);
     let log = home.join("host-stderr.log");
     let mut last = String::new();
     loop {
-        let port = port.unwrap_or_else(free_port);
+        let port = std::net::TcpListener::bind("127.0.0.1:0").expect("free port").local_addr().expect("port").port();
         let base = format!("http://127.0.0.1:{port}");
         let mut child = Command::new(env!("CARGO_BIN_EXE_codync-host"))
             .args(["serve", "--bind", "127.0.0.1", "--port", &port.to_string()])
@@ -68,11 +63,6 @@ pub async fn serve_on(home: &Path, port: Option<u16>, env: &[(&str, &std::ffi::O
         }
         assert!(Instant::now() < deadline, "{}", not_started(&log, &last));
     }
-}
-
-/// A loopback port free at this moment.
-pub fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0").expect("free port").local_addr().expect("port").port()
 }
 
 /// Why a test host didn't answer: the last readiness check's error and the end of the host's log.

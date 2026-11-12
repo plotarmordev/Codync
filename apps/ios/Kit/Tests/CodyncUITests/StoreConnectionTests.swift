@@ -289,11 +289,12 @@ private func populate(_ fake: FakeRemote, bots: Int = 30, turnsPerBot: Int = 4) 
     #expect(store.chat("b29").map(\.seq) == [1, 2, 3, 4, 5])
 }
 
-@MainActor @Test func aLegacyCacheStampKeepsItsCursorAcrossAHostUpdate() async throws {
+/// The `since` of the first catch-up a store asks for over a mirror file holding `stamp` (as an older app wrote
+/// it) or `format`, with the host updated meanwhile.
+@MainActor private func firstSince(overCache field: String) async throws -> [Int64] {
     let (storage, suite) = context()
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let computer = randomComputer("Mac")
-    // A mirror file as an older app wrote it: the stamp ends in `/` + the host's version then.
     let cacheURL = URL.cachesDirectory.appending(path:
         "codync-mirror-\(Bundle.main.bundleIdentifier ?? "app")-\(storage.id)-\(computer.id).json")
     defer { try? FileManager.default.removeItem(at: cacheURL) }
@@ -302,21 +303,23 @@ private func populate(_ fake: FakeRemote, bots: Int = 30, turnsPerBot: Int = 4) 
     let entries = (0..<30).flatMap { b in (0..<4).map { t in
         #"{"id":"e-b\#(b)-\#(t)","seq":\#(t + 1),"botId":"b\#(b)","rev":\#(100 + b * 4 + t),"kind":"user","turn":1,"data":{"text":"m\#(t)"},"createdAt":\#(day),"updatedAt":\#(day)}"#
     } }.joined(separator: ",")
-    let cache = #"{"stamp":"\#(BotStore.appBuild)/2.40.0","hostId":"h1","rev":219,"bots":[\#(bots)],"entries":[\#(entries)]}"#
+    let cache = #"{\#(field),"hostId":"h1","rev":219,"bots":[\#(bots)],"entries":[\#(entries)]}"#
     try Data(cache.utf8).write(to: cacheURL, options: .atomic)
 
     let fake = FakeRemote(.ready(.relay))
-    // The host updated while this app was away: the version in the stamp is stale on purpose.
     await fake.setHello(helloJSON(version: "2.41.0"))
     let store = BotStore(computer: computer, storage: storage) { _ in fake }
     defer { store.retire() }
+    #expect(store.chat("b0").map(\.id) == (0..<4).map { "e-b0-\($0)" })
     store.setActive(true)
     #expect(await until { await fake.subscribed })
-    // The same build wrote the cache: the reconnect's catch-up starts at its cursor, not from 0.
-    #expect(await until { await fake.eventSinces == [219] })
-    #expect(store.chat("b0").map(\.id) == (0..<4).map { "e-b0-\($0)" })
-    // The stream's hello from the same host id (a different one would restart the mirror).
-    await fake.emit(#"{"type":"hello","hostId":"h1","rev":220}"#)
-    await fake.emit(#"{"type":"entry","entry":{"id":"e-b0-4","seq":5,"botId":"b0","rev":220,"kind":"user","turn":1,"data":{"text":"while away"},"createdAt":1,"updatedAt":1}}"#)
-    #expect(await until { store.chat("b0").last?.data.text == "while away" })
+    return await fake.eventSinces
+}
+
+@MainActor @Test func aCacheAnOlderBuildWroteKeepsItsCursorAcrossAppAndHostUpdates() async throws {
+    // Another app build (Xcode Cloud numbers each one) for the host before its update.
+    #expect(try await firstSince(overCache: #""stamp":"412/2.40.0""#) == [219])
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat)"#) == [219])
+    // Only another mirror format fetches everything again.
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat + 1)"#) == [0])
 }

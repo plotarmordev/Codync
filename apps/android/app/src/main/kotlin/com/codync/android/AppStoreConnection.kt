@@ -183,12 +183,12 @@ private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Lon
 }
 
 /**
- * The mirror's part of a ready link's `hello`: its stamp is this app's build (a host version change alone
- * keeps the event cursor — its changes are additive), and its icons answer this connection's request.
- * Returns whether the stamp or host id dropped the held conversation (reconnecting pages it again).
+ * The mirror's part of a ready link's `hello`: app and host updates keep the event cursor (only another host
+ * database or mirror format drops it), and its icons answer this connection's request.
+ * Returns whether the host id or format dropped the held conversation (reconnecting pages it again).
  */
 internal fun MirrorDatabase.connectedHello(hello: JsonObject, iconEpoch: Long): Boolean {
-    val changed = setStamp(requireNotNull(hello["hostId"]?.jsonPrimitive?.content), BuildConfig.VERSION_NAME)
+    val changed = setHost(requireNotNull(hello["hostId"]?.jsonPrimitive?.content), MirrorDatabase.FORMAT)
     applyIconReply(MirrorEvent.Icons(hello["icons"]?.let(::decodeCustomIcons).orEmpty(),
         hello["iconsRevision"]?.jsonPrimitive?.longOrNull ?: 0), iconEpoch)
     return changed

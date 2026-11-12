@@ -454,10 +454,9 @@ func helloJSON(version: String, minApp: String? = nil, backends: String = "[]", 
     let (storage, suite) = context()
     defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let computer = randomComputer("Fixture")
-    let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
     let url = URL.cachesDirectory.appending(path: "codync-mirror-\(Bundle.main.bundleIdentifier ?? "app")-\(storage.id)-\(computer.id).json")
     let cached = #"""
-    {"stamp":"\#(build)/3.0.0","hostId":"h1","rev":77,"bots":[],"entries":[
+    {"format":\#(BotStore.mirrorFormat),"hostId":"h1","rev":77,"bots":[],"entries":[
       {"id":"notice","seq":1,"botId":"dex","rev":77,"kind":"notice","turn":1,"createdAt":1,"updatedAt":1,
        "data":{"text":"Message from Miles","status":"completed"}},
       {"id":"local-pending","seq":2,"botId":"dex","rev":0,"kind":"user","turn":1,"createdAt":2,"updatedAt":2,

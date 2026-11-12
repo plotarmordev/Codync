@@ -153,7 +153,8 @@ public final class BotStore {
     /// The chats on screen, by the view showing each.
     @ObservationIgnored var readingViews: [UUID: String] = [:]
 
-    var cacheStamp: String?
+    /// The cache was written in another `mirrorFormat`: the first hello fetches everything again.
+    var staleCache = false
 
     /// Loads this context's `DeviceIdentity` itself.
     public convenience init(computer: Computer, storage: SharedStore.Context) {

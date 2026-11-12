@@ -23,7 +23,7 @@ class MirrorDatabaseTest {
     @After fun cleanup() { mirror.close(); directory.deleteRecursively() }
 
     @Test fun iconCacheTracksNewerRevisionsAndResetsWithTheHostDatabase() {
-        mirror.setStamp("old", "build")
+        mirror.setHost("old", MirrorDatabase.FORMAT)
         val first = CustomIcon("first")
         val latest = CustomIcon("latest", true)
         mirror.apply(MirrorEvent.Icons(mapOf("bot:b" to first), 1))
@@ -37,13 +37,13 @@ class MirrorDatabaseTest {
         assertEquals(latest, mirror.icons()["bot:b"])
         mirror.apply(MirrorEvent.Icons(emptyMap(), 3))
         assertTrue(mirror.icons().isEmpty())
-        mirror.setStamp("new", "build")
+        mirror.setHost("new", MirrorDatabase.FORMAT)
         mirror.apply(MirrorEvent.Icons(mapOf("bot:b" to first), 0))
         assertEquals(first, mirror.icons()["bot:b"])
     }
 
     @Test fun reconnectAcceptsSameHostRollbackAboveBotCursorAndRejectsOldSaveReplies() {
-        mirror.setStamp("same-host", "build")
+        mirror.setHost("same-host", MirrorDatabase.FORMAT)
         mirror.apply(MirrorEvent.BotChanged(Bot("b", "Bot", rev = 50)))
         val old = CustomIcon("old")
         mirror.apply(MirrorEvent.Icons(mapOf("bot:b" to old), 100))
@@ -107,20 +107,20 @@ class MirrorDatabaseTest {
     }
 
     @Test fun incompatibleCacheAndDatabaseReplacementRewindSafely() {
-        assertFalse(mirror.setStamp("old", "2.4"))
+        assertFalse(mirror.setHost("old", 1))
         mirror.apply(MirrorEvent.EntryChanged(entry(9)))
         mirror.save(PendingSend("unsent", "bot", text = "message", createdAt = 1))
         mirror.finishHistory("bot")
-        assertFalse(mirror.setStamp("old", "2.4"))
+        assertFalse(mirror.setHost("old", 1))
         assertEquals(1, mirror.snapshot().entries.size)
-        // The new host removed "message": the catch-up from 0 brings only what it still has.
-        assertTrue(mirror.setStamp("old", "2.5"))
+        // Another mirror format: the catch-up from 0 brings only what the host still has.
+        assertTrue(mirror.setHost("old", 2))
         assertEquals(0, mirror.snapshot().rev)
         assertFalse(mirror.historyComplete("bot"))
         assertEquals("unsent", mirror.snapshot().pending.single().nonce)
         mirror.apply(MirrorEvent.EntryChanged(Entry("kept", 2, "bot", rev = 10, kind = "user", data = buildJsonObject { put("text", "kept") })))
         assertEquals(listOf("kept"), mirror.snapshot().entries.map { it.id })
-        assertTrue(mirror.setStamp("new", "2.5"))
+        assertTrue(mirror.setHost("new", 2))
         assertEquals(0, mirror.snapshot().rev)
         assertTrue(mirror.snapshot().entries.isEmpty())
     }
@@ -129,20 +129,20 @@ class MirrorDatabaseTest {
         put("hostId", hostId); put("version", version); put("iconsRevision", iconsRevision)
     }
 
-    @Test fun aHostUpdateThroughConnectsHelloKeepsTheCursorAndMigratesAnOlderAppsStamp() {
-        // First connect, written by an older app: its stamp ended in `/` + the host's version then.
-        assertFalse(mirror.setStamp("host", "${BuildConfig.VERSION_NAME}/2.44.1"))
+    @Test fun anAppAndHostUpdateKeepTheCursorOfAMirrorAnOlderAppWrote() {
         mirror.apply(MirrorEvent.BotChanged(Bot("bot", "Bot", rev = 3)))
         mirror.apply(MirrorEvent.EntryChanged(chat("bot", 4)))
+        // As 2.44.1 left it: no format, a stamp of its own version and the host's then.
+        mirror.writableDatabase.apply {
+            insertOrThrow("meta", null, ContentValues().apply { put("k", "hostId"); put("v", "host") })
+            insertOrThrow("meta", null, ContentValues().apply { put("k", "stamp"); put("v", "2.44.1/2.44.1") })
+        }
         val before = mirror.snapshot()
         assertEquals(4, before.rev)
-        // The reconnect's hello — the very call connect() makes — reports the updated host. The
-        // stale version in the older app's stamp is ignored: the conversation and cursor stay.
-        val epoch = mirror.beginIconConnection()
-        assertFalse(mirror.connectedHello(hello("2.45.0", iconsRevision = 9), epoch))
+        // The updated app's first connect() hello reports an updated host too: the conversation and cursor stay.
+        assertFalse(mirror.connectedHello(hello("2.45.0", iconsRevision = 9), mirror.beginIconConnection()))
         assertEquals(before.rev, mirror.snapshot().rev)
         assertEquals(before.entries, mirror.snapshot().entries)
-        // Reconnecting again with the same build stamps it build-only: the cursor still holds.
         assertFalse(mirror.connectedHello(hello("2.45.1"), mirror.beginIconConnection()))
         assertEquals(before.rev, mirror.snapshot().rev)
     }
@@ -249,10 +249,10 @@ class MirrorDatabaseTest {
     }
 
     @Test fun aCatchUpFromTheStartKeepsEveryRowWhateverItsOrder() {
-        mirror.setStamp("host", "build/1")
+        mirror.setHost("host", MirrorDatabase.FORMAT)
         mirror.apply((10L..20L).map { MirrorEvent.EntryChanged(chat("bot", it)) })
-        // A new app build fetches the conversation again from rev 0, and a send's reply lands before the catch-up.
-        assertTrue(mirror.setStamp("host", "new-build"))
+        // A new mirror format fetches the conversation again from rev 0, and a send's reply lands before the catch-up.
+        assertTrue(mirror.setHost("host", MirrorDatabase.FORMAT + 1))
         mirror.receive(listOf(chat("bot", 30)))
         mirror.apply(MirrorEvent.Hello("host", 40, JsonObject(emptyMap()), null))
         // Sorted by rev, so an older row edited later arrives after a newer one.

@@ -69,23 +69,16 @@ extension BotStore {
     }
 
     private func noteHostVersion(_ new: HostVersion) {
-        // The stamp is this app's build; a cache saved by an older app ends it with `/` + the
-        // host's version then, so only its part before `/` is the build. A host version change
-        // alone keeps the cursor: its changes are additive.
-        let newBuild = cacheStamp.map { String($0.prefix(while: { $0 != "/" })) != Self.appBuild } ?? false
-        if newBuild {
-            // A different app build: data may carry new fields, so fetch it all again.
-            refetchAll()
-        }
-        let newHost = hostVersion.map { $0.version != new.version } ?? false
-        if newBuild || newHost {
-            // Data that wouldn't read may read on the other version.
+        // A cache in another format can't be kept, so everything is fetched again. A host update
+        // keeps the cursor: its changes are additive.
+        if staleCache { refetchAll() }
+        staleCache = false
+        if hostVersion.map({ $0.version != new.version }) ?? false {
+            // Data that wouldn't read may read on the other version; the host's update request is done.
             rewound = false
             unreadable = false
-            // The host updated (or this app now sees a different one): its request is done.
             hostUpdate = nil
         }
-        cacheStamp = nil
         // An update notice may appear or go away with it.
         if new != hostVersion { Motion.animate { hostVersion = new } }
     }

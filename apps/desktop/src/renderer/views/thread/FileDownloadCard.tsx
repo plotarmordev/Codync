@@ -8,27 +8,31 @@ import { IconButtonBase } from '../../components/Overlay'
 import { Spinner } from '../../components/Controls'
 import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
+import { analytics } from '../../store/analytics'
+import { imageActionEvent } from '../../lib/image-analytics.ts'
 import { AttachmentImage, AttachmentViewer, attachmentSymbol, type ImageSource } from './Attachments'
 import { cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, downloadAction, seekKeyTarget } from './file-card'
 import { FileViewer } from './FileViewer'
+import { ImageContextMenu } from './ImageContextMenu'
+import type { MessageMenu } from './use-image-actions'
 import type { AudioSnapshot } from './shared-audio'
 import { useSharedAudio } from './use-shared-audio'
 import './attachments.css'
 
-export function FileDownloadCard({ entry, file }: { entry: Entry; file: SharedFile }) {
-  return showsAsAudio(file) ? <AudioFileCard entry={entry} file={file} /> : <FileCard entry={entry} file={file} />
+export function FileDownloadCard({ entry, file, menu }: { entry: Entry; file: SharedFile; menu?: MessageMenu }) {
+  return showsAsAudio(file) ? <AudioFileCard entry={entry} file={file} menu={menu} /> : <FileCard entry={entry} file={file} menu={menu} />
 }
 
 /** A voice note's card: its play state (and a spinner while it loads) in place of the file icon. */
-function AudioFileCard({ entry, file }: { entry: Entry; file: SharedFile }) {
+function AudioFileCard({ entry, file, menu }: { entry: Entry; file: SharedFile; menu?: MessageMenu }) {
   const { snapshot, toggle, seek } = useSharedAudio(file, entry.id)
-  return <FileCard entry={entry} file={file} audio={snapshot} toggle={toggle} seek={seek} icon={<AudioIcon snapshot={snapshot} toggle={toggle} />} />
+  return <FileCard entry={entry} file={file} menu={menu} audio={snapshot} toggle={toggle} seek={seek} icon={<AudioIcon snapshot={snapshot} toggle={toggle} />} />
 }
 
 /** A message's voice note, at the top of its bubble: the play button, the progress bar and the clock on one row. */
 export function VoiceNotePlayer({ entry, file }: { entry: Entry; file: SharedFile }) {
   const { snapshot, toggle, seek } = useSharedAudio(file, entry.id)
-  const stop = useFileStop(entry, file, snapshot, toggle, seek)
+  const stop = useFileStop(entry, file, undefined, snapshot, toggle, seek)
   return <>
     <div className="voice-note" {...stop.props} aria-label={`Voice note, ${stop.detail}`}>
       <HStack gap={10} aria-hidden>
@@ -46,16 +50,18 @@ export function VoiceNotePlayer({ entry, file }: { entry: Entry; file: SharedFil
  * Space does its first action, the arrow keys move a voice note's playhead, and its menu (right-click, Shift-F10,
  * VoiceOver's Show menu) offers all of them. The buttons and bar inside are for the pointer only.
  */
-function FileCard({ entry, file, audio, toggle, seek, icon }: {
-  entry: Entry; file: SharedFile; audio?: AudioSnapshot; toggle?: () => void; seek?: (seconds: number) => void; icon?: React.ReactNode
+function FileCard({ entry, file, menu, audio, toggle, seek, icon }: {
+  entry: Entry; file: SharedFile; menu?: MessageMenu; audio?: AudioSnapshot; toggle?: () => void; seek?: (seconds: number) => void; icon?: React.ReactNode
 }) {
-  const stop = useFileStop(entry, file, audio, toggle, seek)
+  const stop = useFileStop(entry, file, menu, audio, toggle, seek)
   return <>
     <div className="file-card" {...stop.props} aria-label={`${file.name}, ${stop.detail}`}>
       <VStack gap={12} aria-hidden>
-        {showsAsImage(file) ? <button className="file-card-image" tabIndex={-1} onClick={stop.view}>
-          <AttachmentImage source={stop.image} fit="thumbnail" />
-        </button> : null}
+        {showsAsImage(file) ? <ImageContextMenu source={stop.image} menu={menu} className="file-card-image-menu">
+          <button className="file-card-image" tabIndex={-1} onClick={stop.view}>
+            <AttachmentImage source={stop.image} fit="thumbnail" />
+          </button>
+        </ImageContextMenu> : null}
         <HStack gap={12}>
           {icon ?? <Icon name={attachmentSymbol(file.name)} size={24} color="var(--secondary)" />}
           <VStack grow>
@@ -63,7 +69,7 @@ function FileCard({ entry, file, audio, toggle, seek, icon }: {
             <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail">{stop.detail}</Text>
             {audio && seek ? <AudioProgress snapshot={audio} seek={seek} /> : null}
           </VStack>
-          <IconButtonBase title={downloadAction(stop.state)} icon={stop.busy ? 'xmark' : 'arrow.down.to.line'} size={36} tabIndex={-1} onClick={stop.download} />
+          <DownloadButton entry={entry} file={file} />
         </HStack>
       </VStack>
     </div>
@@ -71,14 +77,28 @@ function FileCard({ entry, file, audio, toggle, seek, icon }: {
   </>
 }
 
+/** Saves a shared file (or stops that); the same button on its card and beside the close button of its full-size picture. */
+function DownloadButton({ entry, file, inViewer = false }: { entry: Entry; file: SharedFile; inViewer?: boolean }) {
+  const store = useStore()
+  const state = store.fileDownloads.states.get(file.id)
+  const busy = state?.kind === 'downloading'
+  const start = async () => {
+    if (busy) return store.fileDownloads.cancel(file.id)
+    const outcome = await store.fileDownloads.save(store.client, entry.id, file)
+    // Only the viewer's button reports, once the save ends; a cancel says nothing.
+    if (inViewer && outcome !== 'cancelled') analytics.track(imageActionEvent('download', 'viewer', outcome === 'failed' ? 'transfer' : undefined))
+  }
+  return <IconButtonBase title={downloadAction(state)} icon={busy ? 'xmark' : 'arrow.down.to.line'} size={inViewer ? 28 : 36} onClick={() => void start()} />
+}
+
 /** A shared file's keyboard and screen-reader stop: its caption, its actions with their menu, and the picture or file viewer. */
-function useFileStop(entry: Entry, file: SharedFile, audio?: AudioSnapshot, toggle?: () => void, seek?: (seconds: number) => void) {
+function useFileStop(entry: Entry, file: SharedFile, menu: MessageMenu | undefined, audio?: AudioSnapshot, toggle?: () => void, seek?: (seconds: number) => void) {
   const store = useStore()
   const state = store.fileDownloads.states.get(file.id)
   const busy = state?.kind === 'downloading'
   const [viewing, setViewing] = useState(false)
   const [reading, setReading] = useState(false)
-  const menu = useContextMenu()
+  const context = useContextMenu()
   const image: ImageSource = { file, entryId: entry.id }
   const view = () => setViewing(true)
   const download = () => store.fileDownloads.toggle(store.client, entry.id, file)
@@ -91,13 +111,13 @@ function useFileStop(entry: Entry, file: SharedFile, audio?: AudioSnapshot, togg
       e.preventDefault()
       return seek(seconds)
     }
-    const action = cardKeyAction(e, menu.open)
+    const action = cardKeyAction(e, context.open)
     if (!action) return
     e.preventDefault()
     if (action === 'first') actions()[0].action()
     else {
       const { left, bottom } = e.currentTarget.getBoundingClientRect()
-      menu.openAt({ x: left, y: bottom })
+      context.openAt({ x: left, y: bottom })
     }
   }
   return {
@@ -113,11 +133,17 @@ function useFileStop(entry: Entry, file: SharedFile, audio?: AudioSnapshot, togg
       tabIndex: 0,
       onClick: (e: React.MouseEvent) => clickRunsFirstAction(e.target as Element) && actions()[0].action(),
       onKeyDown,
-      onContextMenu: menu.onContextMenu,
+      onContextMenu: context.onContextMenu,
     },
     overlays: <>
-      <AnchoredMenu open={menu.open} onClose={menu.close} point={menu.point} items={actions} />
-      <AttachmentViewer source={viewing ? image : null} close={() => setViewing(false)} />
+      <AnchoredMenu open={context.open} onClose={context.close} point={context.point} items={actions} />
+      <AttachmentViewer
+        source={viewing ? image : null}
+        close={() => setViewing(false)}
+        menu={menu}
+        actions={<DownloadButton entry={entry} file={file} inViewer />}
+        note={state ? <Text as="div" size="caption2" tone={state.kind === 'failed' ? 'danger' : 'secondary'} role={state.kind === 'failed' ? 'alert' : 'status'} className="attachment-viewer-note">{cardDetail(state, file, audio)}</Text> : undefined}
+      />
       <FileViewer entryId={entry.id} file={reading ? file : null} close={() => setReading(false)} />
     </>,
   }

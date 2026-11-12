@@ -2,14 +2,19 @@ import CodyncKit
 import SwiftUI
 import UIKit
 
+/// A file a bot shared: its picture (tap for full size) when it's an image, its name and size, and its Download button.
+/// Long-press for the message's menu; a picture's has Copy image and Copy name for Copy.
 struct FileDownloadCard: View {
     let entry: Entry
     let file: SharedFile
+    let menu: MessageMenu
     /// Opens a readable file in the chat's viewer; nil where the card stands alone.
     var openFile: ((FileViewerTarget) -> Void)?
     @Environment(BotStore.self) private var model
-    @State private var viewing = false
+    @Environment(\.openImage) private var openImage
     @State private var audio = SharedAudio()
+
+    private var source: ImageSource { .shared(file, entryId: entry.id, botId: entry.botId) }
 
     var body: some View {
         let download = model.fileDownloads.states[file.id]
@@ -20,7 +25,6 @@ struct FileDownloadCard: View {
         }
         .padding(14)
         .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 16))
-        .codyncSheet(isPresented: $viewing) { AttachmentViewer(shared: file, entryId: entry.id) }
         .onDisappear { audio.stop() }
         // One element reads the whole card; its buttons become named actions.
         .accessibilityElement(children: .ignore)
@@ -30,21 +34,26 @@ struct FileDownloadCard: View {
                 Button(audio.state == .playing ? L10n.tr("Pause") : L10n.tr("Play"), action: play)
             }
             if file.showsAsImage {
-                Button(L10n.tr("View")) { viewing = true }
+                Button(L10n.tr("View")) { openImage(ImageViewing(source: source, menu: menu)) }
             } else if file.preview != nil {
                 Button(L10n.tr("View"), action: open)
             }
             Button(busy ? L10n.tr("Cancel download") : L10n.tr("Download"), action: self.download)
         }
         .audioSeekAdjustable(file.showsAsAudio ? audio : nil)
+        .contextActions(reactions: menu.reactions) {
+            menu.items(copy: file.showsAsImage ? ImageCopy.menuItems(source, model: model) : menu.textCopy)
+        }
     }
 
     /// The picture itself; tap for full size.
     private var preview: some View {
-        AttachmentImage(shared: file, entryId: entry.id, maxPixels: 720)
+        AttachmentImage(source, maxPixels: 720)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())
-            .onTapGesture { viewing = true }
+            .onTapGesture { openImage(ImageViewing(source: source, menu: menu)) }
+            .accessibilityLabel(file.name)
+            .accessibilityAddTraits(.isButton)
             .frame(maxWidth: .infinity, maxHeight: 280, alignment: .leading)
     }
 
@@ -61,6 +70,7 @@ struct FileDownloadCard: View {
                     .font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: L10n.tr(Self.action(download)) + " " + file.name))
         }
     }
 
@@ -99,10 +109,25 @@ struct FileDownloadCard: View {
     }
 
     private func download() {
-        model.fileDownloads.toggle(client: model.client, entry: entry, file: file)
+        Motion.animate { model.fileDownloads.toggle(client: model.client, entry: entry, file: file) }
     }
 
     private var busy: Bool { model.fileDownloads.isDownloading(file.id) }
+
+    /// What the Download button does now (its label).
+    static func action(_ state: FileDownloads.State?) -> String {
+        switch state {
+        case .downloading: "Cancel download"
+        case .failed: "Retry download"
+        case .saved: "Save again"
+        case nil: "Download"
+        }
+    }
+
+    static func symbol(_ state: FileDownloads.State?) -> String {
+        if case .downloading = state { return "xmark" }
+        return "arrow.down.to.line"
+    }
 
     /// What the card says under the name: a failed play, then the download, then the sound's position, then its size.
     static func detail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,

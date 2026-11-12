@@ -54,6 +54,30 @@ impl Host {
         self.base = base;
     }
 
+    /// A host a phone pairs with directly: it hands out its own loopback address, the simulator's
+    /// route to this Mac. [`Self::restart_in_place`] keeps that address.
+    pub async fn start_reachable() -> Self {
+        let home = std::env::temp_dir().join(format!("codync-phone-e2e-{}", uuid::Uuid::new_v4()));
+        let port = super::free_port();
+        let (child, base) =
+            super::serve_on(&home, Some(port), &Self::reachable(&format!("http://127.0.0.1:{port}"))).await;
+        let token = std::fs::read_to_string(home.join("token")).unwrap().trim().to_owned();
+        Self { child, home, base, token }
+    }
+
+    /// [`Self::restart`] on the same port, where a paired phone reconnects on its own.
+    pub async fn restart_in_place(&mut self, between: impl FnOnce(&std::path::Path)) {
+        super::stop(&mut self.child);
+        between(&self.home);
+        let port = self.base.rsplit(':').next().and_then(|p| p.parse().ok());
+        let (child, _) = super::serve_on(&self.home, port, &Self::reachable(&self.base)).await;
+        self.child = child;
+    }
+
+    fn reachable(base: &str) -> [(&'static str, &std::ffi::OsStr); 1] {
+        [("CODYNC_EXTERNAL_URL", std::ffi::OsStr::new(base))]
+    }
+
     pub async fn post(&self, method: &str, body: &Value) -> (bool, Value) {
         let response = super::client()
             .post(format!("{}/api/{method}", self.base))

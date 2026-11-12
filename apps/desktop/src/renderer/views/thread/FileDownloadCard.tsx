@@ -77,7 +77,7 @@ function FileCard({ entry, file, menu, audio, toggle, seek, icon }: {
   </>
 }
 
-/** Saves a shared file (or stops that); the same button on its card and beside the close button of its full-size picture. */
+/** Saves a shared file (or stops that); the same button on its card (pointer only: the card's actions offer it) and beside the close button of its full-size picture. */
 function DownloadButton({ entry, file, inViewer = false }: { entry: Entry; file: SharedFile; inViewer?: boolean }) {
   const store = useStore()
   const state = store.fileDownloads.states.get(file.id)
@@ -88,7 +88,7 @@ function DownloadButton({ entry, file, inViewer = false }: { entry: Entry; file:
     // Only the viewer's button reports, once the save ends; a cancel says nothing.
     if (inViewer && outcome !== 'cancelled') analytics.track(imageActionEvent('download', 'viewer', outcome === 'failed' ? 'transfer' : undefined))
   }
-  return <IconButtonBase title={downloadAction(state)} icon={busy ? 'xmark' : 'arrow.down.to.line'} size={inViewer ? 28 : 36} onClick={() => void start()} />
+  return <IconButtonBase title={downloadAction(state)} icon={busy ? 'xmark' : 'arrow.down.to.line'} size={inViewer ? 28 : 36} tabIndex={inViewer ? undefined : -1} onClick={() => void start()} />
 }
 
 /** A shared file's keyboard and screen-reader stop: its caption, its actions with their menu, and the picture or file viewer. */

@@ -1547,7 +1547,6 @@
   "Couldn't play. Tap to retry.": "再生できませんでした。タップして再試行。",
   "Downloaded": "ダウンロード済み",
   "Tap to retry.": "タップして再試行。",
-  "View": "表示",
   "Voice note": "ボイスメッセージ",
   "Show agent logos": "エージェントのロゴを表示",
   "Marks each bot with its agent's logo when your bots use more than one agent.": "複数のエージェントを使っているとき、各ボットにそのエージェントのロゴを表示します。",

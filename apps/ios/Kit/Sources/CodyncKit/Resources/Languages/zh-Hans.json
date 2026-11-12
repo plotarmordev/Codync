@@ -1547,7 +1547,6 @@
   "Couldn't play. Tap to retry.": "无法播放。轻点重试。",
   "Downloaded": "已下载",
   "Tap to retry.": "轻点重试。",
-  "View": "查看",
   "Voice note": "语音消息",
   "Show agent logos": "显示智能体标志",
   "Marks each bot with its agent's logo when your bots use more than one agent.": "当你的 bot 使用不止一种智能体时，在每个 bot 上标出它的智能体标志。",

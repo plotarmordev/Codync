@@ -14,6 +14,7 @@ import { FileViewer } from './FileViewer'
 import type { AudioSnapshot } from './shared-audio'
 import { useSharedAudio } from './use-shared-audio'
 import './attachments.css'
+
 export function FileDownloadCard({ entry, file }: { entry: Entry; file: SharedFile }) {
   return showsAsAudio(file) ? <AudioFileCard entry={entry} file={file} /> : <FileCard entry={entry} file={file} />
 }

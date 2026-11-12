@@ -63,6 +63,7 @@ export const appFloor = new AppFloor()
 /** `reach_account_answered`'s `error`: the category of a failed claim, never its message. */
 const claimFailure = (error: unknown): ClaimFailure =>
   !(error instanceof CloudError) ? 'host' : error.code === 'unreachable' ? 'unreachable' : 'refused'
+
 export async function request<T>(method: string, path: string, body?: unknown, signed = false): Promise<T> {
   const res = await window.codync.cloud.request(method, path, body, signed)
   if (res.ok) return res.value as T

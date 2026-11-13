@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 /// Where the running app keeps its pairings and settings: the App Group named in its Info.plist, so a copy built with
-/// its own group (`apps/ios/own-build.sh check`) never shares the environment's group with the App Store app.
+/// its own group (`apps/ios/own-build.sh`) never shares the environment's group with the App Store app.
 struct AppGroupTests {
     private static let group = Bundle.main.object(forInfoDictionaryKey: "CodyncAppGroup") as? String
     private static let environmentGroup = AppEnvironment.current.appGroup

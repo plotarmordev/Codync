@@ -151,7 +151,7 @@ targets:
           - NotificationService
           - WhatsNew.md
           - README.md
-          # A copy's own TestFlight build (README.md).
+          # A copy's own build (README.md).
           - own-build.*
           # The app's shared Swift package (models, client, screens), added as a package below.
           - Kit

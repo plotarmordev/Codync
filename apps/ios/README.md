@@ -3,55 +3,22 @@
 The iPhone app (SwiftUI). The app's code is in `App/`, `Views/` and the `Kit/` package; the widgets in `Widgets/`; the
 Xcode project comes from `apps/project.yml`. Building, tests and releases: [development](../../docs/guides/development.md).
 
-## Your own copy on TestFlight
+## Your own copy
 
-A copy of this repository (a fork, with its own changes) can ship its iPhone app to its own TestFlight, as a separate
-app that installs next to the App Store Codync: its own name, bundle id, App Group and Apple team. A Mac runs
-`own-build.sh follow` on a schedule: each time the copy's `dev` changes, catching up with upstream included, it builds
-the newest commit and uploads it with a higher build number, the number of commits on `dev` (so merge upstream in,
-never force-push `dev` to fewer commits).
+A copy of this repository (a fork, with its own changes) can build its iPhone app as a separate app that installs
+next to the App Store Codync: its own name, bundle id and App Group. Its build number is the number of commits, so it
+grows with every change, upstream catch-ups included (merge upstream in, never force-push to fewer commits).
 
-Nothing about your Apple account is committed. The script reads its settings from `~/.config/codync/own-build.env`
-(or the file `OWN_BUILD_SETTINGS` names; `own-build.env.example` lists them), and it never touches the App Store
-Connect key: it signs and uploads through your **signer**, a command of your own that alone holds the key and runs
-the `xcodebuild` command it's given with the key's options added.
+1. Copy `own-build.env.example` to `~/.config/codync/own-build.env` (or the file `OWN_BUILD_SETTINGS` names) and set
+   `OWN_IOS_BUNDLE_ID`, a bundle id of your own (e.g. `com.example.codync`), and `OWN_IOS_APP_NAME`, the name under
+   the icon (default `Codync Own`). Nothing about your copy is committed.
+2. `apps/ios/own-build.sh` archives the app unsigned to `build/dd/own/Codync.xcarchive`, checks its bundle ids, App
+   Group, name and build number, and runs it in an iPhone simulator to check it keeps its pairings and settings in its
+   own App Group. It needs no Apple account.
 
-### Set it up
-
-1. Copy `own-build.env.example` to `~/.config/codync/own-build.env` and set `OWN_IOS_BUNDLE_ID`, a bundle id of your
-   own (e.g. `com.example.codync`), and `OWN_IOS_APP_NAME`, the name under the icon (default `Codync Own`).
-2. `apps/ios/own-build.sh check` builds the app unsigned, checks its bundle ids, App Group, name and build number, and
-   runs it in an iPhone simulator to check it keeps its pairings and settings in its own App Group. This needs no
-   Apple account.
-3. Link the Apple account (a paid Apple Developer membership):
-   - In App Store Connect → Users and Access → Integrations, create an API key with the **Admin** role (automatic
-     signing registers the bundle ids, the App Group and the certificates with it).
-   - In App Store Connect → Apps, create the app once with your bundle id (the API can't create apps). If the bundle id
-     isn't listed yet, register it first in Certificates, Identifiers & Profiles.
-   - Set `OWN_IOS_TEAM` (your team id, Membership details) and `OWN_IOS_SIGNER`, the signer's path. It's called as
-     `<signer> xcodebuild archive …` and `<signer> xcodebuild -exportArchive …` and must pass on xcodebuild's exit
-     status. Keep the key where only it can read it; for example, with the key next to it:
-
-     ```bash
-     #!/bin/bash
-     # codync-asc-xcodebuild xcodebuild archive|-exportArchive …: runs it with the App Store Connect key.
-     set -euo pipefail
-     [[ $1 == xcodebuild && ($2 == archive || $2 == -exportArchive) ]] || { echo "refused: $*" >&2; exit 64; }
-     here=$(dirname "$0")
-     exec "$@" -allowProvisioningUpdates -authenticationKeyPath "$here/AuthKey.p8" \
-         -authenticationKeyID "$(<"$here/key-id")" -authenticationKeyIssuerID "$(<"$here/issuer-id")"
-     ```
-4. `apps/ios/own-build.sh upload` archives this checkout and uploads it once by hand. To follow `dev`, run
-   `own-build.sh follow` on a schedule, e.g. every 15 minutes with `crontab -e`:
-
-   ```
-   */15 * * * * /path/to/codync/apps/ios/own-build.sh follow >>/tmp/codync-own-build.log 2>&1
-   ```
-
-   It fetches `OWN_IOS_FOLLOW` (default `origin/dev`), builds a new commit in its own worktree (`build/dd/own/follow`,
-   leaving your checkout alone) and remembers what it uploaded; a failed upload is tried again on the next run, and a
-   run that starts while the last one still builds leaves. The build shows in TestFlight after Apple's processing;
-   add yourself as an internal tester once, and later builds arrive on their own.
+The archive is not an installable `.ipa`: installing it on an iPhone or sending it to TestFlight means signing and
+exporting it with an Apple Developer membership of your own (Xcode → Organizer → Distribute App), which the script
+doesn't do.
 
 ### What works in it
 

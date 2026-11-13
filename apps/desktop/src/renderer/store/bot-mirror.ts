@@ -27,6 +27,12 @@ import { trNow } from '../lib/l10n.ts'
 /** The first host where the user picks the lead and may delete it. */
 const LEAD_CHOICE_HOST = '2.33.0'
 
+/**
+ * The shape of the on-device cache. Raise it only when cached bots or entries can't be kept (a field
+ * they lack that matters): app and host updates alone keep the cache and its `rev`.
+ */
+const MIRROR_FORMAT = 1
+
 export type Connection =
   | { kind: 'unpaired' }
   | { kind: 'connecting' }
@@ -111,7 +117,8 @@ export class BotMirror extends Observable {
   protected retired = false
   protected unreadable = false
   protected saveTimer: ReturnType<typeof setTimeout> | null = null
-  protected cacheStamp: string | null = null
+  /** The cache was written in another `MIRROR_FORMAT`: the first `hello` fetches everything again. */
+  protected staleCache = false
 
   constructor(
     computer: Computer,
@@ -342,8 +349,9 @@ export class BotMirror extends Observable {
     try {
       const raw = localStorage.getItem(this.cacheKey)
       if (!raw) return
-      const cache = JSON.parse(raw) as { stamp?: string; hostId?: string; rev: number; bots: Bot[]; entries: Entry[] }
-      this.cacheStamp = cache.stamp ?? ''
+      const cache = JSON.parse(raw) as { format?: number; hostId?: string; rev: number; bots: Bot[]; entries: Entry[] }
+      // Caches from before the format was recorded are format 1.
+      this.staleCache = (cache.format ?? 1) !== MIRROR_FORMAT
       this.hostId = cache.hostId ?? null
       this.rev = cache.rev
       this.bots = new Map(cache.bots.map((b) => [b.id, b]))
@@ -368,9 +376,9 @@ export class BotMirror extends Observable {
       kept.push(...list.filter((e) => e.id.startsWith('local-') && e.data.status === 'failed'))
     }
     const bots = [...this.bots.values()].map(({ customIcon: _image, ...bot }) => bot)
-    // Saved partway through a refetch, the cache says so: the next launch begins it again.
-    const stamp = this.refetched ? '' : `${this.appVersion}/${this.hello?.version ?? ''}`
-    const cache = { stamp, hostId: this.hostId, rev: this.rev, bots, entries: kept }
+    // Saved partway through a refetch, the cache is left stale: the next launch begins it again.
+    const format = this.refetched ? 0 : MIRROR_FORMAT
+    const cache = { format, hostId: this.hostId, rev: this.rev, bots, entries: kept }
     try {
       localStorage.setItem(this.cacheKey, JSON.stringify(cache))
     } catch {}

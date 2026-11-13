@@ -87,6 +87,28 @@ test('an already-online computer stays refreshing until the replacement stream a
   store.retire()
 })
 
+test('a cache from an older app keeps its cursor across a host update; another format fetches everything', async () => {
+  const key = 'codync-mirror-local-test'
+  const cached = { hostId: 'h1', rev: 77, bots: [{ id: 'b1', name: 'Bot' }], entries: [] }
+  const since = async (cache: object) => {
+    storage.set(key, JSON.stringify(cache))
+    let resolve!: (sub: string) => void
+    const path = new Promise<string>((r) => { resolve = r })
+    const store = sync({
+      call: async () => ({ version: '2.30.0', name: 'Test', backends: [] }),
+      stream: (sub) => { resolve(sub); return () => {} },
+    })
+    store.start()
+    const query = new URLSearchParams((await path).split('?')[1])
+    store.retire()
+    storage.delete(key)
+    return query.get('since')
+  }
+  // Written by an older app for the host before its update: the stamp names both, the format is unrecorded.
+  assert.equal(await since({ ...cached, stamp: '2.28.0/2.29.0' }), '77')
+  assert.equal(await since({ ...cached, format: 2 }), '0')
+})
+
 test('a host failure and a removed computer both release the refresh waiter', async () => {
   const failing = sync({ call: async () => { throw new Error('Unavailable') }, stream: () => () => {} })
   await assert.rejects(failing.refreshStream(), /Unavailable/)
@@ -137,10 +159,10 @@ test("another device's auto order switch shows here", async () => {
   store.retire()
 })
 
-/** A store over the cache another app version left: "gone" and "kept" from the computer and a message that didn't send, with each events stream it opens. */
+/** A store over a cache in another mirror format: "gone" and "kept" from the computer and a message that didn't send, with each events stream it opens. */
 function syncOverStaleCache() {
   const entry = (id: string, seq: number, rev: number, data = {}) => ({ id, seq, botId: 'b1', rev, kind: 'agent', turn: 1, data, createdAt: 1, updatedAt: 1 })
-  storage.set('codync-mirror-local-test', JSON.stringify({ stamp: 'older/2.0.0', hostId: 'h1', rev: 77, bots: [],
+  storage.set('codync-mirror-local-test', JSON.stringify({ format: 0, hostId: 'h1', rev: 77, bots: [],
     entries: [entry('gone', 1, 70), entry('kept', 2, 77), entry('local-x', 3, 0, { status: 'failed' })] }))
   const streams: { path: string; send: (event: object) => void }[] = []
   let opened = deferred()
@@ -152,7 +174,7 @@ function syncOverStaleCache() {
   return { store, nextStream, kept: { type: 'entry', entry: entry('kept', 2, 77) }, ids: () => store.allEntries('b1').map((e) => e.id) }
 }
 
-test('a new version refetches underneath the cached chat', async () => {
+test('a cache in another format refetches underneath the cached chat', async () => {
   const { store, nextStream, kept, ids } = syncOverStaleCache()
   store.start()
   const stream = await nextStream()
@@ -170,19 +192,19 @@ test('a new version refetches underneath the cached chat', async () => {
 
 test('a refetch the link cut short starts over', async () => {
   const { store, nextStream, kept, ids } = syncOverStaleCache()
-  const savedStamp = () => { store.saveCache(); return JSON.parse(storage.get('codync-mirror-local-test')!).stamp }
+  const savedFormat = () => { store.saveCache(); return JSON.parse(storage.get('codync-mirror-local-test')!).format }
   store.start()
   const first = await nextStream()
   first.send({ type: 'hello', hostId: 'h1', rev: 80, catchUp: 3 })
   first.send(kept)
-  assert.equal(savedStamp(), '')
+  assert.equal(savedFormat(), 0, 'saved partway through, the next launch starts over')
   store.restartStream()
   const second = await nextStream()
   assert.match(second.path, /since=0&/)
   assert.deepEqual(ids(), ['gone', 'kept', 'local-x'])
   second.send({ type: 'hello', hostId: 'h1', rev: 80 })
   assert.deepEqual(ids(), ['local-x'], "a host that doesn't say how long its catch-up is: the held entries go at its hello")
-  assert.equal(savedStamp(), '2.29.0/2.29.0')
+  assert.equal(savedFormat(), 1)
   store.retire()
 })
 

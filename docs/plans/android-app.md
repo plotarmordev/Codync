@@ -80,10 +80,10 @@ device acceptance, and the account flows on main (they were walked on dev; main 
 - **Pull to refresh** on the roster and in Computer management uses the chat's indicator; iOS uses the system one.
 - **The saved conversation across updates**: the mirror is a database of every row paged in, stored as the
   computer sent it, so a new app or host version keeps all of it and takes the events again onto it (the iPhone
-  refetches underneath what it shows). When the host's store schema changes, Android still empties its chats and
-  the catch-up fills them, where the iPhone keeps showing them until the catch-up has arrived: doing the same
-  means marking the rows the computer sent again across restarts, left out while a schema change stays rare
-  (`MirrorDatabase.setStamp`, [compatibility](../reference/compatibility.md)).
+  refetches underneath what it shows). When the host's store schema or the mirror format changes, Android still
+  empties its chats and the catch-up fills them, where the iPhone keeps showing them until the catch-up has
+  arrived: doing the same means marking the rows the computer sent again across restarts, left out while those
+  changes stay rare (`MirrorDatabase.setHost`, [compatibility](../reference/compatibility.md)).
 - **Shortcuts actions** (Open Live Mode, Send Text to Bot) are Apple App Intents; Android's counterparts are
   **Talk to Codync** in the app icon's shortcuts (the lead, by Settings → Shortcuts → Lead to call) and text shared
   from another app, which opens the picked bot's chat with the text in its box ([iOS Shortcuts](../features/ios-shortcuts.md), `LiveShortcut.kt`, `ShareToBot.kt`).

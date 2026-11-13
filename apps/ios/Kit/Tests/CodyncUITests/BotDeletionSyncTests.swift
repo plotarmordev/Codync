@@ -3,7 +3,7 @@ import Testing
 @testable import CodyncKit
 @testable import CodyncUI
 
-@MainActor @Test func fullRefreshDeletionClearsCachedConversationSelectionAndDrafts() async throws {
+@MainActor @Test func reconnectDeletionClearsCachedConversationSelectionAndDrafts() async throws {
     let suite = "BotDeletionSyncTests.\(UUID().uuidString)"
     let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
@@ -27,8 +27,7 @@ import Testing
         try await Task.sleep(for: .milliseconds(10))
     }
     #expect(await fake.subscribed)
-    #expect(store.rev == 0)
-    #expect(store.bots[bot.id] != nil) // Full refresh keeps the cache until updates arrive.
+    #expect(store.bots[bot.id] != nil) // Reconnecting keeps the cache until updates arrive.
     await fake.emit(#"{"type":"hello","hostId":"h1","rev":10}"#)
     await fake.emit(#"{"type":"bot","bot":{"id":"gone","deleted":true,"rev":10}}"#)
     for _ in 0..<200 {

@@ -454,10 +454,9 @@ func helloJSON(version: String, minApp: String? = nil, backends: String = "[]", 
     let (storage, suite) = context()
     defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let computer = randomComputer("Fixture")
-    let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
     let url = URL.cachesDirectory.appending(path: "codync-mirror-\(Bundle.main.bundleIdentifier ?? "app")-\(storage.id)-\(computer.id).json")
     let cached = #"""
-    {"stamp":"\#(build)/3.0.0","hostId":"h1","rev":77,"bots":[],"entries":[
+    {"format":\#(BotStore.mirrorFormat),"hostId":"h1","rev":77,"bots":[],"entries":[
       {"id":"notice","seq":1,"botId":"dex","rev":77,"kind":"notice","turn":1,"createdAt":1,"updatedAt":1,
        "data":{"text":"Message from Miles","status":"completed"}},
       {"id":"local-pending","seq":2,"botId":"dex","rev":0,"kind":"user","turn":1,"createdAt":2,"updatedAt":2,
@@ -476,19 +475,19 @@ func helloJSON(version: String, minApp: String? = nil, backends: String = "[]", 
     #expect(cache["rev"] as? Int == 77)
 }
 
-/// The cache another app build left for `computer`: "gone" and "kept" from the computer, and a message not sent yet.
+/// A cache in another mirror format for `computer`: "gone" and "kept" from the computer, and a message not sent yet.
 private func writeStaleCache(for computer: Computer, in storage: SharedStore.Context) throws -> URL {
     let url = URL.cachesDirectory.appending(path: "codync-mirror-\(Bundle.main.bundleIdentifier ?? "app")-\(storage.id)-\(computer.id).json")
     func cachedEntry(_ id: String, seq: Int, rev: Int) -> String {
         #"{"id":"\#(id)","seq":\#(seq),"botId":"b1","rev":\#(rev),"kind":"agent","turn":1,"createdAt":1,"updatedAt":1,"data":{"text":"old","final":true}}"#
     }
-    let cached = #"{"stamp":"older/2.0.0","hostId":"h1","rev":77,"bots":[],"entries":[\#(cachedEntry("gone", seq: 1, rev: 70)),\#(cachedEntry("kept", seq: 2, rev: 77)),\#(cachedEntry("local-unsent", seq: 3, rev: 0))]}"#
+    let cached = #"{"format":0,"hostId":"h1","rev":77,"bots":[],"entries":[\#(cachedEntry("gone", seq: 1, rev: 70)),\#(cachedEntry("kept", seq: 2, rev: 77)),\#(cachedEntry("local-unsent", seq: 3, rev: 0))]}"#
     try Data(cached.utf8).write(to: url)
     return url
 }
 
-/// A new app build or host version fetches everything again underneath what the chat shows.
-@MainActor @Test func aNewVersionRefetchesUnderneathTheCachedChat() async throws {
+/// A cache in another mirror format fetches everything again underneath what the chat shows.
+@MainActor @Test func anotherMirrorFormatRefetchesUnderneathTheCachedChat() async throws {
     let (storage, suite) = context()
     defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let computer = randomComputer("Fixture")
@@ -511,7 +510,7 @@ private func writeStaleCache(for computer: Computer, in storage: SharedStore.Con
     #expect(store.canLoadOlder("b1"))
 }
 
-/// A refetch the link cut short starts over on the next stream; earlier pages and the cache's stamp wait for it.
+/// A refetch the link cut short starts over on the next stream; earlier pages and the cache's format wait for it.
 @MainActor @Test func aRefetchCutShortStartsOver() async throws {
     let (storage, suite) = context()
     defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
@@ -520,9 +519,9 @@ private func writeStaleCache(for computer: Computer, in storage: SharedStore.Con
     let fake = FakeRemote(.ready(.relay))
     let store = BotStore(computer: computer, storage: storage) { _ in fake }
     defer { store.retire() }
-    func savedStamp() throws -> String? {
+    func savedFormat() throws -> Int? {
         store.saveCache()
-        return try (JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])?["stamp"] as? String
+        return try (JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])?["format"] as? Int
     }
     store.setActive(true)
     #expect(await until { await fake.subscribed })
@@ -530,7 +529,7 @@ private func writeStaleCache(for computer: Computer, in storage: SharedStore.Con
     await fake.emit(entryEvent("kept", seq: 2, rev: 77, text: "new"))
     #expect(await until { store.rev == 77 })
     #expect(!store.canLoadOlder("b1"))
-    #expect(try savedStamp() == "")
+    #expect(try savedFormat() == 0)
     await fake.set(.connecting)
     await fake.set(.ready(.relay))
     #expect(await until { await fake.eventSubscriptionCount == 2 })
@@ -539,7 +538,7 @@ private func writeStaleCache(for computer: Computer, in storage: SharedStore.Con
     // A host before 2.32.0 doesn't say how long its catch-up is: the held entries go at its hello.
     await fake.emit(#"{"type":"hello","hostId":"h1","rev":80}"#)
     #expect(await until { store.chat("b1").map(\.id) == ["local-unsent"] })
-    #expect(try savedStamp()?.hasSuffix("/3.0.0") == true)
+    #expect(try savedFormat() == BotStore.mirrorFormat)
 }
 
 /// An unreadable event fetches everything again; the stream it ended doesn't finish that refetch.

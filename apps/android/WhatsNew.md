@@ -37,6 +37,13 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Holding a picture in the chat offers Copy image and Copy name in place of Copy; in the viewer, holding it also offers reactions and Reply.
 - When your bot needs a choice, tap an option in its chat card. Your answer continues the current work; answered or expired cards cannot send another choice.
 
+## 2.44.2
+### zh-Hant
+- 電腦更新或連線中斷後，手機會接續同步新訊息，不再重新下載所有聊天紀錄。
+
+### en-US
+- After a computer update or dropped connection, your phone resumes syncing new messages instead of downloading every chat again.
+
 ## 2.44.1
 ### zh-Hant
 - 有重要更新時，更新後第一次開啟 Codync 會跳出「新功能」視窗，列出這個版本改了什麼。一般的更新不會顯示。

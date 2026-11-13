@@ -150,6 +150,9 @@ targets:
           - AppTests
           - NotificationService
           - WhatsNew.md
+          - README.md
+          # A copy's own build (README.md).
+          - own-build.*
           # The app's shared Swift package (models, client, screens), added as a package below.
           - Kit
       # The widget's bot buttons and the call's Live Activity buttons run these intents in the app.

@@ -89,6 +89,7 @@
 		E9DD6C52F3B4508C1581F996 /* WebMPlayerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA63DFF6CD96540708372D4 /* WebMPlayerTests.swift */; };
 		EBB0417A5FB2CE6D514D21BE /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = D9AB2F442A5F243653EAE936 /* ClerkKit */; };
 		ECE1339FED40D7D5D8806608 /* CallLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B2717A8DFD43DC6DAA9D8C /* CallLiveActivity.swift */; };
+		F16E5F0998F52DCD62C57054 /* AppGroupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51CEB55D0397A814526E3683 /* AppGroupTests.swift */; };
 		F171F16563D1FF6308697173 /* CodyncUI in Frameworks */ = {isa = PBXBuildFile; productRef = 06C9F37C6502131CAF0F145E /* CodyncUI */; };
 		F6A380E8A026CA849620F2F7 /* Driver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D16AD9979C77D976BC832D1 /* Driver.swift */; };
 		F842AE1C5ED96AF9A7F5D16C /* Widgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6D734BEE7CD3F84677B0218B /* Widgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -166,6 +167,7 @@
 		4A792AA5A57EFCD63F254BB8 /* AppStore+Account.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppStore+Account.swift"; sourceTree = "<group>"; };
 		4EB282B31FBC94EE70D07638 /* AccountSwitcherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitcherView.swift; sourceTree = "<group>"; };
 		4FA78A055791BBBA79DF8C8B /* Permissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Permissions.swift; sourceTree = "<group>"; };
+		51CEB55D0397A814526E3683 /* AppGroupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupTests.swift; sourceTree = "<group>"; };
 		52A96030D47F1B9678095909 /* iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOS.entitlements; sourceTree = "<group>"; };
 		531BFEBACA116F08530E289F /* EmptyRoster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyRoster.swift; sourceTree = "<group>"; };
 		5A21538E748C62E82DF7B139 /* CodyncBot-cloud-Ink.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "CodyncBot-cloud-Ink.ttf"; sourceTree = "<group>"; };
@@ -308,6 +310,7 @@
 		2E68A3E607E0C0C325B0131D /* AppTests */ = {
 			isa = PBXGroup;
 			children = (
+				51CEB55D0397A814526E3683 /* AppGroupTests.swift */,
 				BBA63DFF6CD96540708372D4 /* WebMPlayerTests.swift */,
 			);
 			path = AppTests;
@@ -822,6 +825,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F16E5F0998F52DCD62C57054 /* AppGroupTests.swift in Sources */,
 				E9DD6C52F3B4508C1581F996 /* WebMPlayerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -139,20 +139,11 @@ fun AppStore.connect() {
     }
 }
 
-/** What the conversation held was synced under: the host's store schema, or its version before it sent one. */
-internal fun conversationStamp(hello: JsonObject): String = hello.text("schema")?.let { "schema $it" } ?: hello.text("version").orEmpty()
-
-/** A new link's hello: the mirror lets go of what another host database or store schema left, and holds the current bots. */
+/** A new link's hello: the mirror lets go of what another host database, mirror format or store schema left, and holds the current bots. */
 private suspend fun AppStore.adoptHello(active: EncryptedChannel, hello: JsonObject, iconEpoch: Long) {
     val mirror = requireNotNull(database)
-    val hostVersion = hello.text("version")
-    val versions = BuildConfig.VERSION_NAME + "/" + hostVersion.orEmpty()
-    val dropped = withContext(Dispatchers.IO) {
-        val changed = mirror.setStamp(requireNotNull(hello.text("hostId")), conversationStamp(hello), hostVersion)
-        mirror.applyIconReply(MirrorEvent.Icons(hello["icons"]?.let(::decodeCustomIcons).orEmpty(),
-            hello["iconsRevision"]?.jsonPrimitive?.longOrNull ?: 0), iconEpoch)
-        changed
-    }
+    val versions = BuildConfig.VERSION_NAME + "/" + hello.text("version").orEmpty()
+    val dropped = withContext(Dispatchers.IO) { mirror.connectedHello(hello, iconEpoch) }
     // Dropped chats page their earlier messages again.
     mutableState.update { it.copy(historyEnd = if (dropped) emptyMap() else it.historyEnd) }
     noteHello(hello)
@@ -195,6 +186,18 @@ private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Lon
         }
     } finally { source.cancel() }
     throw IOException("The event subscription ended.")
+}
+
+/**
+ * The mirror's part of a ready link's `hello`: app and host updates keep the event cursor (only another host
+ * database, mirror format or store schema drops it), and its icons answer this connection's request.
+ * Returns whether the held conversation was dropped (reconnecting pages it again).
+ */
+internal fun MirrorDatabase.connectedHello(hello: JsonObject, iconEpoch: Long): Boolean {
+    val changed = setHost(requireNotNull(hello.text("hostId")), MirrorDatabase.FORMAT, hello.text("schema"))
+    applyIconReply(MirrorEvent.Icons(hello["icons"]?.let(::decodeCustomIcons).orEmpty(),
+        hello["iconsRevision"]?.jsonPrimitive?.longOrNull ?: 0), iconEpoch)
+    return changed
 }
 
 /** What an event this app can't decode leads to, as on iOS: never skip data unread while fetching everything again can help. */

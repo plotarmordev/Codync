@@ -243,15 +243,16 @@ export class BotSync extends BotMirror {
   }
 
   private noteHostVersion(next: { version: string; minApp?: string | null }) {
-    const cached = this.cacheStamp !== null && this.cacheStamp !== `${this.appVersion}/${next.version}`
-    if (cached || (this.hostVersion && this.hostVersion.version !== next.version)) {
-      // A different host version or app build: data may carry new fields, so fetch it all again, underneath what's shown.
-      this.refetchAll()
+    // A cache in another format can't be kept, so everything is fetched again. A host update
+    // keeps the cursor: its changes are additive.
+    if (this.staleCache) this.refetchAll()
+    this.staleCache = false
+    if (this.hostVersion && this.hostVersion.version !== next.version) {
+      // Data that wouldn't read may read on the other version; the host's update request is done.
       this.rewound = false
       this.unreadable = false
       this.hostUpdate = null
     }
-    this.cacheStamp = null
     this.hostVersion = next
   }
 

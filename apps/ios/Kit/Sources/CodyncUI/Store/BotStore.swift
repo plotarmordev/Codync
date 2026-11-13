@@ -157,6 +157,8 @@ public final class BotStore {
 
     /// The cache was written in another `mirrorFormat`: the first hello fetches everything again.
     var staleCache = false
+    /// The host's store schema (`hello.schema`) the conversation was synced under; nil before a host sent one.
+    var hostSchema: Int?
 
     /// Loads this context's `DeviceIdentity` itself.
     public convenience init(computer: Computer, storage: SharedStore.Context) {

@@ -563,6 +563,8 @@ export interface Hello {
   signKey?: string
   boxKey?: string
   minApp?: string
+  /** The host's store schema: a copy of the conversation synced under another one is fetched again (absent before 2.45.1). */
+  schema?: number
   /** `installHostUpdate` can update this computer (absent before hosts could be updated from a client). */
   canUpdate?: boolean
   /** The latest release the computer found; null while unknown (development builds, Homebrew, Windows; absent from older hosts). */

@@ -237,16 +237,18 @@ export class BotSync extends BotMirror {
     this.iconsRevision = -1
     this.hello = h
     this.applyIcons(h.icons ?? {}, h.iconsRevision)
-    this.noteHostVersion({ version: h.version, minApp: h.minApp })
+    this.noteHostVersion({ version: h.version, minApp: h.minApp }, h.schema)
     if (this.isLoopback) this.updateComputer((c) => ({ ...c, name: h.name, device: h.device ?? c.device }))
     this.changed()
   }
 
-  private noteHostVersion(next: { version: string; minApp?: string | null }) {
-    // A cache in another format can't be kept, so everything is fetched again. A host update
-    // keeps the cursor: its changes are additive.
-    if (this.staleCache) this.refetchAll()
+  private noteHostVersion(next: { version: string; minApp?: string | null }, schema?: number) {
+    // A cache in another format can't be kept, nor a conversation synced under another store schema (a migration
+    // may rewrite or delete rows in place), so everything is fetched again. A host update alone keeps the cursor.
+    const otherSchema = schema !== undefined && this.hostSchema !== null && schema !== this.hostSchema
+    if (this.staleCache || otherSchema) this.refetchAll()
     this.staleCache = false
+    if (schema !== undefined) this.hostSchema = schema
     if (this.hostVersion && this.hostVersion.version !== next.version) {
       // Data that wouldn't read may read on the other version; the host's update request is done.
       this.rewound = false

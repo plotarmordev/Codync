@@ -52,16 +52,18 @@ that stays undecodable after the one rewind, or a `hello` whose other fields can
 (its mirror), and an update of the app or the host never empties what a chat shows:
 
 - Each mirror records its format (`MIRROR_FORMAT` on desktop, `BotStore.mirrorFormat` on iPhone,
-  `MirrorDatabase.FORMAT` on Android; none recorded counts as 1). App and host updates keep the event cursor;
-  only another host database or another mirror format starts over.
+  `MirrorDatabase.FORMAT` on Android; none recorded counts as 1, except an iPhone or desktop cache whose older
+  `<app>/<host version>` stamp lacks the host, saved partway through a refetch or before the first hello) and the
+  host's store schema (`hello.schema`). App and host updates keep the event cursor; only another host database,
+  another mirror format or another store schema (a migration may rewrite or delete rows in place) starts over. A
+  host that sends no `schema`, or a mirror synced before it was recorded, keeps the conversation.
 - iPhone and desktop start over underneath what's shown: they fetch everything again from rev 0 and, once that
   catch-up has all arrived (`hello.catchUp` events), keep exactly what the computer sent again; a refetch the link
-  cut short starts over, and a cache saved partway through one is saved as stale so the next launch does too.
+  cut short starts over, and a cache saved partway through one, or before the first hello began it, is saved as
+  stale so the next launch does too.
 - Android stores each row as the computer sent it, so a new app or host version keeps the whole conversation: it
   only reads the bots again. Its event cursor stays where it was: a catch-up from rev 0 brings only each chat's
-  newest entries, and onto the rows held it could leave a gap paging never fills. It also starts over on a change
-  of `hello.schema` (the host's store schema), since a migration may rewrite or delete rows in place; a host that
-  sends no `schema`, or a mirror synced before it was recorded, keeps the conversation. Starting over empties its
+  newest entries, and onto the rows held it could leave a gap paging never fills. Starting over empties its
   chats until the catch-up fills them: refetching underneath, as the iPhone does, isn't built on Android
   ([Android parity](../plans/android-app.md#different-from-the-iphone-on-purpose-or-by-platform)).
 

@@ -79,14 +79,16 @@ extension BotStore {
         iconsRevision = -1
         hello = h
         applyIcons(h.icons ?? [:], revision: h.iconsRevision ?? 0)
-        noteHostVersion(HostVersion(version: h.version, minApp: h.minApp))
+        noteHostVersion(HostVersion(version: h.version, minApp: h.minApp), schema: h.schema)
     }
 
-    private func noteHostVersion(_ new: HostVersion) {
-        // A cache in another format can't be kept, so everything is fetched again. A host update
-        // keeps the cursor: its changes are additive.
-        if staleCache { refetchAll() }
+    private func noteHostVersion(_ new: HostVersion, schema: Int? = nil) {
+        // A cache in another format can't be kept, nor a conversation synced under another store schema (a migration
+        // may rewrite or delete rows in place), so everything is fetched again. A host update alone keeps the cursor.
+        let otherSchema = schema != nil && hostSchema != nil && schema != hostSchema
+        if staleCache || otherSchema { refetchAll() }
         staleCache = false
+        if let schema { hostSchema = schema }
         if hostVersion.map({ $0.version != new.version }) ?? false {
             // Data that wouldn't read may read on the other version; the host's update request is done.
             rewound = false

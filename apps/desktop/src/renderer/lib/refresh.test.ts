@@ -87,7 +87,7 @@ test('an already-online computer stays refreshing until the replacement stream a
   store.retire()
 })
 
-test('a cache from an older app keeps its cursor across a host update; another format fetches everything', async () => {
+test('a cache from an older app keeps its cursor across a host update; another format or store schema fetches everything', async () => {
   const key = 'codync-mirror-local-test'
   const cached = { hostId: 'h1', rev: 77, bots: [{ id: 'b1', name: 'Bot' }], entries: [] }
   const since = async (cache: object) => {
@@ -95,7 +95,7 @@ test('a cache from an older app keeps its cursor across a host update; another f
     let resolve!: (sub: string) => void
     const path = new Promise<string>((r) => { resolve = r })
     const store = sync({
-      call: async () => ({ version: '2.30.0', name: 'Test', backends: [] }),
+      call: async () => ({ version: '2.30.0', name: 'Test', backends: [], schema: 8 }),
       stream: (sub) => { resolve(sub); return () => {} },
     })
     store.start()
@@ -106,7 +106,25 @@ test('a cache from an older app keeps its cursor across a host update; another f
   }
   // Written by an older app for the host before its update: the stamp names both, the format is unrecorded.
   assert.equal(await since({ ...cached, stamp: '2.28.0/2.29.0' }), '77')
+  // An older app saved partway through a refetch, or before its first hello: the stamp lacks the host.
+  assert.equal(await since({ ...cached, stamp: '' }), '0')
+  assert.equal(await since({ ...cached, stamp: '2.28.0/' }), '0')
   assert.equal(await since({ ...cached, format: 2 }), '0')
+  assert.equal(await since({ ...cached, format: 1, schema: 8 }), '77')
+  // The host migrated its store: rows may have changed in place without a new rev.
+  assert.equal(await since({ ...cached, format: 1, schema: 7 }), '0')
+})
+
+test('a stale cache saved before the first hello stays stale for the next launch', () => {
+  const key = 'codync-mirror-local-test'
+  storage.set(key, JSON.stringify({ format: 0, schema: 7, hostId: 'h1', rev: 77, bots: [], entries: [] }))
+  const store = sync({ call: () => new Promise(() => {}), stream: () => () => {} })
+  store.saveCache()
+  store.retire()
+  const saved = JSON.parse(storage.get(key)!)
+  storage.delete(key)
+  assert.equal(saved.format, 0)
+  assert.equal(saved.schema, 7)
 })
 
 test('a host failure and a removed computer both release the refresh waiter', async () => {

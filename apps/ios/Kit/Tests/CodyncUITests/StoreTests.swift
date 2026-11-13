@@ -312,10 +312,11 @@ import Testing
 // MARK: - Version compatibility (docs/reference/compatibility.md)
 
 func helloJSON(version: String, minApp: String? = nil, backends: String = "[]", canUpdate: Bool = false,
-               latestVersion: String? = nil) -> String {
+               latestVersion: String? = nil, schema: Int? = nil) -> String {
     let min = minApp.map { #","minApp":"\#($0)""# } ?? ""
     let latest = latestVersion.map { #","latestVersion":"\#($0)""# } ?? ""
-    return #"{"hostId":"h1","name":"Mac","version":"\#(version)"\#(min)\#(latest),"os":"macos","backends":\#(backends),"rev":0,"canUpdate":\#(canUpdate)}"#
+    let schema = schema.map { #","schema":\#($0)"# } ?? ""
+    return #"{"hostId":"h1","name":"Mac","version":"\#(version)"\#(min)\#(latest)\#(schema),"os":"macos","backends":\#(backends),"rev":0,"canUpdate":\#(canUpdate)}"#
 }
 
 @MainActor @Test func hostNeedingANewerAppStopsSyncAndAsksForTheUpdate() async throws {
@@ -539,6 +540,19 @@ private func writeStaleCache(for computer: Computer, in storage: SharedStore.Con
     await fake.emit(#"{"type":"hello","hostId":"h1","rev":80}"#)
     #expect(await until { store.chat("b1").map(\.id) == ["local-unsent"] })
     #expect(try savedFormat() == BotStore.mirrorFormat)
+}
+
+/// A stale cache saved before the first hello stays stale for the next launch.
+@MainActor @Test func aStaleCacheSavedBeforeTheFirstHelloStaysStale() async throws {
+    let (storage, suite) = context()
+    defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let computer = randomComputer("Fixture")
+    let url = try writeStaleCache(for: computer, in: storage)
+    let store = BotStore(computer: computer, storage: storage) { _ in FakeRemote(.connecting) }
+    store.saveCache()
+    store.retire()
+    let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+    #expect(saved?["format"] as? Int == 0)
 }
 
 /// An unreadable event fetches everything again; the stream it ended doesn't finish that refetch.

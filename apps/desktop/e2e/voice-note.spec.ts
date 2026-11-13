@@ -20,10 +20,11 @@ test('a failed voice note offers retry in the selected language', async () => {
     await page.locator('.roster-row', { hasText: name }).click()
     await api(page, 'send', { botId, text: 'Send a voice note' })
     const player = page.locator('.voice-note')
-    // The bar fills the row's middle from the first frame, so the click goes to the caption.
     const caption = player.locator('.file-card-detail')
     await expect(player).toBeVisible()
-    await caption.click()
+    // The fixture's sound has no length the host can read: the row is the play button and the bar alone, no size.
+    await expect(caption).toHaveCount(0)
+    await player.locator('.voice-note-glyph').click()
     await expect(player).toContainText('Lecture impossible. Cliquez pour réessayer.')
     await caption.click()
     await expect(player).toContainText('Lecture impossible. Cliquez pour réessayer.')

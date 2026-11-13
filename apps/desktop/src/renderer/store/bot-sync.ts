@@ -182,8 +182,11 @@ export class BotSync extends BotMirror {
         }
         if (!alive()) return
         await new Promise<void>((resolve, reject) => {
+          // A refetch the link cut short starts over: only one whole catch-up says what the computer still has.
+          if (this.refetched) this.refetchAll()
           this.requestedSince = this.rev
           this.floors = new Map()
+          let catchUpLeft = 0
           this.closeEvents = client.events(
             this.requestedSince,
             'desktop',
@@ -193,6 +196,13 @@ export class BotSync extends BotMirror {
               backoff = 1000
               this.apply(event)
               this.finishRefresh?.()
+              // An event that restarted the stream leaves the refetch to the new one.
+              if (!alive()) return
+              // A host before 2.32.0 doesn't say how long its catch-up is: the held entries go first.
+              if (event.type === 'hello') catchUpLeft = event.catchUp ?? 0
+              else if (catchUpLeft > 0) catchUpLeft--
+              else return
+              if (catchUpLeft === 0) this.finishRefetch()
             },
             (error) => (error ? reject(error) : resolve()),
           )
@@ -224,19 +234,24 @@ export class BotSync extends BotMirror {
     const epoch = ++this.iconsEpoch
     const h = await client.hello()
     if (this.retired || loop !== this.eventsLoop || epoch !== this.iconsEpoch) return
+    // Another host database: its revisions say nothing about this cache's, so start over before subscribing from it.
+    if (this.hostId && this.hostId !== h.hostId) this.resetMirror()
+    this.hostId = h.hostId
     this.iconsRevision = -1
     this.hello = h
     this.applyIcons(h.icons ?? {}, h.iconsRevision)
-    this.noteHostVersion({ version: h.version, minApp: h.minApp })
+    this.noteHostVersion({ version: h.version, minApp: h.minApp }, h.schema)
     if (this.isLoopback) this.updateComputer((c) => ({ ...c, name: h.name, device: h.device ?? c.device }))
     this.changed()
   }
 
-  private noteHostVersion(next: { version: string; minApp?: string | null }) {
-    // A cache in another format can't be kept, so everything is fetched again. A host update
-    // keeps the cursor: its changes are additive.
-    if (this.staleCache) this.refetchAll()
+  private noteHostVersion(next: { version: string; minApp?: string | null }, schema?: number) {
+    // A cache in another format can't be kept, nor a conversation synced under another store schema (a migration
+    // may rewrite or delete rows in place), so everything is fetched again. A host update alone keeps the cursor.
+    const otherSchema = schema !== undefined && this.hostSchema !== null && schema !== this.hostSchema
+    if (this.staleCache || otherSchema) this.refetchAll()
     this.staleCache = false
+    if (schema !== undefined) this.hostSchema = schema
     if (this.hostVersion && this.hostVersion.version !== next.version) {
       // Data that wouldn't read may read on the other version; the host's update request is done.
       this.rewound = false
@@ -303,6 +318,9 @@ export class BotSync extends BotMirror {
       case 'name':
         this.setHostName(event.name)
         break
+      case 'autoOrder':
+        this.showAutoOrder(event.enabled)
+        break
       case 'network':
         this.network = event.network
         break
@@ -346,18 +364,27 @@ export class BotSync extends BotMirror {
     this.historyComplete = new Set()
     this.floors = new Map()
     this.screen = null
+    this.refetched = null
     this.saveCache()
   }
 
-  /**
-   * Fetches everything again from rev 0. That catch-up brings only each chat's newest entries, so the
-   * main-chat ones held now go too: an older one kept would hide the gap from `loadOlder`, which pages
-   * from the oldest one held. Messages still sending stay.
-   */
+  /** Fetches everything again from rev 0, underneath what's shown: the chats keep their entries until the catch-up has all arrived (`finishRefetch`). */
   private refetchAll() {
     this.rev = 0
-    this.entries = keptEntries(this.entries, (e) => e.id.startsWith('local-'))
+    this.refetched = new Set()
     this.historyComplete = new Set()
+  }
+
+  /**
+   * The catch-up from rev 0 brought only each chat's newest entries and never says one is gone, so the held
+   * ones it didn't bring go: an older one kept would hide the gap from `loadOlder`, which pages from the
+   * oldest one held. Messages still sending stay.
+   */
+  private finishRefetch() {
+    const kept = this.refetched
+    if (!kept) return
+    this.refetched = null
+    this.entries = keptEntries(this.entries, (e) => e.id.startsWith('local-') || kept.has(e.id))
   }
 
   private isBelowFloor(e: Entry) {

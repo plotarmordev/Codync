@@ -6,7 +6,6 @@ import type { AudioSnapshot } from './shared-audio'
 
 /** Each unit: its name, its size in bytes, and the decimal places it shows (as the terminal UI's `file_size`). */
 const UNITS: [name: string, size: number, places: number][] = [['KB', 1e3, 0], ['MB', 1e6, 1], ['GB', 1e9, 2], ['TB', 1e12, 2], ['PB', 1e15, 2]]
-
 /** A byte count the way Apple's `ByteCountFormatter(.file)` writes it: decimal units, no needless zeros. */
 export function byteCount(bytes: number) {
   if (bytes <= 0) return 'Zero KB'
@@ -61,22 +60,25 @@ export function cardActions({ state, audio, toggle, view, download }: {
   ]
 }
 
+type CardKeyAction = { kind: 'first' } | { kind: 'menu' } | { kind: 'seek'; seconds: number }
+
 /**
  * What a key on a focused card does. Nothing while its menu is open: focus stays on the card, so Enter would
- * otherwise run the first action as well as the menu's highlighted one.
+ * otherwise run the first action as well as the menu's highlighted one, and an arrow key move the recording.
  */
-export function cardKeyAction(key: { key: string; shiftKey: boolean }, menuOpen: boolean): 'first' | 'menu' | undefined {
+export function cardKeyAction(key: { key: string; shiftKey: boolean }, menuOpen: boolean, audio?: AudioSnapshot): CardKeyAction | undefined {
   if (menuOpen) return undefined
-  if (key.key === 'Enter' || key.key === ' ') return 'first'
-  if (key.key === 'ContextMenu' || (key.shiftKey && key.key === 'F10')) return 'menu'
-  return undefined
+  if (key.key === 'Enter' || key.key === ' ') return { kind: 'first' }
+  if (key.key === 'ContextMenu' || (key.shiftKey && key.key === 'F10')) return { kind: 'menu' }
+  const seconds = seekKeyTarget(key.key, audio)
+  return seconds === undefined ? undefined : { kind: 'seek', seconds }
 }
 
 /** Seconds an arrow key moves a voice note's playhead, as VoiceOver's adjust does on the phones. */
 const SEEK_STEP = 5
 
 /** Where an arrow key on a focused voice note moves its playhead (seconds), or undefined for any other key or a sound not loaded yet. */
-export function seekKeyTarget(key: string, audio: AudioSnapshot | undefined) {
+function seekKeyTarget(key: string, audio: AudioSnapshot | undefined) {
   if (!audio || audio.duration <= 0) return undefined
   if (key === 'ArrowRight') return audio.elapsed + SEEK_STEP
   if (key === 'ArrowLeft') return audio.elapsed - SEEK_STEP
@@ -99,8 +101,8 @@ export function downloadDetail(state: DownloadState | undefined, file: SharedFil
 }
 
 /** A card's caption: a voice note that couldn't play, then the download's, then the sound's clock, then the file's. */
-export function cardDetail(state: DownloadState | undefined, file: SharedFile, audio?: AudioSnapshot) {
-  if (audio?.phase === 'failed') return `Couldn't play. Click to retry.`
+export function cardDetail(state: DownloadState | undefined, file: SharedFile, audio?: AudioSnapshot, tr = trNow) {
+  if (audio?.phase === 'failed') return tr("Couldn't play. Click to retry.")
   if (state?.kind === 'downloading' || state?.kind === 'failed') return downloadDetail(state, file)
   if (audio && audio.duration > 0) return `${clock(audio.elapsed)} / ${clock(audio.duration)}`
   return downloadDetail(state, file)

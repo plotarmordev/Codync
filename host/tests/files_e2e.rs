@@ -271,7 +271,7 @@ fn assert_one_voice_message(entries: &[Value]) {
     assert_eq!(shared.len(), 1, "{entries:?}");
     let message = &shared[0]["data"];
     assert_eq!((message["text"].as_str(), message["voiceNote"].as_bool()), (Some("Here is the **plan**."), Some(true)));
-    assert_eq!(message["files"][0]["name"], "note.m4a");
+    assert_eq!((&message["files"][0]["name"], &message["files"][0]["playsInChat"]), (&json!("note.m4a"), &json!(true)));
     assert!(entries.iter().all(|e| e["data"]["text"] != "The files are ready." || e["data"]["final"] != true));
 }
 
@@ -291,8 +291,9 @@ async fn a_voice_note_goes_inside_its_message_in_a_turn_and_a_routine_run() {
     let entries = spoken(&host, bot, 2).await;
     let run_turn = entries.iter().rfind(|e| e["data"]["routineId"].is_string()).unwrap()["turn"].clone();
     assert_one_voice_message(&entries.into_iter().filter(|e| e["turn"] == run_turn).collect::<Vec<_>>());
+    // Its `result` only waits there until the scheduler's next tick reports it, so the run's status is what lasts.
     let runs = host.call("routines", json!({"botId": bot})).await["runs"].clone();
-    assert_eq!(runs[0]["result"], "Here is the **plan**.", "{runs}");
+    assert_eq!(runs[0]["status"], "succeeded", "{runs}");
 }
 
 #[tokio::test]

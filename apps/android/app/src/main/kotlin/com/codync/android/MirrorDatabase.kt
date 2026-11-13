@@ -33,6 +33,7 @@ class MirrorDatabase(context: Context, directory: File, computerId: String) :
          * that matters): app and host updates alone keep the mirror and its cursor.
          */
         const val FORMAT = 1
+        private const val SCHEMA_STAMP = "schema "
 
         private fun file(directory: File, computerId: String): File {
             require(computerId.matches(Regex("[A-Za-z0-9_-]{22}")))
@@ -138,18 +139,25 @@ class MirrorDatabase(context: Context, directory: File, computerId: String) :
     @Synchronized fun revision(): Long = meta(readableDatabase, "rev")?.toLong() ?: 0
 
     /**
-     * Another computer database or mirror [format] fetches the conversation again from rev 0, like iOS
-     * and desktop: the catch-up brings only each chat's newest entries and never says one is gone, so the held
-     * ones go too (unsent messages stay). App and host updates keep the cursor. A mirror from before the
-     * format was recorded is format 1. Returns whether they went.
+     * Another computer database starts over. Another mirror [format], or a host whose store schema changed (it may
+     * have rewritten or removed rows in place), fetches the conversation again from rev 0, and since that catch-up
+     * brings only each chat's newest entries and never says one is gone, the held ones go too (unsent messages
+     * stay). App and host updates alone keep the cursor: rows are stored as the computer sent them, and it gives a
+     * changed one a new rev. [schema] is the host's store schema; a host that sends none, or a mirror synced before
+     * it was recorded, can't tell, so it keeps the conversation. A mirror from before the format was
+     * recorded is format 1. Returns whether the conversation went.
      */
-    @Synchronized fun setHost(hostId: String, format: Int): Boolean = transaction { db ->
+    @Synchronized fun setHost(hostId: String, format: Int, schema: String? = null): Boolean = transaction { db ->
         val otherHost = meta(db, "hostId")?.let { it != hostId } == true
         val otherFormat = meta(db, "hostId") != null && (meta(db, "format")?.toInt() ?: 1) != format
-        if (otherHost) reset(db) else if (otherFormat) dropConversation(db)
+        // Before 2.45.1 the stamp was "<app>/<host version>", which says nothing about the schema.
+        val held = meta(db, "stamp")?.takeIf { it.startsWith(SCHEMA_STAMP) }
+        val otherSchema = held != null && schema != null && held != SCHEMA_STAMP + schema
+        if (otherHost) reset(db) else if (otherFormat || otherSchema) dropConversation(db)
         setMeta(db, "hostId", hostId)
         setMeta(db, "format", format.toString())
-        otherHost || otherFormat
+        if (schema != null) setMeta(db, "stamp", SCHEMA_STAMP + schema)
+        otherHost || otherFormat || otherSchema
     }
 
     @Synchronized fun apply(event: MirrorEvent) = apply(listOf(event))
@@ -175,13 +183,23 @@ class MirrorDatabase(context: Context, directory: File, computerId: String) :
             is MirrorEvent.Screen -> setMeta(db, "screen", event.value.toString())
             // Artifacts, the network and the name live in memory (`AppStore.receiveArtifacts`, `receiveNetwork`, `setHostName`).
             MirrorEvent.Resync, MirrorEvent.Ignored, is MirrorEvent.ArtifactChanged, is MirrorEvent.Call, is MirrorEvent.Network,
-            is MirrorEvent.Name -> Unit
+            is MirrorEvent.Name, is MirrorEvent.AutoOrder -> Unit
         }
     }
 
     // RPC replies and history may arrive ahead of live events; they must not advance the event cursor.
     @Synchronized fun receive(bot: Bot) = transaction { writeBot(it, bot) }
     @Synchronized fun receive(bots: Collection<Bot>) = transaction { db -> bots.forEach { writeBot(db, it) } }
+    /** Whether the bots held were read under another app or host version: either may add fields to a bot without a new rev. */
+    @Synchronized fun rosterStale(versions: String): Boolean = meta(readableDatabase, "versions") != versions
+    /**
+     * The current bots, read under [versions]. The event cursor stays: a catch-up from rev 0 brings only each
+     * chat's newest entries, and onto the rows held it could leave a gap that paging would never fill.
+     */
+    @Synchronized fun receiveRoster(bots: Collection<Bot>, versions: String) = transaction { db ->
+        bots.forEach { writeBot(db, it) }
+        setMeta(db, "versions", versions)
+    }
     @Synchronized fun receive(entries: List<Entry>) = transaction { db -> entries.forEach { writeEntry(db, it) } }
     @Synchronized fun rewind() = transaction { setMeta(it, "rev", "0") }
     @Synchronized fun save(send: PendingSend) = transaction { db ->

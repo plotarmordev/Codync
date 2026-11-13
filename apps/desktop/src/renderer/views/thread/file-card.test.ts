@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SharedFile } from '@shared/models'
 import type { DownloadState } from '../../store/file-downloads.ts'
-import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock, seekKeyTarget } from './file-card.ts'
+import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock } from './file-card.ts'
 import type { AudioSnapshot } from './shared-audio.ts'
 
 const file = (size: number): SharedFile => ({ id: 'f1', name: 'venue-floor-plan.pdf', size, sha256: 'a'.repeat(64) })
@@ -33,6 +33,28 @@ test('a card that could not play says so before anything else', () => {
   assert.equal(cardDetail(downloading, file(1000), audio('failed')), `Couldn't play. Click to retry.`)
 })
 
+test('a card that could not play writes its retry in the saved language', (t) => {
+  // trNow reads `appLanguage` from localStorage on every call; stub it and put it back after.
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'localStorage', original)
+    else Reflect.deleteProperty(globalThis, 'localStorage')
+  })
+  let lang = 'fr'
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    writable: true,
+    value: { getItem: (key: string) => (key === 'appLanguage' ? JSON.stringify(lang) : null) },
+  })
+
+  const failed = audio('failed')
+  const french = cardDetail(undefined, file(1000), failed)
+  assert.equal(french, 'Lecture impossible. Cliquez pour réessayer.')
+  assert.notEqual(french, "Couldn't play. Click to retry.")
+
+  lang = 'en'
+  assert.equal(cardDetail(undefined, file(1000), failed), "Couldn't play. Click to retry.")
+})
 test('a downloading or failed download beats the sound clock', () => {
   const downloading: DownloadState = { kind: 'downloading', received: 500 }
   const failed: DownloadState = { kind: 'failed', message: 'No space left.' }
@@ -63,10 +85,11 @@ test("a card's first action is a voice note's play (also after a failure), then 
   assert.deepEqual(titles({}), ['Download'])
 })
 
-test("picking Download from a voice note's menu by keyboard never plays it", () => {
-  const card = (key: string, shiftKey: boolean, menuOpen: boolean) => cardKeyAction({ key, shiftKey }, menuOpen)
+test("picking Download from a voice note's menu by keyboard never plays or moves it", () => {
+  const note = audio('paused', 7, 48)
+  const card = (key: string, shiftKey: boolean, menuOpen: boolean) => cardKeyAction({ key, shiftKey }, menuOpen, note)?.kind
   assert.equal(card('F10', true, false), 'menu')
-  for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) assert.equal(card(key, false, true), undefined, key)
+  for (const key of ['ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter']) assert.equal(card(key, false, true), undefined, key)
   assert.equal(card(' ', false, true), undefined)
   assert.equal(card('Enter', false, false), 'first')
   assert.equal(card(' ', false, false), 'first')
@@ -75,11 +98,15 @@ test("picking Download from a voice note's menu by keyboard never plays it", () 
 })
 
 test('arrow keys move a loaded voice note five seconds; other keys and an unloaded sound move nothing', () => {
-  assert.equal(seekKeyTarget('ArrowRight', audio('paused', 7, 48)), 12)
-  assert.equal(seekKeyTarget('ArrowLeft', audio('playing', 7, 48)), 2)
-  assert.equal(seekKeyTarget('ArrowUp', audio('paused', 7, 48)), undefined)
-  assert.equal(seekKeyTarget('ArrowRight', audio('idle')), undefined)
-  assert.equal(seekKeyTarget('ArrowRight', undefined), undefined)
+  const seek = (key: string, note?: AudioSnapshot) => {
+    const action = cardKeyAction({ key, shiftKey: false }, false, note)
+    return action?.kind === 'seek' ? action.seconds : undefined
+  }
+  assert.equal(seek('ArrowRight', audio('paused', 7, 48)), 12)
+  assert.equal(seek('ArrowLeft', audio('playing', 7, 48)), 2)
+  assert.equal(seek('ArrowUp', audio('paused', 7, 48)), undefined)
+  assert.equal(seek('ArrowRight', audio('idle')), undefined)
+  assert.equal(seek('ArrowRight', undefined), undefined)
 })
 
 test("a click on a card's name or caption runs its first action; one on its own buttons or bar only theirs", () => {

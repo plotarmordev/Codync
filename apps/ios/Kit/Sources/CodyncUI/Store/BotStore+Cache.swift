@@ -3,8 +3,12 @@ import Foundation
 
 extension BotStore {
     private struct Cache: Codable {
-        /// `mirrorFormat` of the app that wrote it; nil before the format was recorded, which is format 1.
+        /// `mirrorFormat` of the app that wrote it; nil before the format was recorded (`format(of:)`).
         var format: Int?
+        /// `<app build>/<host version>`, written before the format was recorded.
+        var stamp: String?
+        /// The host's store schema the conversation was synced under (`hello.schema`).
+        var schema: Int?
         var hostId: String?
         var rev: Int64
         var bots: [Bot]
@@ -26,12 +30,21 @@ extension BotStore {
         // underneath it.
         guard let data = try? Data(contentsOf: cacheURL),
               let cache = try? JSONDecoder().decode(Cache.self, from: data) else { return }
-        staleCache = (cache.format ?? 1) != Self.mirrorFormat
+        staleCache = Self.format(of: cache) != Self.mirrorFormat
+        hostSchema = cache.schema
         hostId = cache.hostId
         rev = cache.rev
         bots = Dictionary(cache.bots.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         entries = Dictionary(grouping: cache.entries.map(Self.afterRelaunch), by: \.botId)
         applyIcons(cache.icons ?? [:])
+    }
+
+    /// Caches from before the format was recorded are format 1, unless their stamp lacks the host version: those
+    /// were saved partway through a refetch (`""`) or before the first hello, so they start over.
+    private static func format(of cache: Cache) -> Int {
+        if let format = cache.format { return format }
+        guard let stamp = cache.stamp else { return 1 }
+        return stamp.range(of: "/.", options: .regularExpression) != nil ? 1 : 0
     }
 
     /// A message on its way when the app went may or may not have arrived: failed, with a Resend that reuses its nonce.
@@ -61,7 +74,10 @@ extension BotStore {
                 + list.filter { $0.id.hasPrefix("local-") && ["sending", "waiting", "held", "delivering", "failed"].contains($0.data.status) }
         }
         let cachedBots = bots.values.map { bot in var bot = bot; bot.customIcon = nil; return bot }
-        let cache = Cache(format: Self.mirrorFormat, hostId: hostId, rev: rev, bots: cachedBots, entries: kept, icons: icons)
+        // Saved partway through a refetch, or before the first hello began it, the cache stays stale: the next launch
+        // begins it again.
+        let format = refetched == nil && !staleCache ? Self.mirrorFormat : 0
+        let cache = Cache(format: format, schema: hostSchema, hostId: hostId, rev: rev, bots: cachedBots, entries: kept, icons: icons)
         if let data = try? JSONEncoder().encode(cache) {
             try? data.write(to: cacheURL, options: .atomic)
         }

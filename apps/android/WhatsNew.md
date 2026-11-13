@@ -7,6 +7,36 @@ released version's section; a version without one gets the PRs' "What's New: And
 else a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.46.0
+### zh-Hant
+- bot 詳細資料新增「電腦」分頁：顯示 bot 所在的電腦和連線狀態，以及那臺電腦螢幕的即時小畫面，可以看著 bot 操作；點一下畫面就開啟完整螢幕，需要時可以接手。「使用電腦」開關也移到這個分頁。
+- 睡著的雲電腦在你查看時會自動喚醒，畫面上會顯示「正在喚醒電腦…」直到準備好。
+- 修正雲端電腦的螢幕同時被多處開啟時，整個桌面可能凍結的問題。
+- 修正電腦螢幕重新連線或從背景回到 app 後，「接手控制」或「交還給 Bot」的選擇沒有保留的問題。
+
+### en-US
+- New Computer tab in bot details: the bot's computer, its connection, and a live picture of its screen to watch the bot work. Tap it for the full screen. Use the computer moved here.
+- A sleeping cloud computer wakes when you look.
+- Fixed a cloud computer's desktop freezing when its screen was open in several places.
+- Take over or Hand back to bots stays as you left it after a reconnect or coming back to the app.
+
+## 2.45.1
+### zh-Hant
+- 新增「將有新動態的機器人移到最前面」：在電腦的設定裡開啟後，有新訊息（你的訊息、bot 的回覆或 routine 執行）的 bot 會自動排到列表最上面。
+- 在對話中尋找：點聊天右上角的放大鏡，輸入文字就會顯示有幾個符合項目，用上、下箭頭在它們之間移動，目前的訊息會被標示出來。搜尋的是已載入的訊息。
+- 全尺寸看圖可以雙指縮放（最多 8 倍）、放大後拖動，點兩下放大或還原。
+- 看圖頁頂部新增「複製圖片」按鈕，會把圖片本身放進剪貼簿；bot 分享的圖片在關閉按鈕旁也能直接下載。
+- 長按聊天裡的圖片，選單中的「複製」改為「複製圖片」和「複製名稱」；看圖時長按圖片也能使用回應和回覆。
+- bot 要你選擇時，聊天中會出現可點選的選項卡。選項會送回正在進行的工作，已回答或過期的卡片不會重複送出。
+
+### en-US
+- New "Move active bots to the top": turn it on in a computer's settings and a bot with a new message (yours, its reply, or a routine run) moves to the top of the list.
+- Find in a conversation: tap the magnifying glass at the top right of a chat and type. The bar shows how many matches there are, the arrows move between them, and the message with the current match is highlighted. It searches the messages loaded so far.
+- Pinch to zoom a full-size picture up to 8x, drag it once zoomed in, or double-tap to zoom in and back.
+- Copy image in the viewer puts the picture itself on the clipboard; a picture a bot shared also has Download by the close button.
+- Holding a picture in the chat offers Copy image and Copy name in place of Copy; in the viewer, holding it also offers reactions and Reply.
+- When your bot needs a choice, tap an option in its chat card. Your answer continues the current work; answered or expired cards cannot send another choice.
+
 ## 2.44.2
 ### zh-Hant
 - 電腦更新或連線中斷後，手機會接續同步新訊息，不再重新下載所有聊天紀錄。

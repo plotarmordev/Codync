@@ -2,14 +2,19 @@ import CodyncKit
 import SwiftUI
 import UIKit
 
+/// A file a bot shared: its picture (tap for full size) when it's an image, its name and size, and its Download button.
+/// Long-press for the message's menu; a picture's has Copy image and Copy name for Copy.
 struct FileDownloadCard: View {
     let entry: Entry
     let file: SharedFile
+    let menu: MessageMenu
     /// Opens a readable file in the chat's viewer; nil where the card stands alone.
     var openFile: ((FileViewerTarget) -> Void)?
     @Environment(BotStore.self) private var model
-    @State private var viewing = false
+    @Environment(\.openImage) private var openImage
     @State private var audio = SharedAudio()
+
+    private var source: ImageSource { .shared(file, entryId: entry.id, botId: entry.botId) }
 
     var body: some View {
         let download = model.fileDownloads.states[file.id]
@@ -20,31 +25,44 @@ struct FileDownloadCard: View {
         }
         .padding(14)
         .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 16))
-        .codyncSheet(isPresented: $viewing) { AttachmentViewer(shared: file, entryId: entry.id) }
+        .contextActions(reactions: menu.reactions) {
+            menu.items(copy: file.showsAsImage ? ImageCopy.menuItems(source, model: model) : menu.textCopy)
+        }
         .onDisappear { audio.stop() }
         // One element reads the whole card; its buttons become named actions.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(file.name), \(caption)")
+        .accessibilityAction { firstAction() }
         .accessibilityActions {
-            if file.showsAsAudio {
+            if file.playsInChat {
                 Button(audio.state == .playing ? L10n.tr("Pause") : L10n.tr("Play"), action: play)
             }
             if file.showsAsImage {
-                Button(L10n.tr("View")) { viewing = true }
+                Button(L10n.tr("View"), action: view)
             } else if file.preview != nil {
                 Button(L10n.tr("View"), action: open)
             }
-            Button(busy ? L10n.tr("Cancel download") : L10n.tr("Download"), action: self.download)
+            Button(L10n.tr(Self.action(download)), action: self.download)
         }
-        .audioSeekAdjustable(file.showsAsAudio ? audio : nil)
+        .audioSeekAdjustable(file.playsInChat ? audio : nil)
     }
+
+    /// A double tap runs what the card leads with: play a sound, open a picture or a readable file, else download
+    /// (Android's and the desktop's first action, the voice-note bubble's double tap).
+    private func firstAction() {
+        if file.playsInChat { play() } else if file.showsAsImage { view() } else if file.preview != nil { open() } else { download() }
+    }
+
+    private func view() { openImage(ImageViewing(source: source, menu: menu)) }
 
     /// The picture itself; tap for full size.
     private var preview: some View {
-        AttachmentImage(shared: file, entryId: entry.id, maxPixels: 720)
+        AttachmentImage(source, maxPixels: 720)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())
-            .onTapGesture { viewing = true }
+            .onTapGesture { view() }
+            .accessibilityLabel(file.name)
+            .accessibilityAddTraits(.isButton)
             .frame(maxWidth: .infinity, maxHeight: 280, alignment: .leading)
     }
 
@@ -57,17 +75,18 @@ struct FileDownloadCard: View {
             }
             Spacer(minLength: 0)
             Button(action: download) {
-                Image(systemName: busy ? "xmark" : "arrow.down.to.line")
+                Image(systemName: Self.symbol(model.fileDownloads.states[file.id]))
                     .font(.system(size: 20)).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: L10n.tr(Self.action(model.fileDownloads.states[file.id])) + " " + file.name))
         }
     }
 
     /// Its icon (or a voice note's play button) and name; tap opens the viewer for readable files.
     private func label(caption: String) -> some View {
         HStack(spacing: 12) {
-            if file.showsAsAudio { playButton } else {
+            if file.playsInChat { playButton } else {
                 Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
                     .frame(width: 24)
             }
@@ -102,7 +121,20 @@ struct FileDownloadCard: View {
         model.fileDownloads.toggle(client: model.client, entry: entry, file: file)
     }
 
-    private var busy: Bool { model.fileDownloads.isDownloading(file.id) }
+    /// What the Download button does now (its label).
+    static func action(_ state: FileDownloads.State?) -> String {
+        switch state {
+        case .downloading: "Cancel download"
+        case .failed: "Retry download"
+        case .saved: "Save again"
+        case nil: "Download"
+        }
+    }
+
+    static func symbol(_ state: FileDownloads.State?) -> String {
+        if case .downloading = state { return "xmark" }
+        return "arrow.down.to.line"
+    }
 
     /// What the card says under the name: a failed play, then the download, then the sound's position, then its size.
     static func detail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,
@@ -121,68 +153,6 @@ struct FileDownloadCard: View {
         if let duration { return "\(SharedAudio.timeText(elapsed)) / \(SharedAudio.timeText(duration))" }
         if case .saved = download { return "\(size) · \(L10n.tr("Downloaded"))" }
         return size
-    }
-}
-
-/// A shared sound's play/pause: a spinner while it loads, and the 44 pt tap target of every card-sized control.
-/// Both a file card and a bubble's voice note show it.
-struct AudioPlayButton: View {
-    let state: SharedAudio.State
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if state == .loading {
-                    Spinner(size: 24)
-                } else {
-                    Image(systemName: state == .playing ? "pause.circle" : "play.circle")
-                        .font(.system(size: 24)).foregroundStyle(Palette.text)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-            }
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-/// How far a shared sound has played: a 4 pt bar filling left to right. Tap or drag it to move there; its touch
-/// area runs 20 pt over and under the bar without taking up layout, as the play button's does.
-struct AudioProgress: View {
-    let elapsed: TimeInterval
-    let duration: TimeInterval
-    let seek: (TimeInterval) -> Void
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Palette.tertiary)
-                Capsule().fill(Palette.text).frame(width: proxy.size.width * min(1, elapsed / max(1, duration)))
-            }
-            .frame(height: 4)
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
-                seek(duration * min(max(drag.location.x / proxy.size.width, 0), 1))
-            })
-        }
-        .frame(height: 44)
-        .padding(.vertical, -20)
-    }
-}
-
-extension View {
-    /// VoiceOver's swipe up or down on a voice note moves it five seconds; another file's card isn't adjustable.
-    @ViewBuilder func audioSeekAdjustable(_ audio: SharedAudio?) -> some View {
-        if let audio {
-            accessibilityAdjustableAction { direction in
-                audio.seek(to: audio.elapsed + (direction == .increment ? 5 : -5))
-            }
-        } else {
-            self
-        }
     }
 }
 

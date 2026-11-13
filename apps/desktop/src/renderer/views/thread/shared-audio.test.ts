@@ -54,6 +54,7 @@ test('a sound that fails to load fails the card, and the next tap loads it again
   loads[0](null)
   await tap
   assert.equal(audio.snapshot.phase, 'failed')
+  assert.equal(audio.failure, 'load')
   const retry = audio.toggle()
   assert.equal(loads.length, 2, 'the retry fetches again')
   loads[1](new Uint8Array([1]))
@@ -74,10 +75,28 @@ test('a sound whose play() starts then rejects ends failed, not playing', async 
   await tap
   assert.deepEqual(log, ['open', 'play', 'pause', 'dispose'])
   assert.equal(audio.snapshot.phase, 'failed')
+  assert.equal(audio.failure, 'playback')
   const retry = audio.toggle()
   assert.equal(loads.length, 2, 'the retry fetches again')
   loads[1](null)
   await retry
+  assert.equal(audio.failure, 'load', 'each tap names the step it broke at')
+})
+
+test('a pause before play() settles keeps the loaded sound where it was', async () => {
+  const { audio, log, loads, events, sound } = setup()
+  sound.play = async () => {
+    log.push('play')
+    events().playing(true)
+    events().time(3, 48)
+    sound.pause() // <audio>.pause() while play() is pending rejects that play() with AbortError
+    throw new DOMException('The play() request was interrupted by a call to pause().', 'AbortError')
+  }
+  const tap = audio.toggle()
+  loads[0](new Uint8Array([1]))
+  await tap
+  assert.deepEqual(log, ['open', 'play', 'pause'])
+  assert.deepEqual(audio.snapshot, { phase: 'paused', elapsed: 3, duration: 48 })
 })
 
 test('a loaded sound shows its clock and resets at the end', async () => {

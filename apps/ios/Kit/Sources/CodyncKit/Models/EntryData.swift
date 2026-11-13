@@ -33,6 +33,11 @@ public struct EntryData: Codable, Hashable, Sendable {
     public var diffs: [FileDiff]?
     public var locations: [Location]?
     public var options: [PermissionOption]?
+    /// Additive notice card (its `status` is a `DecisionStatus`). Permission options retain their existing object format.
+    public var decision: Bool?
+    public var question: String?
+    public var choices: [String]?
+    public var recommended: Int?
     public var selected: String?
     public var command: String?
     public var detail: String?
@@ -146,7 +151,7 @@ extension EntryData {
     /// The sound a voice-note message plays inside its bubble: its first file, when the host marked the message
     /// and the chat can play it. A sound shared without the mark stays a file card.
     public var voiceNoteFile: SharedFile? {
-        guard voiceNote == true, let file = files?.first, file.showsAsAudio else { return nil }
+        guard voiceNote == true, let file = files?.first, file.playsInChat else { return nil }
         return file
     }
 }
@@ -174,3 +179,13 @@ public struct Attachment: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
+
+/// A choice card's (`request_decision`) lifecycle, as the host writes it in `status`.
+public enum DecisionStatus: String, Sendable {
+    case pending, answered, expired
+}
+
+public extension EntryData {
+    /// A choice card's status; nil for a value this app doesn't know.
+    var decisionStatus: DecisionStatus? { status.flatMap(DecisionStatus.init(rawValue:)) }
+}

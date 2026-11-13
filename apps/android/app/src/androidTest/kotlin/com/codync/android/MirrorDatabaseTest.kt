@@ -125,6 +125,33 @@ class MirrorDatabaseTest {
         assertTrue(mirror.snapshot().entries.isEmpty())
     }
 
+    @Test fun aNewVersionReadsTheBotsAgainAndKeepsTheConversation() {
+        mirror.setHost("host", MirrorDatabase.FORMAT, "8")
+        mirror.apply(MirrorEvent.EntryChanged(entry(9)))
+        assertTrue(mirror.rosterStale("2.4/2.4"))
+        mirror.receiveRoster(listOf(Bot("bot", "Bot", rev = 2)), "2.4/2.4")
+        assertFalse(mirror.rosterStale("2.4/2.4"))
+        // The cursor stays: a catch-up from the start onto the rows held could leave a gap.
+        assertEquals(9, mirror.revision())
+        assertTrue(mirror.rosterStale("2.5/2.4"))
+        assertFalse(mirror.setHost("host", MirrorDatabase.FORMAT, "8"))
+        assertEquals(1, mirror.snapshot().entries.size)
+    }
+
+    @Test fun anotherStoreSchemaDropsTheConversationAndAnUnknownOneKeepsIt() {
+        // As 2.44.1 left it: a stamp of the app and host versions, which says nothing about the schema.
+        mirror.writableDatabase.insertOrThrow("meta", null, ContentValues().apply { put("k", "stamp"); put("v", "2.44.1/2.44.1") })
+        assertFalse(mirror.setHost("host", MirrorDatabase.FORMAT, "8"))
+        mirror.apply(MirrorEvent.EntryChanged(entry(9)))
+        // A host that sends no schema can't say it changed.
+        assertFalse(mirror.setHost("host", MirrorDatabase.FORMAT))
+        assertEquals(1, mirror.snapshot().entries.size)
+        // A migration may have rewritten or removed rows in place.
+        assertTrue(mirror.setHost("host", MirrorDatabase.FORMAT, "9"))
+        assertTrue(mirror.snapshot().entries.isEmpty())
+        assertEquals(0, mirror.snapshot().rev)
+    }
+
     private fun hello(version: String, hostId: String = "host", iconsRevision: Long = 0) = buildJsonObject {
         put("hostId", hostId); put("version", version); put("iconsRevision", iconsRevision)
     }

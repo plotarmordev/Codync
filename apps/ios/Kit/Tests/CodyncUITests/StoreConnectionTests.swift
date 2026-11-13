@@ -290,8 +290,9 @@ private func populate(_ fake: FakeRemote, bots: Int = 30, turnsPerBot: Int = 4) 
 }
 
 /// The `since` of the first catch-up a store asks for over a mirror file holding `stamp` (as an older app wrote
-/// it) or `format`, with the host updated meanwhile.
-@MainActor private func firstSince(overCache field: String) async throws -> [Int64] {
+/// it) or `format` and `schema`, with the host (store schema 8) updated meanwhile, or `hello`'s host.
+@MainActor private func firstSince(overCache field: String,
+                                   hello: String = helloJSON(version: "2.41.0", schema: 8)) async throws -> [Int64] {
     let (storage, suite) = context()
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let computer = randomComputer("Mac")
@@ -307,7 +308,7 @@ private func populate(_ fake: FakeRemote, bots: Int = 30, turnsPerBot: Int = 4) 
     try Data(cache.utf8).write(to: cacheURL, options: .atomic)
 
     let fake = FakeRemote(.ready(.relay))
-    await fake.setHello(helloJSON(version: "2.41.0"))
+    await fake.setHello(hello)
     let store = BotStore(computer: computer, storage: storage) { _ in fake }
     defer { store.retire() }
     #expect(store.chat("b0").map(\.id) == (0..<4).map { "e-b0-\($0)" })
@@ -319,7 +320,15 @@ private func populate(_ fake: FakeRemote, bots: Int = 30, turnsPerBot: Int = 4) 
 @MainActor @Test func aCacheAnOlderBuildWroteKeepsItsCursorAcrossAppAndHostUpdates() async throws {
     // Another app build (Xcode Cloud numbers each one) for the host before its update.
     #expect(try await firstSince(overCache: #""stamp":"412/2.40.0""#) == [219])
-    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat)"#) == [219])
-    // Only another mirror format fetches everything again.
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat),"schema":8"#) == [219])
+    // An older build saved partway through a refetch, or before its first hello: the stamp lacks the host.
+    #expect(try await firstSince(overCache: #""stamp":"""#) == [0])
+    #expect(try await firstSince(overCache: #""stamp":"412/""#) == [0])
+    #expect(try await firstSince(overCache: #""stamp":"413""#) == [0])
+    // Only another mirror format or store schema (rows rewritten in place, no new rev) fetches everything again.
     #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat + 1)"#) == [0])
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat),"schema":7"#) == [0])
+    // A replacement host database, already past the cached cursor: its revisions say nothing about the cache's.
+    let replacement = #"{"hostId":"h2","name":"Mac","version":"2.41.0","schema":8,"os":"macos","backends":[],"rev":300}"#
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat),"schema":8"#, hello: replacement) == [0])
 }

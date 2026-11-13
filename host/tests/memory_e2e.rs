@@ -207,22 +207,22 @@ async fn dreaming_keeps_only_what_the_user_typed() {
         assert!(Instant::now() < deadline, "agent did not finish: {history}");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    // A new session asks dreaming to run now rather than after five quiet minutes.
+    // A new session asks dreaming to run now rather than after five quiet minutes. `memory` reads the bot's
+    // MEMORY.md before the dream log, so wait until one response holds both.
     host.call("newSession", json!({"botId": bot})).await;
+    let learned = "Prefers concise Traditional Chinese explanations";
     let view = loop {
         let view = host.memory(&bot).await;
-        if view["dreams"][0]["files"].as_array().is_some_and(|f| !f.is_empty()) {
+        if texts(&view["bot"]) == [learned] && view["dreams"][0]["added"][0]["text"] == learned {
             break view;
         }
         assert!(Instant::now() < deadline, "dreaming didn't run: {view}");
         tokio::time::sleep(Duration::from_millis(100)).await;
     };
-    assert_eq!(texts(&view["bot"]), ["Prefers concise Traditional Chinese explanations"]);
     let entry = &view["bot"]["entries"][0];
     assert_eq!(entry["author"], "dream");
     assert_eq!(entry["evidence"], json!([message]), "it cites the message it learned from");
     assert!(!view.to_string().contains("durian"), "pasted text isn't the user's own words");
-    assert_eq!(view["dreams"][0]["added"][0]["text"], "Prefers concise Traditional Chinese explanations");
 
     // The bot can go from a memory to the message it came from, and page back through the chat.
     let found = host.tool(&bot, "search_memory", json!({"query": "concise"})).await;

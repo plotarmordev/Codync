@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
@@ -33,6 +35,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,16 +45,19 @@ import com.codync.android.design.*
 import com.kyant.shapes.Capsule
 import com.kyant.shapes.RoundedRectangle
 import kotlin.math.roundToInt
+import kotlin.math.sign
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** A file a bot shared, as iOS `FileDownloadCard`: an image shows itself (tap for full size), a voice note plays, a Markdown,
  *  text or PDF file opens on tap, then its name and size, and a button to download (or cancel). One accessibility element:
- *  `<name>, <caption>` plus the actions. */
-@Composable internal fun FileDownloadCard(entry: Entry, file: SharedFile, state: AppState, store: AppStore) {
+ *  `<name>, <caption>` plus the actions. Holding it opens its message's `menu`; an image's copies the picture or its name. */
+@Composable internal fun FileDownloadCard(entry: Entry, file: SharedFile, menu: MessageMenu, state: AppState, store: AppStore) {
+    val context = LocalContext.current
+    val focus = LocalFocusManager.current
     var viewing by remember { mutableStateOf(false) }
     var reading by remember { mutableStateOf<OpenFile?>(null) }
-    val player = if (file.showsAsAudio) rememberSharedAudio(entry, file, store) else null
+    val player = if (file.playsInChat) rememberSharedAudio(entry, file, store) else null
     val scope = rememberCoroutineScope()
     val translate = translator()
     val download = state.fileDownloads[file.id]
@@ -61,7 +67,9 @@ import kotlinx.coroutines.launch
     val save = { if (busy) store.cancelFile(file.id) else store.saveFile(entry.id, entry.botId, file) }
     val open = if (file.preview != null) ({ reading = OpenFile(entry.id, entry.botId, file) }) else null
     val view = if (file.showsAsImage) ({ viewing = true }) else open
-    Column(Modifier.fillMaxWidth().clip(RoundedRectangle(16.dp)).background(Palette.bubbleAgent)
+    Column(Modifier.fillMaxWidth().contextActions(reactions = menu.reactions, onClick = { focus.clearFocus() }) {
+        menu.items(if (file.showsAsImage) imageCopyItems(store, file.imageSource(entry.id, store)) else listOf(textCopyItem(context, entry.text)))
+    }.clip(RoundedRectangle(16.dp)).background(Palette.bubbleAgent)
         .clearAndSetSemantics {
             contentDescription = "${file.name}, $caption"
             audioSeek(player)
@@ -76,11 +84,11 @@ import kotlinx.coroutines.launch
             }) { (view ?: player?.let { play } ?: save)(); true }
         }.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (file.showsAsImage) SharedImage(file, entry.id, 720, state, store, Modifier.sizeIn(maxHeight = 280.dp)
-            .clip(RoundedRectangle(10.dp)).plainButton { viewing = true })
+            .clip(RoundedRectangle(10.dp)).plainButton { viewing = true }.semantics { contentDescription = file.name })
         FileRow(file, download, player, caption, save, play, open)
     }
 
-    SharedImageSheet(file.takeIf { viewing }, entry.id, state, store) { viewing = false }
+    SharedImageSheet(file.takeIf { viewing }, entry, menu, state, store) { viewing = false }
     FileViewerSheet(reading, store) { reading = null }
 }
 
@@ -127,18 +135,39 @@ import kotlinx.coroutines.launch
     }
 }
 
-/** TalkBack reads a voice note's position and moves it (swipe up/down or the volume keys) once its length is known. */
+/** Seconds TalkBack's adjust moves a voice note's playhead, as VoiceOver's on iOS and the arrow keys on desktop. */
+private const val SEEK_STEP = 5.0
+
+/** TalkBack reads a voice note's position and moves it five seconds (swipe up/down or the volume keys) once its length is known. */
 internal fun SemanticsPropertyReceiver.audioSeek(audio: SharedAudio?) {
     if (audio == null || audio.duration <= 0.0) return
-    progressBarRangeInfo = ProgressBarRangeInfo(audio.elapsed.toFloat(), 0f..audio.duration.toFloat())
-    setProgress { audio.seek(it.toDouble()); true }
+    val elapsed = audio.elapsed.toFloat()
+    progressBarRangeInfo = ProgressBarRangeInfo(elapsed, 0f..audio.duration.toFloat())
+    setProgress { audio.seek(seekStepTarget(audio.elapsed, it.compareTo(elapsed))); true }
 }
+
+/** Where an accessibility adjust toward `direction` (its sign; 0 at either end) moves a playhead at `elapsed`: one [SEEK_STEP]
+ *  that way, whatever value the service asked for, so every note moves alike whatever its length. */
+internal fun seekStepTarget(elapsed: Double, direction: Int): Double = elapsed + SEEK_STEP * direction.sign
 
 /** Seconds as `m:ss` (`h:mm:ss` past an hour). */
 internal fun clock(seconds: Double): String {
     val total = seconds.roundToInt()
     return if (total >= 3600) "%d:%02d:%02d".format(total / 3600, total / 60 % 60, total % 60) else "%d:%02d".format(total / 60, total % 60)
 }
+
+/** A shared file's download button, on its card and in its viewer: downloads (again after a failure or a save), or cancels
+ *  the download under way. In the image viewer (`inViewer`) its end is reported. */
+@Composable internal fun DownloadButton(entry: Entry, file: SharedFile, state: AppState, store: AppStore, inViewer: Boolean = false) {
+    val busy = state.fileDownloads[file.id] is FileDownloadState.Downloading
+    Box(Modifier.size(36.dp).plainButton { if (busy) store.cancelFile(file.id) else store.saveFile(entry.id, entry.botId, file, if (inViewer) ::reportViewerDownload else null) }
+        .semantics { contentDescription = (if (busy) "Cancel download " else "Download ") + file.name }, contentAlignment = Alignment.Center) {
+        Symbol(if (busy) "xmark" else "arrow.down.to.line", size = 20.dp, tint = Palette.text)
+    }
+}
+
+/** How a download from the image viewer ended. */
+private fun reportViewerDownload(error: ImageError?) = Analytics.capture(AnalyticsEvent.ImagePreviewAction(ImageAction.Download, ImageFrom.Viewer, error))
 
 /** A shared file's caption: a player failure, then how its download goes, then the sound's progress, then its size. */
 internal fun detail(file: SharedFile, download: FileDownloadState?, audio: SharedAudio? = null, tr: (String) -> String = { it }): String {

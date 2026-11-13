@@ -111,12 +111,16 @@ export class BotMirror extends Observable {
 
   protected waiting = 0
   protected rev = 0
+  /** While everything is fetched again (`refetchAll`): the entries the computer has sent since it began. */
+  protected refetched: Set<string> | null = null
   protected hostId: string | null = null
   protected retired = false
   protected unreadable = false
   protected saveTimer: ReturnType<typeof setTimeout> | null = null
   /** The cache was written in another `MIRROR_FORMAT`: the first `hello` fetches everything again. */
   protected staleCache = false
+  /** The host's store schema (`hello.schema`) the conversation was synced under; null before a host sent one. */
+  protected hostSchema: number | null = null
 
   constructor(
     computer: Computer,
@@ -151,6 +155,13 @@ export class BotMirror extends Observable {
 
   get hostName() {
     return this.hello?.name ?? this.computer.name
+  }
+
+  /** The automatic bot order switch as the computer has it: switched here, or its `autoOrder` event (another device). */
+  showAutoOrder(on: boolean) {
+    if (!this.hello || this.hello.autoOrder === on) return
+    this.hello = { ...this.hello, autoOrder: on }
+    this.changed()
   }
 
   /** A new name for this computer: its host's `name` event, or a cloud computer renamed from here (shown before its host,
@@ -248,8 +259,9 @@ export class BotMirror extends Observable {
     return list ? withoutRemoved(list) : []
   }
 
+  /** Not while everything is fetched again (`refetchAll`): a page would sit below entries about to go. */
   canLoadOlder(botId: string) {
-    return canLoadHistory(this.allEntries(botId), this.historyComplete.has(botId))
+    return !this.refetched && canLoadHistory(this.allEntries(botId), this.historyComplete.has(botId))
   }
 
   members(group: Bot) {
@@ -287,6 +299,7 @@ export class BotMirror extends Observable {
   }
 
   protected upsert(e: Entry) {
+    this.refetched?.add(e.id)
     const list = [...(this.entries.get(e.botId) ?? [])]
     const i = list.findIndex((x) => x.id === e.id)
     if (i >= 0) {
@@ -338,9 +351,9 @@ export class BotMirror extends Observable {
     try {
       const raw = localStorage.getItem(this.cacheKey)
       if (!raw) return
-      const cache = JSON.parse(raw) as { format?: number; hostId?: string; rev: number; bots: Bot[]; entries: Entry[] }
-      // Caches from before the format was recorded are format 1.
-      this.staleCache = (cache.format ?? 1) !== MIRROR_FORMAT
+      const cache = JSON.parse(raw) as { format?: number; stamp?: string; schema?: number; hostId?: string; rev: number; bots: Bot[]; entries: Entry[] }
+      this.staleCache = cacheFormat(cache) !== MIRROR_FORMAT
+      this.hostSchema = cache.schema ?? null
       this.hostId = cache.hostId ?? null
       this.rev = cache.rev
       this.bots = new Map(cache.bots.map((b) => [b.id, b]))
@@ -365,11 +378,22 @@ export class BotMirror extends Observable {
       kept.push(...list.filter((e) => e.id.startsWith('local-') && e.data.status === 'failed'))
     }
     const bots = [...this.bots.values()].map(({ customIcon: _image, ...bot }) => bot)
-    const cache = { format: MIRROR_FORMAT, hostId: this.hostId, rev: this.rev, bots, entries: kept }
+    // Saved partway through a refetch, or before the first hello began it, the cache stays stale: the next launch begins it again.
+    const format = this.refetched || this.staleCache ? 0 : MIRROR_FORMAT
+    const cache = { format, schema: this.hostSchema, hostId: this.hostId, rev: this.rev, bots, entries: kept }
     try {
       localStorage.setItem(this.cacheKey, JSON.stringify(cache))
     } catch {}
   }
+}
+
+/**
+ * Caches from before the format was recorded are format 1, unless their `<app>/<host version>` stamp lacks the
+ * host: those were saved partway through a refetch (`''`) or before the first hello, so they start over.
+ */
+function cacheFormat(cache: { format?: number; stamp?: string }) {
+  if (cache.format !== undefined) return cache.format
+  return cache.stamp === undefined || /\/./.test(cache.stamp) ? 1 : 0
 }
 
 export function builtInBackendName(id: string) {

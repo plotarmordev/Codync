@@ -25,15 +25,26 @@ final class SharedAudio {
     @ObservationIgnored private var generation = 0
     /// Ticks `elapsed` while the sound plays.
     @ObservationIgnored private var clock: Timer?
+    /// A call or Siri taking the audio pauses the note, as the user's own pause would.
+    @ObservationIgnored private var interruptions: AudioSessionEvents?
+    /// The note now sounding: starting another pauses it first, so only one owns the audio session.
+    private static weak var sounding: SharedAudio?
+    /// The step this tap is on, so a failure says which one broke.
+    private(set) var failure = AnalyticsEvent.VoiceNoteFailure.load
     /// Fetches the sound's bytes; tests hold it open to stop the card mid-load.
     private let load: @MainActor (BotStore, SharedFile, String) async -> Data?
+    /// Hands the audio back to other apps; tests count it.
+    private let deactivate: @MainActor () -> Void
 
-    init(load: @escaping @MainActor (BotStore, SharedFile, String) async -> Data? = { await $0.sharedFileData($1, entryId: $2) }) {
+    init(load: @escaping @MainActor (BotStore, SharedFile, String) async -> Data? = { await $0.sharedFileData($1, entryId: $2) },
+         deactivate: @escaping @MainActor () -> Void = CallAudioSession.releasePlayback) {
         self.load = load
+        self.deactivate = deactivate
     }
 
     /// The card's one control: a tap while the sound loads is dropped, so it never starts a second player.
     func toggle(_ file: SharedFile, entryId: String, model: BotStore) async {
+        let fromStart = state == .idle || state == .failed
         switch state {
         case .loading: return
         case .playing:
@@ -45,24 +56,26 @@ final class SharedAudio {
             break
         }
         let started = generation
+        failure = .load
         do {
-            let player = try await prepared(file, entryId: entryId, model: model)
-            guard generation == started else { state = .idle; return }
-            // Heard with the ringer off too.
-            let session = AVAudioSession.sharedInstance()
-            if session.category != .playAndRecord {
-                try session.setCategory(.playback)
-                try session.setActive(true)
-                ownsSession = true
-            }
+            let player = try await prepared(file, entryId: entryId, model: model, for: started)
+            failure = .playback
+            if let other = Self.sounding, other !== self, other.state == .playing { other.pause() }
+            if try CallAudioSession.activatePlayback() { ownsSession = true }
             guard player.play() else { throw CocoaError(.coderReadCorrupt) }
+            Self.sounding = self
             elapsed = player.currentTime
             state = .playing
             startClock()
+            interruptions = interruptions ?? AudioSessionEvents(engine: nil) { [weak self] interruption in
+                if case .began = interruption, self?.state == .playing { self?.pause() }
+            }
+            if fromStart { Analytics.shared.capture(.voiceNotePlayed(nil)) }
         } catch {
             // A card that went away mid-load never shows the failure.
             guard generation == started else { return }
             fail()
+            if fromStart { Analytics.shared.capture(.voiceNotePlayed(failure)) }
         }
     }
 
@@ -70,6 +83,8 @@ final class SharedAudio {
         generation += 1
         player?.stop()
         player?.currentTime = 0
+        interruptions?.stop()
+        interruptions = nil
         finish()
     }
 
@@ -107,19 +122,24 @@ final class SharedAudio {
         releaseSession()
     }
 
-    /// Paused, stopped, ended or failed: other apps' audio may pick up again.
+    /// Only the session this note activated is ours to release; a recording started since keeps it.
     private func releaseSession() {
         guard ownsSession else { return }
         ownsSession = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        guard !CallAudioSession.recording else { return }
+        deactivate()
     }
 
-    private func prepared(_ file: SharedFile, entryId: String, model: BotStore) async throws -> AVAudioPlayer {
+    /// The tap's player, loaded if it has none; a load the card outlived (`stop()` since `started`) throws before it
+    /// changes anything, so a newer tap's player and state stay.
+    private func prepared(_ file: SharedFile, entryId: String, model: BotStore, for started: Int) async throws -> AVAudioPlayer {
         if let player { return player }
-        guard let data = await load(model, file, entryId) else { throw CocoaError(.fileReadUnknown) }
+        let data = await load(model, file, entryId)
+        guard generation == started else { throw CancellationError() }
+        guard let data else { throw CocoaError(.fileReadUnknown) }
         let player = try AVAudioPlayer(data: data)
         duration = player.duration
-        let done = PlayDone { [weak self] in Task { @MainActor in self?.finish() } }
+        let done = PlayDone { [weak self] played in Task { @MainActor in played ? self?.finish() : self?.fail() } }
         player.delegate = done
         (self.player, self.done) = (player, done)
         return player

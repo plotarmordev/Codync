@@ -2,7 +2,7 @@ import CodyncKit
 import SwiftUI
 
 /// A shared sound's play/pause: a spinner while it loads, and the 44 pt tap target of every card-sized control.
-/// Both a file card and a bubble's voice note show it.
+/// The player row shows it; a plain glyph, no tile in any state.
 struct AudioPlayButton: View {
     let state: SharedAudio.State
     let action: () -> Void
@@ -25,7 +25,24 @@ struct AudioPlayButton: View {
     }
 }
 
-/// How far a shared sound has played: a 4 pt bar filling left to right. Tap or drag it to move there; its touch
+/// The player row's trailing download, drawn like its play button: a plain glyph, no tile in any state.
+struct AudioDownloadButton: View {
+    let downloading: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: downloading ? "xmark" : "arrow.down.to.line")
+                .font(.system(size: 24)).foregroundStyle(Palette.text)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// How far a shared sound has played: a 4 pt bar filling left to right, always shown — empty and inert until the
+/// sound's length is known (the loaded sound, or the computer's stamp). Tap or drag it to move there; its touch
 /// area runs 20 pt over and under the bar without taking up layout, as the play button's does.
 struct AudioProgress: View {
     let elapsed: TimeInterval
@@ -51,14 +68,11 @@ struct AudioProgress: View {
 }
 
 extension View {
-    /// VoiceOver's swipe up or down on a voice note moves it five seconds; another file's card isn't adjustable.
-    @ViewBuilder func audioSeekAdjustable(_ audio: SharedAudio?) -> some View {
-        if let audio {
-            accessibilityAdjustableAction { direction in
-                audio.seek(to: audio.elapsed + (direction == .increment ? 5 : -5))
-            }
-        } else {
-            self
+    /// VoiceOver's swipe up or down on a voice note moves it five seconds; moving needs the loaded sound, as on
+    /// the bar.
+    func audioSeekAdjustable(_ audio: SharedAudio) -> some View {
+        accessibilityAdjustableAction { direction in
+            audio.seek(to: audio.elapsed + (direction == .increment ? 5 : -5))
         }
     }
 }

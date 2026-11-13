@@ -32,7 +32,7 @@ private func silentWAV() -> Data {
 }
 
 /// A voice note's player whose fetch `load` holds, on a store; handing the audio back calls `deactivate`.
-@MainActor private func playing(deactivate: @escaping @MainActor () -> Void = {},
+@MainActor private func playing(known: TimeInterval? = nil, deactivate: @escaping @MainActor () -> Void = {},
                                 _ body: (SharedAudio, HeldLoad, BotStore, SharedFile) async throws -> Void) async rethrows {
     let suite = "SharedAudioTests.\(UUID().uuidString)"
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
@@ -40,7 +40,7 @@ private func silentWAV() -> Data {
     let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in FakeRemote(.connecting) }
     defer { store.retire() }
     let load = HeldLoad()
-    let audio = SharedAudio(load: { _, _, _ in await load.call() }, deactivate: deactivate)
+    let audio = SharedAudio(load: { _, _, _ in await load.call() }, deactivate: deactivate, known: known)
     defer { audio.stop() }
     try await body(audio, load, store, SharedFile(id: UUID().uuidString, name: "note.wav", size: 0, sha256: ""))
 }
@@ -60,6 +60,28 @@ private func silentWAV() -> Data {
             #expect(audio.state == .playing)
             await audio.toggle(note, entryId: "entry", model: store)
             #expect(audio.state == .paused)
+        }
+    }
+
+
+    @Test func theLengthTheComputerReadShowsFromTheFirstFrameAndSurvivesAFailure() async {
+        await playing(known: 9) { audio, load, store, note in
+            #expect(audio.duration == 9, "the clock shows before the sound loads")
+            audio.seek(to: 5)
+            #expect(audio.elapsed == 0, "seeking before the load does nothing")
+
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(nil)
+            await tap.value
+            #expect(audio.state == .failed)
+            #expect(audio.duration == 9, "a failed load falls back to the computer's stamp, not 0")
+
+            let second = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await second.value
+            #expect(audio.duration == 1, "the loaded sound's own length wins")
         }
     }
 
@@ -264,5 +286,7 @@ private func silentWAV() -> Data {
     #expect(FileDownloadCard.detail(.saved, play: .paused, elapsed: 7, duration: 48, size: size) == "0:07 / 0:48")
     #expect(FileDownloadCard.detail(nil, play: .playing, duration: 12, size: size) == "0:00 / 0:12")
     #expect(FileDownloadCard.detail(nil, play: .paused, elapsed: 7, duration: 48, size: size) == "0:07 / 0:48")
-    #expect(FileDownloadCard.detail(nil, size: size) == "1.3 MB")
+    #expect(FileDownloadCard.detail(nil, duration: 9, size: size) == "0:00 / 0:09",
+            "the length the computer read shows before the first play")
+    #expect(FileDownloadCard.detail(nil, size: size) == "1.3 MB", "an unknown length falls back to the size")
 }

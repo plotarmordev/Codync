@@ -6,7 +6,7 @@ any left). tools/asc-submit.py reads the released version's section;
 a version without one gets a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
-## 2.46.1
+## 2.46.2
 ### zh-Hant
 - 手機重新連上電腦後（包括電腦上的 Codync 更新之後），只補上錯過的訊息，不再重新載入每個聊天。
 - 語音訊息一出現就顯示播放鍵、進度條和長度（例如 0:00 / 0:09）；單獨傳來的音檔也用同一個播放器，下載鍵在同一個位置。

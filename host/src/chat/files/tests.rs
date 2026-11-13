@@ -196,3 +196,28 @@ fn snapshots_stamp_a_playable_sounds_length_and_omit_an_unknown_one() {
     // Only a sound the chat plays is read: the same bytes named as a document get no length.
     assert_eq!(share("note.bin", &wav(1500)).duration_ms, None);
 }
+
+/// `wav` with an ID3v2.4 tag holding a picture frame flagged as zlib-compressed whose body is `body`.
+fn wav_with_compressed_picture(millis: u32, body: &[u8]) -> Vec<u8> {
+    let syncsafe = |n: usize| (0..4).rev().map(|i| u8::try_from((n >> (7 * i)) & 0x7f).unwrap()).collect::<Vec<_>>();
+    // Flags: compressed (0x08) with a data length indicator (0x01), which precedes the body.
+    let mut frame = [b"APIC".as_slice(), &syncsafe(4 + body.len()), &[0, 0x09], &syncsafe(64 << 20)].concat();
+    frame.extend_from_slice(body);
+    let mut tag = [b"ID3".as_slice(), &[4, 0, 0], &syncsafe(frame.len())].concat();
+    tag.extend(frame);
+    tag.resize(tag.len().next_multiple_of(2), 0);
+    let mut bytes = wav(millis);
+    bytes.extend([b"id3 ".as_slice(), &u32::try_from(tag.len()).unwrap().to_le_bytes(), &tag].concat());
+    let riff = u32::try_from(bytes.len() - 8).unwrap();
+    bytes[4..8].copy_from_slice(&riff.to_le_bytes());
+    bytes
+}
+
+#[test]
+fn a_sound_whose_tag_holds_a_compressed_picture_still_gets_its_length() {
+    let temp = Temp::new();
+    // Not zlib at all: had the tag been read, inflating it would fail (or, with a real stream, balloon memory).
+    let path = temp.0.join("note");
+    std::fs::write(&path, wav_with_compressed_picture(1500, &[0xff; 32])).unwrap();
+    assert_eq!(duration_ms(&path), Some(1500));
+}

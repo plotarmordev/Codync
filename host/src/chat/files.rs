@@ -34,23 +34,27 @@ fn plays_in_chat(name: &str, size: u64) -> bool {
     matches!(extension.as_deref(), Some("mp3" | "m4a" | "wav" | "aac")) && size <= PLAYABLE_BYTES
 }
 
-/// A sound's length from its headers; the stored copy has no extension, so its format is sniffed from the bytes. An
-/// MP3 or AAC stream without a length header gets an estimate; the player swaps in the decoded length once loaded.
+/// A sound's length from its headers; the stored copy has no extension, so its format is sniffed from the bytes. Tags
+/// are skipped unread: a compressed tag frame inflates with no size cap, and a damaged one would fail the whole read.
+/// An MP3 or AAC stream without a length header gets an estimate; the player swaps in the decoded length once loaded.
 fn duration_ms(path: &Path) -> Option<u64> {
     use lofty::file::AudioFile as _;
-    let file = lofty::probe::Probe::open(path).ok()?.guess_file_type().ok()?.read().ok()?;
+    let options = lofty::config::ParseOptions::new().read_tags(false);
+    let file = lofty::probe::Probe::open(path).ok()?.options(options).guess_file_type().ok()?.read().ok()?;
     let millis = file.properties().duration().as_millis();
     (millis > 0).then(|| u64::try_from(millis).ok()).flatten()
 }
 
 /// Fills in the length of playable sounds shared before the host read lengths, so their players show a bar and clock
-/// from the first frame. Runs once per database (`kv` `files.duration`); a changed message gets a new rev, keeping its
-/// content rev so a message the user read stays read, and clients fetch it again.
+/// from the first frame. Runs once per database (`kv` `files.duration`), marked done first so a file that crashes the
+/// read can't stop every later start; a changed message gets a new rev, keeping its content rev so a message the user
+/// read stays read, and clients fetch it again.
 pub fn backfill_durations(store: &crate::store::Store) -> Result<()> {
     const DONE: &str = "files.duration";
     if store.kv_get(DONE).is_some() {
         return Ok(());
     }
+    store.kv_set(DONE, "1")?;
     for entry in store.unstamped_sounds()? {
         let root = root(&entry.bot_id);
         let mut data = entry.data.clone();
@@ -73,7 +77,7 @@ pub fn backfill_durations(store: &crate::store::Store) -> Result<()> {
             store.update_entry(&entry.id, &data)?;
         }
     }
-    store.kv_set(DONE, "1")
+    Ok(())
 }
 
 /// Removes an unpublished snapshot on every failure, including a dropped actor.

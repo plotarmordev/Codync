@@ -4,16 +4,16 @@ import { analytics } from '../../store/analytics'
 import { useStore } from '../../store/context'
 import { SharedAudio, type AudioSnapshot, type Sound, type SoundEvents } from './shared-audio'
 
-const IDLE: AudioSnapshot = { phase: 'idle', elapsed: 0, duration: 0 }
-
-/** A voice note's player for its card: fetched once from the computer, stopped when the card goes. */
+/** A voice note's player for its card: fetched once from the computer, stopped when the card goes. Its clock starts
+ *  at the length the host read, so the bar and `0:00 / 0:09` show before the first play. */
 export function useSharedAudio(file: SharedFile, entryId: string) {
   const store = useStore()
-  const [snapshot, setSnapshot] = useState<AudioSnapshot>(IDLE)
+  const known = (file.durationMs ?? 0) / 1000
+  const [snapshot, setSnapshot] = useState<AudioSnapshot>({ phase: 'idle', elapsed: 0, duration: known })
   const [audio] = useState(() => new SharedAudio({
     load: () => store.sharedFileData(file, entryId),
     open: (data, events) => audioElement(data, events),
-  }, setSnapshot))
+  }, setSnapshot, known))
   useEffect(() => () => audio.dispose(), [audio])
   return { snapshot, toggle: () => void play(audio), seek: (seconds: number) => audio.seek(seconds) }
 }

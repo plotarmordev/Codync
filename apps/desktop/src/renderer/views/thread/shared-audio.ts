@@ -3,7 +3,7 @@ export type AudioPhase = 'idle' | 'loading' | 'playing' | 'paused' | 'failed'
 /** Which step of a play failed: fetching or opening the sound, or starting it. */
 export type AudioFailure = 'load' | 'playback'
 
-/** What a card shows: the player's phase and the sound's clock (seconds; duration 0 until known). */
+/** What a card shows: the player's phase and the sound's clock (seconds; duration 0 while unknown). */
 export interface AudioSnapshot {
   phase: AudioPhase
   elapsed: number
@@ -43,17 +43,21 @@ export interface SharedAudioPlatform {
 export class SharedAudio {
   private phase: AudioPhase = 'idle'
   private elapsed = 0
-  private duration = 0
+  private duration: number
   private sound: Sound | null = null
   private disposed = false
   /** The step this tap is on, so a failure says which one broke. */
   failure: AudioFailure = 'load'
   private readonly platform: SharedAudioPlatform
   private readonly changed: (snapshot: AudioSnapshot) => void
+  /** The length the host read from the sound's headers (0 when unknown), shown until the sound itself says. */
+  private readonly known: number
 
-  constructor(platform: SharedAudioPlatform, changed: (snapshot: AudioSnapshot) => void) {
+  constructor(platform: SharedAudioPlatform, changed: (snapshot: AudioSnapshot) => void, known: number) {
     this.platform = platform
     this.changed = changed
+    this.known = known
+    this.duration = known
   }
 
   get snapshot(): AudioSnapshot {
@@ -131,7 +135,7 @@ export class SharedAudio {
     const sound = this.sound
     this.sound = null
     this.elapsed = 0
-    this.duration = 0
+    this.duration = this.known
     sound?.pause()
     sound?.dispose()
   }

@@ -82,28 +82,37 @@
   outline: 2px solid var(--secondary);
   outline-offset: 2px;
 }
-/* A message's voice note, at the top of its bubble: no card of its own, the text follows under it. The row keeps the
-   text bubble's padding: the play glyph sits on the text's edge, its button's hover chip inside the bubble. */
+/* A voice note's player. Inside a message it opens the bubble (no card of its own, the text follows under it) and
+   keeps the bubble's padding, the play glyph on the text's edge; sent on its own it is a bubble of its own with the
+   file's name under the row. */
 .voice-note {
-  min-width: 220px;
+  min-width: 260px;
   margin-bottom: 8px;
   border-radius: var(--radius-m);
+}
+.voice-note.bubble {
+  margin-bottom: 0;
+  max-width: 380px;
+  border-radius: var(--radius-l);
 }
 .voice-note:focus-visible {
   outline: 2px solid var(--secondary);
   outline-offset: 2px;
 }
-.voice-note .file-card-play {
+/* Play and download: 36 px targets over 21 x 24 px slots (the slot keeps its size while the sound loads). */
+.voice-note-slot {
   width: 21px;
   height: 24px;
+  display: grid;
+  place-items: center;
 }
-.voice-note .file-card-play > button {
+.voice-note-slot > button {
   margin: -6px -7.5px;
 }
-.voice-note .file-card-progress {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
+/* Bare glyphs in every state: hover and press darken them, never draw a tile. */
+.voice-note-glyph.icon-button:hover:not(:disabled),
+.voice-note-glyph.icon-button:active:not(:disabled) {
+  background: none;
 }
 /* Steady digits, so the bar's end doesn't move as the clock runs. */
 .voice-note .file-card-detail {
@@ -161,24 +170,26 @@
   inherits: true;
   initial-value: 0;
 }
-/* Only the bar seeks: its box is the thumb's height, so a click beside it on the card plays or pauses instead. */
-.file-card-progress {
+/* Only the bar seeks: its box is the thumb's height, so a click beside it on the player plays or pauses instead. */
+.voice-note-progress {
   appearance: none;
+  flex: 1;
+  min-width: 0;
   height: 12px;
-  margin: 2px 0 -4px;
+  margin: 0;
   background: transparent;
   cursor: pointer;
   transition: --played 0.2s linear;
 }
-.file-card-progress:active {
+.voice-note-progress:active {
   transition: none;
 }
-.file-card-progress::-webkit-slider-runnable-track {
+.voice-note-progress::-webkit-slider-runnable-track {
   height: 4px;
   border-radius: 2px;
   background: linear-gradient(to right, var(--text) calc(var(--played) * 100%), color-mix(in srgb, var(--tertiary) 30%, transparent) 0);
 }
-.file-card-progress::-webkit-slider-thumb {
+.voice-note-progress::-webkit-slider-thumb {
   appearance: none;
   width: 12px;
   height: 12px;
@@ -188,24 +199,13 @@
   opacity: 0;
   transition: opacity 0.15s;
 }
-.file-card-progress:hover::-webkit-slider-thumb,
-.file-card-progress:active::-webkit-slider-thumb {
+.voice-note-progress:hover::-webkit-slider-thumb,
+.voice-note-progress:active::-webkit-slider-thumb {
   opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
-  .file-card-progress,
-  .file-card-progress::-webkit-slider-thumb { transition: none; }
-}
-/* The play button's 36 px target overflows the file icon's 24 px slot, so names line up across cards. The slot
-   keeps its size while the sound loads. */
-.file-card-play {
-  width: 24px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-}
-.file-card-play > button {
-  margin: 0 -6px;
+  .voice-note-progress,
+  .voice-note-progress::-webkit-slider-thumb { transition: none; }
 }
 .attachment-viewer-note {
   padding: 0 16px;

@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { SharedAudio, type SharedAudioPlatform, type SoundEvents } from './shared-audio.ts'
 
 /** A card's player whose fetch from the computer the test answers when it chooses. */
-function setup() {
+function setup(known = 0) {
   const log: string[] = []
   const loads: ((data: Uint8Array | null) => void)[] = []
   let events!: SoundEvents
@@ -21,7 +21,7 @@ function setup() {
       return sound
     },
   }
-  return { audio: new SharedAudio(platform, () => {}), log, loads, events: () => events, sound }
+  return { audio: new SharedAudio(platform, () => {}, known), log, loads, events: () => events, sound }
 }
 
 test('a second tap while the sound loads plays it once', async () => {
@@ -118,6 +118,20 @@ test('a sound that fails mid-play drops its progress with the player', async () 
   events().time(7, 48)
   events().failed()
   assert.deepEqual(audio.snapshot, { phase: 'failed', elapsed: 0, duration: 0 })
+})
+
+test("the host's length shows before the first play, survives a failure, and gives way to the sound's own", async () => {
+  const { audio, loads, events, log } = setup(9)
+  assert.deepEqual(audio.snapshot, { phase: 'idle', elapsed: 0, duration: 9 })
+  audio.seek(4)
+  assert.deepEqual(log, [], 'nothing to move before the sound loads')
+  const tap = audio.toggle()
+  loads[0](new Uint8Array([1]))
+  await tap
+  events().time(3, 9.4)
+  assert.deepEqual(audio.snapshot, { phase: 'playing', elapsed: 3, duration: 9.4 })
+  events().failed()
+  assert.deepEqual(audio.snapshot, { phase: 'failed', elapsed: 0, duration: 9 })
 })
 
 test('seeking holds the playhead to the sound and keeps it playing or paused', async () => {

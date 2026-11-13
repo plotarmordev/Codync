@@ -37,8 +37,9 @@ onFlowComplete:
 - extendedWaitUntil:
     visible: "Listen before it joined"
     timeout: 20000
-# The player is one element, "Voice note, <its clock or size>"; its play button is at its start.
-- assertVisible: "Voice note, .*"
+# The player is one element, "Voice note, <its clock>"; its length shows before the first play, its play button is at
+# its start.
+- assertVisible: "Voice note, 0:00 / 0:04.*"
 - tapOn:
     text: "Voice note, .*"
     point: "4%,50%"

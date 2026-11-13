@@ -3,8 +3,9 @@ import CodyncKit
 import Foundation
 import Observation
 
-/// Plays a sound a bot shared (a voice note), fetched from the computer; one player per file card or
-/// voice-note bubble.
+/// Plays a sound a bot shared (a voice note), fetched from the computer; one player per bubble. Its clock starts
+/// at the length the computer read from the sound's headers, so the bar and `0:00 / 0:09` show from the first
+/// frame, before the sound loads.
 @MainActor
 @Observable
 final class SharedAudio {
@@ -13,10 +14,12 @@ final class SharedAudio {
         case idle, loading, playing, paused, failed
     }
     private(set) var state = State.idle
-    /// Seconds the sound runs, known once its first load decoded.
+    /// Seconds the sound runs: the loaded sound's own length, or the computer's stamp until it loads.
     private(set) var duration: TimeInterval?
     /// Seconds into the sound; ticks about four times a second while it plays.
     private(set) var elapsed: TimeInterval = 0
+    /// The length the computer read from the sound's headers (nil when it couldn't), shown until the sound says.
+    private var known: TimeInterval?
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private var done: PlayDone?
     /// Whether this player turned the audio session on (a call or dictation keeps its own).
@@ -37,9 +40,12 @@ final class SharedAudio {
     private let deactivate: @MainActor () -> Void
 
     init(load: @escaping @MainActor (BotStore, SharedFile, String) async -> Data? = { await $0.sharedFileData($1, entryId: $2) },
-         deactivate: @escaping @MainActor () -> Void = CallAudioSession.releasePlayback) {
+         deactivate: @escaping @MainActor () -> Void = CallAudioSession.releasePlayback,
+         known: TimeInterval? = nil) {
         self.load = load
         self.deactivate = deactivate
+        self.known = known
+        duration = known
     }
 
     /// The card's one control: a tap while the sound loads is dropped, so it never starts a second player.
@@ -88,6 +94,13 @@ final class SharedAudio {
         finish()
     }
 
+    /// The computer's length arriving after the bubble mounted (a backfilled note): shown until the sound says.
+    func setKnownDuration(_ seconds: TimeInterval?) {
+        guard let seconds, seconds > 0, duration == nil else { return }
+        known = seconds
+        duration = seconds
+    }
+
     /// Moves a loaded sound's playhead, held to its length; playing or paused, it stays so.
     func seek(to seconds: TimeInterval) {
         guard let player, let duration else { return }
@@ -112,10 +125,11 @@ final class SharedAudio {
         releaseSession()
     }
 
-    /// The sound or the session failed: the player is dropped so the next tap fetches and decodes again.
+    /// The sound or the session failed: the player is dropped so the next tap fetches and decodes again, and the
+    /// clock falls back to the length the computer read.
     private func fail() {
         (player, done) = (nil, nil)
-        duration = nil
+        duration = known
         elapsed = 0
         stopClock()
         state = .failed

@@ -32,7 +32,7 @@ private func silentWAV() -> Data {
 }
 
 /// A voice note's player whose fetch `load` holds, on a store; handing the audio back calls `deactivate`.
-@MainActor private func playing(deactivate: @escaping @MainActor () -> Void = {},
+@MainActor private func playing(known: TimeInterval? = nil, deactivate: @escaping @MainActor () -> Void = {},
                                 _ body: (SharedAudio, HeldLoad, BotStore, SharedFile) async throws -> Void) async rethrows {
     let suite = "SharedAudioTests.\(UUID().uuidString)"
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
@@ -40,7 +40,7 @@ private func silentWAV() -> Data {
     let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in FakeRemote(.connecting) }
     defer { store.retire() }
     let load = HeldLoad()
-    let audio = SharedAudio(load: { _, _, _ in await load.call() }, deactivate: deactivate)
+    let audio = SharedAudio(load: { _, _, _ in await load.call() }, deactivate: deactivate, known: known)
     defer { audio.stop() }
     try await body(audio, load, store, SharedFile(id: UUID().uuidString, name: "note.wav", size: 0, sha256: ""))
 }
@@ -60,6 +60,38 @@ private func silentWAV() -> Data {
             #expect(audio.state == .playing)
             await audio.toggle(note, entryId: "entry", model: store)
             #expect(audio.state == .paused)
+        }
+    }
+
+
+    @Test func theLengthTheComputerReadShowsFromTheFirstFrameAndSurvivesAFailure() async {
+        await playing(known: 9) { audio, load, store, note in
+            #expect(audio.duration == 9, "the clock shows before the sound loads")
+            audio.seek(to: 5)
+            #expect(audio.elapsed == 0, "seeking before the load does nothing")
+
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(nil)
+            await tap.value
+            #expect(audio.state == .failed)
+            #expect(audio.duration == 9, "a failed load falls back to the computer's stamp, not 0")
+
+            let second = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await second.value
+            #expect(audio.duration == 1, "the loaded sound's own length wins")
+        }
+    }
+
+    @Test func aBackfilledLengthArrivingAfterTheBubbleMountedShowsWithoutTheSound() async {
+        await playing { audio, _, _, _ in
+            #expect(audio.duration == nil)
+            audio.setKnownDuration(9)
+            #expect(audio.duration == 9)
+            audio.setKnownDuration(12)
+            #expect(audio.duration == 9, "the first known length stays")
         }
     }
 
@@ -254,15 +286,25 @@ private func silentWAV() -> Data {
     }
 }
 
-@MainActor @Test func aVoiceNoteCardCaptionPutsItsFailureOverTheDownloadThePositionAndTheSize() {
-    let size: Int64 = 1_250_000
-    #expect(FileDownloadCard.detail(.failed("Couldn't download."), play: .failed, duration: 12, size: size)
+@MainActor @Test func aVoiceNoteCaptionPutsAFailureOverItsClockAndNeverCountsBytes() {
+    #expect(FileDownloadCard.voiceNoteDetail(.failed("Couldn't download."), play: .failed, duration: 12)
         == "Couldn't play. Tap to retry.")
-    #expect(FileDownloadCard.detail(.downloading(500_000), play: .failed, size: size) == "Couldn't play. Tap to retry.")
-    #expect(FileDownloadCard.detail(.downloading(500_000), play: .playing, duration: 12, size: size) == "500 KB of 1.3 MB")
-    #expect(FileDownloadCard.detail(.saved, size: size) == "1.3 MB · Downloaded")
-    #expect(FileDownloadCard.detail(.saved, play: .paused, elapsed: 7, duration: 48, size: size) == "0:07 / 0:48")
-    #expect(FileDownloadCard.detail(nil, play: .playing, duration: 12, size: size) == "0:00 / 0:12")
-    #expect(FileDownloadCard.detail(nil, play: .paused, elapsed: 7, duration: 48, size: size) == "0:07 / 0:48")
+    #expect(FileDownloadCard.voiceNoteDetail(.downloading(500_000), play: .failed, duration: nil) == "Couldn't play. Tap to retry.")
+    #expect(FileDownloadCard.voiceNoteDetail(.failed("Couldn't download."), play: .paused, duration: 12)
+        == "Couldn't download. Tap to retry.")
+    #expect(FileDownloadCard.voiceNoteDetail(.downloading(500_000), play: .playing, duration: 12) == "0:00 / 0:12")
+    #expect(FileDownloadCard.voiceNoteDetail(.saved, play: .paused, elapsed: 7, duration: 48) == "0:07 / 0:48")
+    #expect(FileDownloadCard.voiceNoteDetail(nil, play: .paused, elapsed: 7, duration: 48) == "0:07 / 0:48")
+    #expect(FileDownloadCard.voiceNoteDetail(nil, duration: 9) == "0:00 / 0:09",
+            "the length the computer read shows before the first play")
+    for download: FileDownloads.State? in [nil, .saved, .downloading(500_000)] {
+        #expect(FileDownloadCard.voiceNoteDetail(download, duration: nil) == "", "an unknown length shows the bar alone")
+    }
+}
+
+@MainActor @Test func aFileCardCaptionIsItsDownload() {
+    let size: Int64 = 1_250_000
     #expect(FileDownloadCard.detail(nil, size: size) == "1.3 MB")
+    #expect(FileDownloadCard.detail(.downloading(500_000), size: size) == "500 KB of 1.3 MB")
+    #expect(FileDownloadCard.detail(.saved, size: size) == "1.3 MB · Downloaded")
 }

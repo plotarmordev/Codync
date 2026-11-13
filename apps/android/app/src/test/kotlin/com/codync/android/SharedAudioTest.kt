@@ -170,4 +170,25 @@ class SharedAudioTest {
         audio.toggle()
         assertEquals(12.0, audio.elapsed, 0.0)
     }
+
+    @Test fun `a stamped length shows before the sound loads and after a drop`() = runBlocking {
+        val stamped = SharedAudio(load = { throw java.io.IOException("gone") }, open = { _, _ -> speaker }, knownDuration = 9.0)
+        assertEquals(9.0, stamped.duration, 0.0)
+        // Seeking does nothing: only a loaded sound moves.
+        stamped.seek(4.0)
+        assertEquals(0.0, stamped.elapsed, 0.0)
+        stamped.toggle()
+        assertEquals(AudioPhase.Failed, stamped.phase)
+        // A failure drops the sound: the clock goes back to the stamped length, not to zero.
+        assertEquals(9.0, stamped.duration, 0.0)
+        assertEquals(0.0, stamped.elapsed, 0.0)
+    }
+
+    @Test fun `a backfilled length arriving after the card mounted shows without the sound`() {
+        assertEquals(0.0, audio.duration, 0.0)
+        audio.setKnownDuration(9.0)
+        assertEquals(9.0, audio.duration, 0.0)
+        audio.setKnownDuration(12.0)
+        assertEquals(9.0, audio.duration, 0.0)
+    }
 }

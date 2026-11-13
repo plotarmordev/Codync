@@ -201,14 +201,28 @@ struct AgentBubble: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             if entry.data.artifact == nil, entry.data.voiceNoteFile == nil, let files = entry.data.files, !files.isEmpty {
-                // Each card has the menu, its picture's copy items in Copy's place.
-                ForEach(files) { file in FileDownloadCard(entry: entry, file: file, menu: menu, openFile: openFile) }
+                // Each card has the menu, its picture's copy items in Copy's place; a sound the computer marked
+                // playable is the player bubble instead, its name under the row.
+                ForEach(files) { file in
+                    if file.playsInChat {
+                        VoiceNoteBubble(entry: entry, file: file, name: file.name) {
+                            Text(file.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(1)
+                        }
+                        .contextActions(reactions: menu.reactions) {
+                            menu.items(copy: menu.textCopy + [downloadItem(file)])
+                        }
+                    } else {
+                        FileDownloadCard(entry: entry, file: file, menu: menu, openFile: openFile)
+                    }
+                }
             } else {
                 Group {
                     if let artifact = entry.data.artifact {
                         ArtifactCard(botId: entry.botId, ref: artifact) { openArtifact?(artifact) }
                     } else if let voiceNote = entry.data.voiceNoteFile {
-                        VoiceNoteBubble(entry: entry, file: voiceNote)
+                        VoiceNoteBubble(entry: entry, file: voiceNote, name: L10n.tr("Voice note")) {
+                            MarkdownText(entry.data.text ?? "").equatable()
+                        }
                     } else {
                         MarkdownText(entry.data.text ?? "").equatable()
                             .padding(.horizontal, 16)

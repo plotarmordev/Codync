@@ -9,9 +9,11 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 ## 2.46.2
 ### zh-Hant
 - 電腦重新啟動或 App、Codync 更新後，iPhone 只接收新的訊息，不再重新載入每個聊天。
+- 語音訊息一出現就顯示播放鍵、進度條和長度（例如 0:00 / 0:09）；單獨傳來的音檔也用同一個播放器，下載移到訊息的選單裡。
 
 ### en-US
 - After your computer restarts or the app or Codync updates, the iPhone catches up on only what's new instead of reloading every chat.
+- A voice note shows its play button, progress bar and length (like 0:00 / 0:09) from the start, and a sound file sent on its own uses the same player; Download is in the message's menu.
 
 ## 2.46.1
 ### zh-Hant

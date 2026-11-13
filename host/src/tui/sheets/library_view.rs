@@ -101,6 +101,7 @@ mod tests {
             size: 9,
             sha256: String::new(),
             plays_in_chat: false,
+            duration_ms: None,
         };
         assert_eq!(label(&LibraryItem::File { entry: "e".into(), file, at: 0 }), "▤ b.csv · 9 bytes");
     }

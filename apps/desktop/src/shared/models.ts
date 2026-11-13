@@ -247,6 +247,8 @@ export interface SharedFile extends Attachment {
   sha256: string
   /** A sound the chat plays in place, as the host stamps it; missing (an older host) means a plain file card. */
   playsInChat?: boolean
+  /** That sound's length (milliseconds) as the host read it when shared; missing when unknown. */
+  durationMs?: number
 }
 
 export const isImageName = (name: string) =>

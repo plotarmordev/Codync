@@ -205,6 +205,19 @@ impl Store {
         Ok(st.query_map(params![bot_id, limit], row_entry)?.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Messages with a playable sound whose length the host never stamped (shared before it read lengths): the
+    /// start-up backfill fills them in.
+    pub fn unstamped_sounds(&self) -> Result<Vec<Entry>> {
+        let c = self.db.locked();
+        let mut st = c.prepare(&format!(
+            "SELECT {ENTRY_COLS} FROM entries WHERE json_type(data, '$.files') = 'array'
+               AND EXISTS (SELECT 1 FROM json_each(data, '$.files') f
+                           WHERE json_extract(f.value, '$.playsInChat') = 1
+                             AND json_extract(f.value, '$.durationMs') IS NULL)"
+        ))?;
+        Ok(st.query_map([], row_entry)?.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// Cards still waiting for the user to sign in to agent `backend`, oldest first.
     // ponytail: scans notices without an index; sign-ins are rare, add one if it shows up in profiles.
     pub fn pending_sign_ins(&self, backend: &str) -> Result<Vec<Entry>> {

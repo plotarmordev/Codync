@@ -150,8 +150,11 @@ fun isVideoData(head: ByteArray): Boolean {
 }
 
 /** A file a bot shared: immutable on the computer, checked against its SHA-256 once downloaded.
- *  [playsInChat]: a sound the chat plays in place, as the computer stamps it; missing (an older computer) means a plain file card. */
-@Serializable data class SharedFile(val id: String, val name: String, val size: Long, val sha256: String, val playsInChat: Boolean = false) {
+ *  [playsInChat]: a sound the chat plays in place, as the computer stamps it; missing (an older computer) means a plain file card.
+ *  [durationMs]: the sound's length the computer read at share time; missing (an older computer, an unreadable header) is
+ *  unknown — the player then shows its bar empty until the sound loads. */
+@Serializable data class SharedFile(val id: String, val name: String, val size: Long, val sha256: String, val playsInChat: Boolean = false,
+    val durationMs: Long? = null) {
     /** An image small enough to show in the chat. */
     val showsAsImage: Boolean get() = isImageName(name) && size <= INLINE_BYTES
     /** How it opens inside the app, if it does. */

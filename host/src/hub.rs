@@ -173,6 +173,7 @@ impl Hub {
             crate::chat::decision::Expiry::Restart.capture(self);
         }
         crate::chat::memory::import_old_memory(self);
+        crate::chat::files::backfill_durations(&self.store)?;
         self.routines.restore(&self.store)?;
         crate::market::turn_on_installed_once(&self.store)?;
         for row in self.store.bots()? {

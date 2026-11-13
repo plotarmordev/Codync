@@ -4,30 +4,56 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.dp
 import com.codync.android.core.Entry
 import com.codync.android.core.SharedFile
 import com.codync.android.design.*
+import com.kyant.shapes.Capsule
 import java.io.File
 import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.math.sign
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-/** The state of a voice note's player, shown by the card's play button and caption. */
+/** The state of a voice note's player, shown by its row's play button and caption. */
 enum class AudioPhase { Idle, Loading, Playing, Paused, Failed }
 
 /** Why a sound stopped on its own: played to its end, lost the audio focus, or broke while decoding. */
@@ -51,15 +77,18 @@ internal interface Sound {
 /**
  * Plays a sound a bot shared (a voice note), fetched once from the computer by [load] (iOS `SharedAudio`); one card's
  * player. [open] prepares the player and calls back when it stops on its own.
+ * [knownDuration] is the length the computer stamped at share time (seconds), so the bar and clock are right from
+ * the first frame; 0.0 (an older computer, an unreadable header) means unknown, shown empty until the sound loads.
  */
 internal class SharedAudio(
     private val load: suspend () -> File,
     private val open: suspend (File, stopped: (SoundStop) -> Unit) -> Sound,
+    private var knownDuration: Double = 0.0,
 ) {
     var phase by mutableStateOf(AudioPhase.Idle)
         private set
-    /** Seconds long, known once the sound loads. */
-    var duration by mutableStateOf(0.0)
+    /** Seconds long: [knownDuration] before the sound loads, its own length after. */
+    var duration by mutableStateOf(knownDuration)
         private set
     /** Seconds played so far; the card's progress ticker updates it while it plays. */
     var elapsed by mutableStateOf(0.0)
@@ -106,6 +135,13 @@ internal class SharedAudio(
         if (fromStart) Analytics.capture(AnalyticsEvent.VoiceNotePlayed(failure.takeIf { phase == AudioPhase.Failed }))
     }
 
+    /** The computer's length arriving after the card mounted (a backfilled note): shown until the sound says. */
+    fun setKnownDuration(seconds: Double) {
+        if (seconds <= 0.0 || duration > 0.0) return
+        knownDuration = seconds
+        duration = seconds
+    }
+
     /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */
     fun seek(seconds: Double) {
         val current = sound ?: return
@@ -140,7 +176,7 @@ internal class SharedAudio(
     private fun drop() {
         sound?.release()
         sound = null
-        duration = 0.0
+        duration = knownDuration
         elapsed = 0.0
     }
 
@@ -150,9 +186,12 @@ internal class SharedAudio(
     }
 }
 
-/** A voice note is speech played as media (the media volume, not the ringer's). */
-private val voiceNoteAudio = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
-    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+/** A voice note is speech played as media (the media volume, not the ringer's). Lazy: `AudioAttributes` is Android's,
+ *  so building it at class load would break the player helpers' unit tests. */
+private val voiceNoteAudio by lazy {
+    AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+}
 
 /** A voice note through `MediaPlayer`, holding the audio focus while it plays as iOS holds its audio session. */
 private class MediaSound(private val manager: AudioManager, private val player: MediaPlayer,
@@ -208,19 +247,21 @@ private class MediaSound(private val manager: AudioManager, private val player: 
     }
 }
 
-/** One card's player, remembered by the file and released with it. */
+/** One card's player, remembered by the file and released with it; [SharedFile.durationMs] is its known length. */
 @Composable internal fun rememberSharedAudio(entry: Entry, file: SharedFile, store: AppStore): SharedAudio {
     val manager = LocalContext.current.getSystemService(AudioManager::class.java)
     val audio = remember(file.id) {
         SharedAudio(load = { store.sharedFile(entry.id, file) },
-            open = { path, stopped -> MediaSound.open(manager, path, stopped) })
+            open = { path, stopped -> MediaSound.open(manager, path, stopped) },
+            knownDuration = (file.durationMs ?: 0L) / 1000.0)
     }
     DisposableEffect(audio) { onDispose { audio.release() } }
+    // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load.
+    LaunchedEffect(audio, file.durationMs) { audio.setKnownDuration((file.durationMs ?: 0L) / 1000.0) }
     return audio
 }
 
-/** A voice note's play/pause/loading, in place of its file icon: a 48 dp target over the icon's 24 dp slot, so the
- *  name lines up with the other file cards. */
+/** A voice note's play/pause/loading, a plain glyph (no tile, pressed or not): a 48 dp target over a 24 dp glyph. */
 @Composable internal fun SharedAudioButton(audio: SharedAudio, tapped: () -> Unit) {
     Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
         Box(Modifier.requiredSize(48.dp).plainButton(action = tapped), contentAlignment = Alignment.Center) {
@@ -232,3 +273,72 @@ private class MediaSound(private val manager: AudioManager, private val player: 
         }
     }
 }
+
+/** The one voice-note player both bubbles share: the play button, the always-shown progress bar (empty until the
+ *  length is known) and the caption. One accessibility element — "[label], <caption>" — whose buttons become named
+ *  actions; download is in the bubble's menu. */
+@Composable internal fun SharedAudioRow(entry: Entry, file: SharedFile, audio: SharedAudio, label: String,
+    state: AppState, store: AppStore) {
+    val scope = rememberCoroutineScope()
+    val translate = translator()
+    val download = state.fileDownloads[file.id]
+    val busy = download is FileDownloadState.Downloading
+    val caption = voiceNoteDetail(download, audio, translate)
+    val failed = audio.phase == AudioPhase.Failed || download is FileDownloadState.Failed
+    val play = { scope.launch { audio.toggle() }; Unit }
+    Row(Modifier.fillMaxWidth().clearAndSetSemantics {
+        contentDescription = if (caption.isEmpty()) label else "$label, $caption"
+        audioSeek(audio)
+        customActions = listOf(
+            CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true },
+            CustomAccessibilityAction(translate(if (busy) "Cancel download" else "Download")) { store.toggleFile(entry.id, entry.botId, file); true })
+        onClick(label = translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true }
+    }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        SharedAudioButton(audio, play)
+        AudioProgress(audio, Modifier.weight(1f))
+        // Steady digits, so the bar's end doesn't move as the clock runs.
+        if (caption.isNotEmpty()) Text(caption, style = Type.caption2.monospacedDigit, color = if (failed) Palette.danger else Palette.secondary)
+    }
+}
+
+/** The progress bar of a voice note's player, filled left to right, read again about four times a second while it
+ *  plays; as wide as [modifier] lets it, the whole row by default. Tap or drag it to move there: its 48 dp touch strip
+ *  overflows the 4 dp bar without taking up layout, as the play button's does. The strip is inert until the length is
+ *  known, and a tap before the sound loads does nothing (only a loaded sound can seek). */
+@Composable internal fun AudioProgress(audio: SharedAudio, modifier: Modifier = Modifier.fillMaxWidth()) {
+    LaunchedEffect(audio, audio.phase) {
+        audio.syncElapsed()
+        while (audio.phase == AudioPhase.Playing) {
+            delay(250)
+            audio.syncElapsed()
+        }
+    }
+    val seekTo = { x: Float, width: Int -> audio.seek(audio.duration * (x / width).coerceIn(0f, 1f)) }
+    val strip = if (audio.duration > 0.0) Modifier
+        .pointerInput(audio) { detectTapGestures { seekTo(it.x, size.width) } }
+        .pointerInput(audio) { detectHorizontalDragGestures { change, _ -> seekTo(change.position.x, size.width) } }
+    else Modifier
+    Box(modifier.height(4.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxWidth().requiredHeight(48.dp).then(strip), contentAlignment = Alignment.CenterStart) {
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(Capsule()).background(Palette.tertiary)) {
+                val filled = if (audio.duration > 0.0) (audio.elapsed / audio.duration).toFloat().coerceIn(0f, 1f) else 0f
+                Box(Modifier.fillMaxWidth(filled).height(4.dp).clip(Capsule()).background(Palette.text))
+            }
+        }
+    }
+}
+
+/** Seconds TalkBack's adjust moves a voice note's playhead, as VoiceOver's on iOS and the arrow keys on desktop. */
+private const val SEEK_STEP = 5.0
+
+/** TalkBack reads a voice note's position and moves it five seconds (swipe up/down or the volume keys) once its length is known. */
+internal fun SemanticsPropertyReceiver.audioSeek(audio: SharedAudio?) {
+    if (audio == null || audio.duration <= 0.0) return
+    val elapsed = audio.elapsed.toFloat()
+    progressBarRangeInfo = ProgressBarRangeInfo(elapsed, 0f..audio.duration.toFloat())
+    setProgress { audio.seek(seekStepTarget(audio.elapsed, it.compareTo(elapsed))); true }
+}
+
+/** Where an accessibility adjust toward `direction` (its sign; 0 at either end) moves a playhead at [elapsed]: one [SEEK_STEP]
+ *  that way, whatever value the service asked for, so every note moves alike whatever its length. */
+internal fun seekStepTarget(elapsed: Double, direction: Int): Double = elapsed + SEEK_STEP * direction.sign

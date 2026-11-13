@@ -100,10 +100,13 @@ export function downloadDetail(state: DownloadState | undefined, file: SharedFil
   }
 }
 
-/** A card's caption: a voice note that couldn't play, then the download's, then the sound's clock, then the file's. */
+/**
+ * A card's caption. A file's is its download's. A voice note's never counts bytes: a play that failed, then a download
+ * that failed, then the sound's clock; empty (the bar alone) while its length is unknown.
+ */
 export function cardDetail(state: DownloadState | undefined, file: SharedFile, audio?: AudioSnapshot, tr = trNow) {
-  if (audio?.phase === 'failed') return tr("Couldn't play. Click to retry.")
-  if (state?.kind === 'downloading' || state?.kind === 'failed') return downloadDetail(state, file)
-  if (audio && audio.duration > 0) return `${clock(audio.elapsed)} / ${clock(audio.duration)}`
-  return downloadDetail(state, file)
+  if (!audio) return downloadDetail(state, file)
+  if (audio.phase === 'failed') return tr("Couldn't play. Click to retry.")
+  if (state?.kind === 'failed') return state.message
+  return audio.duration > 0 ? `${clock(audio.elapsed)} / ${clock(audio.duration)}` : ''
 }

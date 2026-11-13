@@ -55,25 +55,32 @@ test('a card that could not play writes its retry in the saved language', (t) =>
   lang = 'en'
   assert.equal(cardDetail(undefined, file(1000), failed), "Couldn't play. Click to retry.")
 })
-test('a downloading or failed download beats the sound clock', () => {
+test("a voice note's failed download beats its clock; one under way leaves the clock, never a byte count", () => {
   const downloading: DownloadState = { kind: 'downloading', received: 500 }
   const failed: DownloadState = { kind: 'failed', message: 'No space left.' }
-  assert.equal(cardDetail(downloading, file(1000), audio('playing', 7, 48)), '500 bytes of 1 KB')
+  assert.equal(cardDetail(downloading, file(1000), audio('playing', 7, 48)), '0:07 / 0:48')
   assert.equal(cardDetail(failed, file(1000), audio('playing', 7, 48)), 'No space left.')
 })
 
-test('a loaded sound shows elapsed of duration while playing, paused or done', () => {
+test('a loaded sound shows elapsed of duration while playing, paused, done or saved', () => {
   for (const phase of ['playing', 'paused', 'idle'] as const) {
     assert.equal(cardDetail(undefined, file(64400), audio(phase, 7, 48)), '0:07 / 0:48')
   }
+  assert.equal(cardDetail({ kind: 'saved' }, file(64400), audio('idle', 0, 48)), '0:00 / 0:48')
 })
 
-test('a card without a loaded sound or download keeps the file detail', () => {
+test('a voice note of unknown length shows the bar alone, never its file size', () => {
+  for (const phase of ['idle', 'loading'] as const) {
+    assert.equal(cardDetail(undefined, file(380030), audio(phase)), '')
+    assert.equal(cardDetail({ kind: 'saved' }, file(380030), audio(phase)), '')
+    assert.equal(cardDetail({ kind: 'downloading', received: 500 }, file(380030), audio(phase)), '')
+  }
+})
+
+test("a file card's caption is its download's", () => {
   assert.equal(cardDetail(undefined, file(380030)), '380 KB')
-  assert.equal(cardDetail(undefined, file(380030), audio('idle')), '380 KB')
-  assert.equal(cardDetail(undefined, file(380030), audio('loading')), '380 KB')
-  const saved: DownloadState = { kind: 'saved' }
-  assert.equal(cardDetail(saved, file(380030), audio('idle')), '380 KB · Saved')
+  assert.equal(cardDetail({ kind: 'downloading', received: 500 }, file(1000)), '500 bytes of 1 KB')
+  assert.equal(cardDetail({ kind: 'saved' }, file(380030)), '380 KB · Saved')
 })
 
 test("a card's first action is a voice note's play (also after a failure), then a picture's view, then the download", () => {

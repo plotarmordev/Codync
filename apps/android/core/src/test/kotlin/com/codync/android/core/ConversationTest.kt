@@ -82,6 +82,15 @@ class ConversationTest {
         assertNull(carrying(file = note.copy(playsInChat = false)).voiceNote)
     }
 
+    @Test fun `a shared file's stamped length decodes, and an older computer's absence is unknown`() {
+        fun file(with: JsonObjectBuilder.() -> Unit) = WireJson.decodeFromJsonElement<SharedFile>(buildJsonObject {
+            put("id", "f"); put("name", "note.m4a"); put("size", 1000); put("sha256", "a".repeat(64)); with()
+        })
+        assertEquals(9200L, file { put("durationMs", 9200) }.durationMs)
+        assertNull(file {}.durationMs)
+        assertNull(file { put("durationMs", JsonNull) }.durationMs)
+    }
+
     @Test fun `a queued message waits above the composer`() {
         fun user(status: String) = Entry("u", 1, "b", rev = 1, kind = "user", data = buildJsonObject { put("text", "hi"); put("status", status) })
         assertTrue(user("queued").isQueued)

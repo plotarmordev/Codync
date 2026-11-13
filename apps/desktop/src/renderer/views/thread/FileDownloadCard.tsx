@@ -34,12 +34,12 @@ export function VoiceNotePlayer({ entry, file, menu, named = false }: { entry: E
   const { snapshot, toggle, seek } = useSharedAudio(file, entry.id)
   const stop = useFileStop(entry, file, menu, snapshot, toggle, seek)
   return <>
-    <div className={named ? 'voice-note bubble agent' : 'voice-note'} {...stop.props} aria-label={`${named ? file.name : tr('Voice note')}, ${stop.detail}`}>
+    <div className={named ? 'voice-note bubble agent' : 'voice-note'} {...stop.props} aria-label={[named ? file.name : tr('Voice note'), stop.detail].filter(Boolean).join(', ')}>
       <VStack gap={4} aria-hidden>
         <HStack gap={10}>
           <AudioIcon snapshot={snapshot} toggle={toggle} />
           <AudioProgress snapshot={snapshot} seek={seek} />
-          <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail">{stop.detail}</Text>
+          {stop.detail ? <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail">{stop.detail}</Text> : null}
         </HStack>
         {named ? <Text as="div" size="subheadline" weight="semibold" truncate title={file.name}>{file.name}</Text> : null}
       </VStack>

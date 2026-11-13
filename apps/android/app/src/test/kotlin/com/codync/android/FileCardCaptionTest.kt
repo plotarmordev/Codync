@@ -34,32 +34,35 @@ class FileCardCaptionTest {
         return audio
     }
 
-    @Test fun `a stamped length shows the clock before the sound loads, an unknown one the size`() {
+    @Test fun `a stamped length shows the clock before the sound loads, an unknown one the bar alone`() {
         val stamped = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() }, knownDuration = 9.0)
-        assertEquals("0:00 / 0:09", detail(file, null, stamped))
+        assertEquals("0:00 / 0:09", voiceNoteDetail(null, stamped))
         val unstamped = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() })
-        assertEquals("380 KB", detail(file, null, unstamped))
+        for (download in listOf(null, FileDownloadState.Saved, FileDownloadState.Downloading(1_000))) {
+            assertEquals("", voiceNoteDetail(download, unstamped))
+        }
     }
 
     @Test fun `a player failure outranks the download and the progress`() {
         assertEquals("Couldn't play. Tap to retry.",
-            detail(file, FileDownloadState.Downloading(1_000), failed()))
-        assertEquals("Couldn't play. Tap to retry.", detail(file, null, failed()))
+            voiceNoteDetail(FileDownloadState.Failed("Couldn't download the file."), failed()))
+        assertEquals("Couldn't play. Tap to retry.", voiceNoteDetail(null, failed()))
     }
 
-    @Test fun `an ongoing download outranks the sound's progress`() {
-        assertEquals("1 KB of 380 KB", detail(file, FileDownloadState.Downloading(1_000), loaded(7.0)))
-    }
-
-    @Test fun `a failed download keeps its message`() {
+    @Test fun `a failed download outranks the clock, one under way leaves it`() {
         assertEquals("Couldn't download the file. Tap to retry.",
-            detail(file, FileDownloadState.Failed("Couldn't download the file."), loaded(7.0)))
+            voiceNoteDetail(FileDownloadState.Failed("Couldn't download the file."), loaded(7.0)))
+        assertEquals("0:07 / 0:48", voiceNoteDetail(FileDownloadState.Downloading(1_000), loaded(7.0)))
     }
 
-    @Test fun `a loaded sound shows elapsed over duration`() {
-        assertEquals("0:07 / 0:48", detail(file, null, loaded(7.0)))
-        assertEquals("0:07 / 0:48 · Downloaded", detail(file, FileDownloadState.Saved, loaded(7.0)))
+    @Test fun `a loaded sound shows elapsed over duration, saved or not`() {
+        assertEquals("0:07 / 0:48", voiceNoteDetail(null, loaded(7.0)))
+        assertEquals("0:07 / 0:48", voiceNoteDetail(FileDownloadState.Saved, loaded(7.0)))
+    }
+
+    @Test fun `a file card's caption is its download`() {
         assertEquals("380 KB", detail(file, null))
+        assertEquals("1 KB of 380 KB", detail(file, FileDownloadState.Downloading(1_000)))
         assertEquals("380 KB · Downloaded", detail(file, FileDownloadState.Saved))
     }
 

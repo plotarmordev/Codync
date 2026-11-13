@@ -283,10 +283,11 @@ private class MediaSound(private val manager: AudioManager, private val player: 
     val translate = translator()
     val download = state.fileDownloads[file.id]
     val busy = download is FileDownloadState.Downloading
-    val caption = detail(file, download, audio, translate)
+    val caption = voiceNoteDetail(download, audio, translate)
+    val failed = audio.phase == AudioPhase.Failed || download is FileDownloadState.Failed
     val play = { scope.launch { audio.toggle() }; Unit }
     Row(Modifier.fillMaxWidth().clearAndSetSemantics {
-        contentDescription = "$label, $caption"
+        contentDescription = if (caption.isEmpty()) label else "$label, $caption"
         audioSeek(audio)
         customActions = listOf(
             CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true },
@@ -296,8 +297,7 @@ private class MediaSound(private val manager: AudioManager, private val player: 
         SharedAudioButton(audio, play)
         AudioProgress(audio, Modifier.weight(1f))
         // Steady digits, so the bar's end doesn't move as the clock runs.
-        Text(caption, style = Type.caption2.monospacedDigit,
-            color = if (audio.phase == AudioPhase.Failed) Palette.danger else Palette.secondary)
+        if (caption.isNotEmpty()) Text(caption, style = Type.caption2.monospacedDigit, color = if (failed) Palette.danger else Palette.secondary)
     }
 }
 

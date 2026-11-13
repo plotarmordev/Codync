@@ -107,8 +107,8 @@ client reads the whole file into memory through the same `readFile` chunks, chec
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
 read leaves the placeholder. The player is one row: play/pause (a bare glyph in every state,
 no tile on hover; a spinner while the sound loads), the progress bar, the caption (elapsed /
-length from the first frame when `durationMs` is known, the decoded length once loaded; else the
-size until loaded), ending at the text's edge; download is in the message's menu, not a button
+length from the first frame when `durationMs` is known, the decoded length once loaded; no
+caption, the bar alone, until then; never the file size), ending at the text's edge; download is in the message's menu, not a button
 on the row. A sound sent on its own is that
 row in a bubble of its own with the file's name under it. Tapping or dragging the loaded bar
 (clicking on desktop) moves the sound there, playing or paused; its touch area runs past the

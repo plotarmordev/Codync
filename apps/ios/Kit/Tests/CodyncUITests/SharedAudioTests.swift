@@ -286,17 +286,25 @@ private func silentWAV() -> Data {
     }
 }
 
-@MainActor @Test func aVoiceNoteCardCaptionPutsItsFailureOverTheDownloadThePositionAndTheSize() {
-    let size: Int64 = 1_250_000
-    #expect(FileDownloadCard.detail(.failed("Couldn't download."), play: .failed, duration: 12, size: size)
+@MainActor @Test func aVoiceNoteCaptionPutsAFailureOverItsClockAndNeverCountsBytes() {
+    #expect(FileDownloadCard.voiceNoteDetail(.failed("Couldn't download."), play: .failed, duration: 12)
         == "Couldn't play. Tap to retry.")
-    #expect(FileDownloadCard.detail(.downloading(500_000), play: .failed, size: size) == "Couldn't play. Tap to retry.")
-    #expect(FileDownloadCard.detail(.downloading(500_000), play: .playing, duration: 12, size: size) == "500 KB of 1.3 MB")
-    #expect(FileDownloadCard.detail(.saved, size: size) == "1.3 MB · Downloaded")
-    #expect(FileDownloadCard.detail(.saved, play: .paused, elapsed: 7, duration: 48, size: size) == "0:07 / 0:48")
-    #expect(FileDownloadCard.detail(nil, play: .playing, duration: 12, size: size) == "0:00 / 0:12")
-    #expect(FileDownloadCard.detail(nil, play: .paused, elapsed: 7, duration: 48, size: size) == "0:07 / 0:48")
-    #expect(FileDownloadCard.detail(nil, duration: 9, size: size) == "0:00 / 0:09",
+    #expect(FileDownloadCard.voiceNoteDetail(.downloading(500_000), play: .failed, duration: nil) == "Couldn't play. Tap to retry.")
+    #expect(FileDownloadCard.voiceNoteDetail(.failed("Couldn't download."), play: .paused, duration: 12)
+        == "Couldn't download. Tap to retry.")
+    #expect(FileDownloadCard.voiceNoteDetail(.downloading(500_000), play: .playing, duration: 12) == "0:00 / 0:12")
+    #expect(FileDownloadCard.voiceNoteDetail(.saved, play: .paused, elapsed: 7, duration: 48) == "0:07 / 0:48")
+    #expect(FileDownloadCard.voiceNoteDetail(nil, play: .paused, elapsed: 7, duration: 48) == "0:07 / 0:48")
+    #expect(FileDownloadCard.voiceNoteDetail(nil, duration: 9) == "0:00 / 0:09",
             "the length the computer read shows before the first play")
-    #expect(FileDownloadCard.detail(nil, size: size) == "1.3 MB", "an unknown length falls back to the size")
+    for download: FileDownloads.State? in [nil, .saved, .downloading(500_000)] {
+        #expect(FileDownloadCard.voiceNoteDetail(download, duration: nil) == "", "an unknown length shows the bar alone")
+    }
+}
+
+@MainActor @Test func aFileCardCaptionIsItsDownload() {
+    let size: Int64 = 1_250_000
+    #expect(FileDownloadCard.detail(nil, size: size) == "1.3 MB")
+    #expect(FileDownloadCard.detail(.downloading(500_000), size: size) == "500 KB of 1.3 MB")
+    #expect(FileDownloadCard.detail(.saved, size: size) == "1.3 MB · Downloaded")
 }

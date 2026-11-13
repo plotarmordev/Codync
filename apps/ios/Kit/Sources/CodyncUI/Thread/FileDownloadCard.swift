@@ -114,11 +114,8 @@ struct FileDownloadCard: View {
         return "arrow.down.to.line"
     }
 
-    /// What a card, or the player row's clock, says: a failed play, then the download, then the sound's position,
-    /// then its size.
-    static func detail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,
-                       elapsed: TimeInterval = 0, duration: TimeInterval? = nil, size bytes: Int64) -> String {
-        if play == .failed { return L10n.tr("Couldn't play. Tap to retry.") }
+    /// What a file card says: its download's progress or failure, else its size.
+    static func detail(_ download: FileDownloads.State?, size bytes: Int64) -> String {
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         switch download {
         case .downloading(let received):
@@ -127,11 +124,19 @@ struct FileDownloadCard: View {
                 .replacingOccurrences(of: "{received}", with: received)
                 .replacingOccurrences(of: "{size}", with: size)
         case .failed(let message): return "\(L10n.tr(message)) \(L10n.tr("Tap to retry."))"
-        case .saved, nil: break
+        case .saved: return "\(size) · \(L10n.tr("Downloaded"))"
+        case nil: return size
         }
-        if let duration { return "\(SharedAudio.timeText(elapsed)) / \(SharedAudio.timeText(duration))" }
-        if case .saved = download { return "\(size) · \(L10n.tr("Downloaded"))" }
-        return size
+    }
+
+    /// What a voice note's player says, never a byte count: a failed play, then a failed download, then the sound's
+    /// clock; empty (the bar alone) while its length is unknown.
+    static func voiceNoteDetail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,
+                                elapsed: TimeInterval = 0, duration: TimeInterval?) -> String {
+        if play == .failed { return L10n.tr("Couldn't play. Tap to retry.") }
+        if case .failed(let message) = download { return "\(L10n.tr(message)) \(L10n.tr("Tap to retry."))" }
+        guard let duration else { return "" }
+        return "\(SharedAudio.timeText(elapsed)) / \(SharedAudio.timeText(duration))"
     }
 }
 

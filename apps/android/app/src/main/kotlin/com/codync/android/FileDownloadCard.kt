@@ -104,15 +104,22 @@ internal fun clock(seconds: Double): String {
 /** How a download from the image viewer ended. */
 private fun reportViewerDownload(error: ImageError?) = Analytics.capture(AnalyticsEvent.ImagePreviewAction(ImageAction.Download, ImageFrom.Viewer, error))
 
-/** A shared file's caption: a player failure, then how its download goes, then the sound's progress, then its size. */
-internal fun detail(file: SharedFile, download: FileDownloadState?, audio: SharedAudio? = null, tr: (String) -> String = { it }): String {
-    if (audio?.phase == AudioPhase.Failed) return tr("Couldn't play. Tap to retry.")
+/** A shared file's caption: how its download goes, then its size. */
+internal fun detail(file: SharedFile, download: FileDownloadState?, tr: (String) -> String = { it }): String {
     val size = formatBytes(file.size)
-    val progress = audio?.takeIf { it.duration > 0.0 }?.let { "${clock(it.elapsed)} / ${clock(it.duration)}" }
     return when (download) {
         is FileDownloadState.Downloading -> tr("{received} of {size}").replace("{received}", formatBytes(download.received)).replace("{size}", size)
         is FileDownloadState.Failed -> "${download.message} ${tr("Tap to retry.")}"
-        FileDownloadState.Saved -> progress?.let { "$it · ${tr("Downloaded")}" } ?: "$size · ${tr("Downloaded")}"
-        null -> progress ?: size
+        FileDownloadState.Saved -> "$size · ${tr("Downloaded")}"
+        null -> size
     }
+}
+
+/** A voice note's caption, never a byte count: a player failure, then a failed download, then the sound's clock;
+ *  empty (the bar alone) while its length is unknown. */
+internal fun voiceNoteDetail(download: FileDownloadState?, audio: SharedAudio, tr: (String) -> String = { it }): String = when {
+    audio.phase == AudioPhase.Failed -> tr("Couldn't play. Tap to retry.")
+    download is FileDownloadState.Failed -> "${download.message} ${tr("Tap to retry.")}"
+    audio.duration > 0.0 -> "${clock(audio.elapsed)} / ${clock(audio.duration)}"
+    else -> ""
 }

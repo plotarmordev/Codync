@@ -8,12 +8,23 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 
 ## 2.46.2
 ### zh-Hant
-- 手機重新連上電腦後（包括電腦上的 Codync 更新之後），只補上錯過的訊息，不再重新載入每個聊天。
+- 電腦重新啟動或 App、Codync 更新後，iPhone 只接收新的訊息，不再重新載入每個聊天。
 - 語音訊息一出現就顯示播放鍵、進度條和長度（例如 0:00 / 0:09）；單獨傳來的音檔也用同一個播放器，下載移到訊息的選單裡。
 
 ### en-US
-- When your phone reconnects to a computer, including after Codync on it updates, it fetches only what it missed instead of reloading every chat.
+- After your computer restarts or the app or Codync updates, the iPhone catches up on only what's new instead of reloading every chat.
 - A voice note shows its play button, progress bar and length (like 0:00 / 0:09) from the start, and a sound file sent on its own uses the same player; Download is in the message's menu.
+
+## 2.46.1
+### zh-Hant
+- bot 詳細資料的「電腦」分頁改成點一下才開始顯示畫面，不會一打開就連線。
+- 遠端畫面在 5 分鐘沒有碰 App 後會自動暫停以節省流量，點一下就能繼續，原本的「接手控制」或「交還給 Bot」都會保留。
+- 權限核准卡片與連線請求卡片現在會跟著 app 的語言顯示。
+
+### en-US
+- The Computer tab in bot details starts its picture when you tap it, instead of connecting as soon as it opens.
+- A computer's screen pauses after 5 minutes without you touching the app, to save data. Tap to continue; your Take over or Hand back to bots choice stays.
+- Approval and connection request cards now follow the app's language.
 
 ## 2.46.0
 ### zh-Hant

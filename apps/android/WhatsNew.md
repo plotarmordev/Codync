@@ -16,6 +16,17 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - When your phone reconnects to a computer, including after Codync on it updates, it fetches only what it missed instead of reloading every chat.
 - A voice note shows its play button, progress bar and length (like 0:00 / 0:09) from the start, and a sound file sent on its own uses the same player; Download is in the message's menu.
 
+## 2.46.1
+### zh-Hant
+- bot 詳細資料的「電腦」分頁改成點一下才開始顯示畫面，不會一打開就連線。
+- 遠端畫面在 5 分鐘沒有碰 App 後會自動暫停以節省流量，點一下就能繼續，原本的「接手控制」或「交還給 Bot」都會保留。
+- 權限核准卡片與連線請求卡片現在會跟著 app 的語言顯示。
+
+### en-US
+- The Computer tab in bot details starts its picture when you tap it, instead of connecting as soon as it opens.
+- A computer's screen pauses after 5 minutes without you touching the app, to save data. Tap to continue; your Take over or Hand back to bots choice stays.
+- Approval and connection request cards now follow the app's language.
+
 ## 2.46.0
 ### zh-Hant
 - bot 詳細資料新增「電腦」分頁：顯示 bot 所在的電腦和連線狀態，以及那臺電腦螢幕的即時小畫面，可以看著 bot 操作；點一下畫面就開啟完整螢幕，需要時可以接手。「使用電腦」開關也移到這個分頁。

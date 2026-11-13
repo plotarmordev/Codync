@@ -34,6 +34,13 @@ class FileCardCaptionTest {
         return audio
     }
 
+    @Test fun `a stamped length shows the clock before the sound loads, an unknown one the size`() {
+        val stamped = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() }, knownDuration = 9.0)
+        assertEquals("0:00 / 0:09", detail(file, null, stamped))
+        val unstamped = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() })
+        assertEquals("380 KB", detail(file, null, unstamped))
+    }
+
     @Test fun `a player failure outranks the download and the progress`() {
         assertEquals("Couldn't play. Tap to retry.",
             detail(file, FileDownloadState.Downloading(1_000), failed()))

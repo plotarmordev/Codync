@@ -154,7 +154,6 @@
   width: 100%;
   background: #000;
 }
-
 /* The sound's clock made visible and movable: a 4 px bar filling left to right, in a 24 px strip that takes the
    pointer (the margins keep the layout at the bar's height). Its knob shows while the pointer is on it. */
 @property --played {
@@ -162,10 +161,11 @@
   inherits: true;
   initial-value: 0;
 }
+/* Only the bar seeks: its box is the thumb's height, so a click beside it on the card plays or pauses instead. */
 .file-card-progress {
   appearance: none;
-  height: 24px;
-  margin: -4px 0 -10px;
+  height: 12px;
+  margin: 2px 0 -4px;
   background: transparent;
   cursor: pointer;
   transition: --played 0.2s linear;

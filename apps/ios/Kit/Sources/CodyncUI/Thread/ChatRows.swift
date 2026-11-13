@@ -217,9 +217,8 @@ struct AgentBubble: View {
                     }
                 }
                 .contextActions(reactions: menu.reactions) {
-                    var items = menu.items(copy: menu.textCopy)
-                    if let voiceNote = entry.data.voiceNoteFile { items.insert(downloadItem(voiceNote), at: items.count - 1) }
-                    return items
+                    // A voice note's Download follows Copy, as on desktop and Android.
+                    menu.items(copy: menu.textCopy + (entry.data.voiceNoteFile.map { [downloadItem($0)] } ?? []))
                 }
             }
         }

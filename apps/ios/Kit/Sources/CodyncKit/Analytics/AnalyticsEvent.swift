@@ -58,6 +58,8 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case whatsNewShown
     /// A dev server opened, or its address copied; the host reports what it does itself.
     case devServerAction(DevServerUse)
+    /// A voice note started from its beginning, or which step broke (`nil`: it played); never which note.
+    case voiceNotePlayed(VoiceNoteFailure?)
     /// Find in a conversation opened.
     case conversationFindOpened
     /// A search in the find bar settled: whether it found anything, never the text.
@@ -87,11 +89,12 @@ public enum AnalyticsEvent: Equatable, Sendable {
     /// failed, or a download failed. Never the picture or its name.
     public enum ImageError: String, Sendable { case unavailable, convert, clipboard, transfer }
     public enum DevServerUse: String, Sendable { case open, copy }
+    public enum VoiceNoteFailure: String, Sendable { case load, playback }
     public enum VoiceEngine: String, Sendable { case onDevice = "on_device", openai, gemini, cloud }
     public enum VoiceStuck: String, Sendable { case none, connecting, reconnecting, speaking }
     public enum VoiceFailure: String, Sendable { case none, microphone, connection, provider }
     public enum Screen: String, Sendable {
-        case bots, state, chat, trace, botDetails = "bot_details", memory, routines, marketplace
+        case bots, state, chat, trace, botDetails = "bot_details", botComputer = "bot_computer", memory, routines, marketplace
         case settings, computers, usage, account, pairing, voiceSettings = "voice_settings", remoteScreen = "remote_screen"
         case library, artifact, network
     }
@@ -238,6 +241,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .reviewLinkOpened: "review_link_opened"
         case .whatsNewShown: "whats_new_shown"
         case .devServerAction: "dev_server_action"
+        case .voiceNotePlayed: "voice_note_played"
         case .conversationFindOpened: "conversation_find_opened"
         case .conversationFindSearched: "conversation_find_searched"
         }
@@ -291,6 +295,9 @@ public enum AnalyticsEvent: Equatable, Sendable {
             return ["prompts": .int(prompts), "policy": .string("v2")]
         case .reviewLinkOpened: return ["source": .string("settings")]
         case let .devServerAction(use): return ["action": .string(use.rawValue)]
+        case let .voiceNotePlayed(failure):
+            guard let failure else { return ["outcome": .string("played")] }
+            return ["outcome": .string("failed"), "error": .string(failure.rawValue)]
         case let .screenViewed(screen): return ["screen": .string(screen.rawValue)]
         }
     }

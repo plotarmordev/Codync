@@ -1,23 +1,23 @@
+import AVFoundation
 import Foundation
 import Testing
 @testable import CodyncKit
 @testable import CodyncUI
 
-/// A sound's fetch from the computer that the test answers when it chooses.
+/// A sound's fetches from the computer that the test answers when it chooses, newest first.
 @MainActor private final class HeldLoad {
-    private var waiting: CheckedContinuation<Data?, Never>?
+    private var waiting: [CheckedContinuation<Data?, Never>] = []
     private(set) var calls = 0
 
     func call() async -> Data? {
         calls += 1
-        return await withCheckedContinuation { waiting = $0 }
+        return await withCheckedContinuation { waiting.append($0) }
     }
 
-    func asked() async -> Bool { await until { self.waiting != nil } }
+    func asked() async -> Bool { await until { !self.waiting.isEmpty } }
 
     func answer(_ data: Data?) {
-        waiting?.resume(returning: data)
-        waiting = nil
+        waiting.popLast()?.resume(returning: data)
     }
 }
 
@@ -31,84 +31,226 @@ private func silentWAV() -> Data {
     return wav + Data("data".utf8) + le(UInt32(samples.count)) + samples
 }
 
-/// A voice note's player whose fetch `load` holds, on a store.
-@MainActor private func playing(_ body: (SharedAudio, HeldLoad, BotStore, SharedFile) async -> Void) async {
+/// A voice note's player whose fetch `load` holds, on a store; handing the audio back calls `deactivate`.
+@MainActor private func playing(deactivate: @escaping @MainActor () -> Void = {},
+                                _ body: (SharedAudio, HeldLoad, BotStore, SharedFile) async throws -> Void) async rethrows {
     let suite = "SharedAudioTests.\(UUID().uuidString)"
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)
     let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in FakeRemote(.connecting) }
     defer { store.retire() }
     let load = HeldLoad()
-    let audio = SharedAudio { _, _, _ in await load.call() }
-    await body(audio, load, store, SharedFile(id: UUID().uuidString, name: "note.wav", size: 0, sha256: ""))
+    let audio = SharedAudio(load: { _, _, _ in await load.call() }, deactivate: deactivate)
+    defer { audio.stop() }
+    try await body(audio, load, store, SharedFile(id: UUID().uuidString, name: "note.wav", size: 0, sha256: ""))
 }
 
-@MainActor @Test func aSecondTapWhileTheSoundLoadsPlaysItOnce() async {
-    await playing { audio, load, store, note in
-        let first = Task { await audio.toggle(note, entryId: "entry", model: store) }
-        #expect(await load.asked())
-        #expect(audio.state == .loading)
-        await audio.toggle(note, entryId: "entry", model: store)
-        load.answer(silentWAV())
-        await first.value
+/// The audio session and its interruption notice are shared by the whole process, so these run one at a time.
+@Suite(.serialized) @MainActor struct SharedAudioPlayerTests {
+    @Test func aSecondTapWhileTheSoundLoadsPlaysItOnce() async {
+        await playing { audio, load, store, note in
+            let first = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            #expect(audio.state == .loading)
+            await audio.toggle(note, entryId: "entry", model: store)
+            load.answer(silentWAV())
+            await first.value
 
-        #expect(load.calls == 1)
-        #expect(audio.state == .playing)
-        await audio.toggle(note, entryId: "entry", model: store)
-        #expect(audio.state == .paused)
+            #expect(load.calls == 1)
+            #expect(audio.state == .playing)
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(audio.state == .paused)
+        }
     }
-}
 
-@MainActor @Test func aVoiceNoteThatFailsToPlayShowsItsFailureAndTheNextTapLoadsAgain() async {
-    await playing { audio, load, store, note in
-        let first = Task { await audio.toggle(note, entryId: "entry", model: store) }
-        #expect(await load.asked())
-        load.answer(nil)
-        await first.value
+    @Test func aVoiceNoteThatFailsToPlayShowsItsFailureAndTheNextTapLoadsAgain() async {
+        await playing { audio, load, store, note in
+            let first = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(nil)
+            await first.value
 
-        #expect(audio.state == .failed)
-        #expect(store.lastError == nil)
+            #expect(audio.state == .failed)
+            #expect(audio.failure == .load)
+            #expect(store.lastError == nil)
 
-        let second = Task { await audio.toggle(note, entryId: "entry", model: store) }
-        #expect(await load.asked())
-        load.answer(silentWAV())
-        await second.value
-        #expect(load.calls == 2)
-        #expect(audio.state == .playing)
-        #expect(audio.duration == 1)
+            let second = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await second.value
+            #expect(load.calls == 2)
+            #expect(audio.state == .playing)
+            #expect(audio.duration == 1)
+        }
     }
-}
 
-@MainActor @Test func aVoiceNoteWhoseCardGoesWhileItLoadsNeverPlays() async {
-    await playing { audio, load, store, note in
-        let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
-        #expect(await load.asked())
-        audio.stop()
-        load.answer(silentWAV())
-        await tap.value
+    @Test func aVoiceNoteWhoseCardGoesWhileItLoadsNeverPlays() async {
+        await playing { audio, load, store, note in
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            audio.stop()
+            load.answer(silentWAV())
+            await tap.value
 
-        #expect(audio.state == .idle)
-        #expect(store.lastError == nil)
+            #expect(audio.state == .idle)
+            #expect(store.lastError == nil)
+        }
     }
-}
 
-@MainActor @Test func seekingHoldsTheVoiceNotesPlayheadToItsLengthAndKeepsItPlayingOrPaused() async {
-    await playing { audio, load, store, note in
-        audio.seek(to: 0.5)
-        #expect(audio.elapsed == 0, "nothing to seek before the sound loads")
-        let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
-        #expect(await load.asked())
-        load.answer(silentWAV())
-        await tap.value
+    @Test func aStaleLoadFinishingAfterANewerTapLeavesThatTapPlaying() async {
+        await playing { audio, load, store, note in
+            let old = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            audio.stop()
+            let new = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await until { load.calls == 2 })
+            load.answer(silentWAV())
+            await new.value
+            load.answer(silentWAV())
+            await old.value
 
-        audio.seek(to: 0.5)
-        #expect(abs(audio.elapsed - 0.5) < 0.01)
-        audio.seek(to: -3)
-        #expect(audio.elapsed == 0)
-        await audio.toggle(note, entryId: "entry", model: store)
-        audio.seek(to: 9)
-        #expect(abs(audio.elapsed - (audio.duration ?? 0)) < 0.01)
-        #expect(audio.state == .paused)
+            #expect(audio.state == .playing)
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(audio.state == .paused)
+        }
+    }
+
+    @Test func seekingHoldsTheVoiceNotesPlayheadToItsLengthAndKeepsItPlayingOrPaused() async {
+        await playing { audio, load, store, note in
+            audio.seek(to: 0.5)
+            #expect(audio.elapsed == 0, "nothing to seek before the sound loads")
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await tap.value
+
+            audio.seek(to: 0.5)
+            #expect(abs(audio.elapsed - 0.5) < 0.01)
+            audio.seek(to: -3)
+            #expect(audio.elapsed == 0)
+            await audio.toggle(note, entryId: "entry", model: store)
+            audio.seek(to: 9)
+            #expect(abs(audio.elapsed - (audio.duration ?? 0)) < 0.01)
+            #expect(audio.state == .paused)
+        }
+    }
+
+    @Test func aCallOrSiriTakingTheAudioPausesAPlayingVoiceNote() async {
+        await playing { audio, load, store, note in
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await tap.value
+            #expect(audio.state == .playing)
+
+            NotificationCenter.default.post(name: AVAudioSession.interruptionNotification, object: nil,
+                                            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+            #expect(audio.state == .paused)
+            audio.stop()
+        }
+    }
+
+    @Test func startingASecondVoiceNotePausesTheFirstSoItKeepsTheAudio() async {
+        var deactivations = 0
+        await playing(deactivate: { deactivations += 1 }) { first, load, store, note in
+            let second = SharedAudio(load: { _, _, _ in silentWAV() }, deactivate: { deactivations += 1 })
+            let tap = Task { await first.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await tap.value
+            await second.toggle(note, entryId: "entry", model: store)
+            #expect(first.state == .paused)
+            #expect(second.state == .playing)
+
+            await first.toggle(note, entryId: "entry", model: store)
+            #expect(second.state == .paused, "the note playing before hands it back")
+            #expect(first.state == .playing)
+            first.stop()
+            second.stop()
+            #expect(deactivations == 3, "each pause and the stop hand the audio back once")
+        }
+    }
+
+    @Test func pausingAVoiceNoteAfterACallTookTheAudioLeavesTheCallsSessionActive() async throws {
+        let session = AVAudioSession.sharedInstance()
+        defer {
+            CallAudioSession.release()
+            try? session.setCategory(.soloAmbient)
+        }
+        var deactivations = 0
+        try await playing(deactivate: { deactivations += 1 }) { audio, load, store, note in
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await tap.value
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(deactivations == 1, "a note's own pause hands the audio back")
+
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(audio.state == .playing)
+            try CallAudioSession.activate()
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(audio.state == .paused)
+            #expect(deactivations == 1, "the call that took the audio keeps it")
+        }
+    }
+
+    @Test func aVoiceNoteAfterACallResetsRecordingOptionsAndReleasesItsSession() async throws {
+        let session = AVAudioSession.sharedInstance()
+        defer {
+            CallAudioSession.release()
+            try? session.setActive(false)
+            try? session.setCategory(.soloAmbient)
+        }
+        try CallAudioSession.activate()
+        CallAudioSession.release()
+        var deactivations = 0
+        await playing(deactivate: { deactivations += 1 }) { audio, load, store, note in
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await tap.value
+            #expect(audio.state == .playing)
+            #expect(session.category == .playback)
+            #expect(session.mode == .default)
+            #expect(session.categoryOptions.isEmpty)
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(deactivations == 1)
+        }
+    }
+
+    @Test func aVoiceNoteBorrowsLiveDictationButOwnsPlaybackAfterDictationStops() async throws {
+        let session = AVAudioSession.sharedInstance()
+        defer {
+            try? session.setActive(false)
+            try? session.setCategory(.soloAmbient)
+        }
+        let service = DictationService(picked: { .provider(.openAI) }, check: { _, _ in .open }, allowMic: { true },
+                                      openMic: { _, _ in true }, transcribe: { _, _, _ in "" })
+        let dictation = Dictation(service: service)
+        defer { dictation.stop() }
+        var deactivations = 0
+        try await playing(deactivate: { deactivations += 1 }) { audio, load, store, note in
+            await dictation.start(after: "", model: store) { _ in }
+            try session.setCategory(.playAndRecord, options: [.duckOthers])
+            try session.setActive(true)
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await tap.value
+            #expect(audio.state == .playing)
+            #expect(session.category == .playAndRecord)
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(deactivations == 0)
+
+            dictation.stop()
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(audio.state == .playing)
+            #expect(session.category == .playback)
+            #expect(!session.categoryOptions.contains(.duckOthers))
+            audio.stop()
+            #expect(deactivations == 1)
+        }
     }
 }
 

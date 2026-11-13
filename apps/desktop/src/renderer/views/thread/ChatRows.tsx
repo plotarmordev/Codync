@@ -1,7 +1,7 @@
 import { FileDownloadCard, VoiceNotePlayer } from './FileDownloadCard'
 import { ArtifactCard } from '../library/ArtifactCard'
 import { memo, useRef, useState } from 'react'
-import { groupBotReactions, isGroup, isReplyable, voiceNoteOf, type Bot, type Entry, type ReplyQuote } from '@shared/models'
+import { groupBotReactions, isGroup, isReplyable, voiceNoteOf, type Bot, type Entry, type ReplyQuote, type SharedFile } from '@shared/models'
 import { BotAvatar } from '../../components/Avatar'
 import { Button, IconButton } from '../../components/Controls'
 import { Icon } from '../../components/Icon'
@@ -14,7 +14,7 @@ import { avatarColor } from '../../lib/theme'
 import { useStore as useLiveStore, useStoreRef as useStore } from '../../store/context'
 import { QUICK_REACTIONS, type BotStore } from '../../store/bot-store'
 import { AttachmentList } from './Attachments'
-import { messageCopyItems, type MessageMenu } from './use-image-actions'
+import { copyMessageText, messageCopyItems, type MessageMenu } from './use-image-actions'
 import { callLength, relativeTime } from './chat-items'
 import { downloadItem } from './file-card'
 import { MarkdownText } from './Markdown'
@@ -134,7 +134,6 @@ export function UserBubble({ entry, reply }: { entry: Entry; reply?: () => void 
   const store = useStore()
   const [hovering, setHovering] = useState(false)
   const status = entry.data.status
-  const copy = () => entry.data.text && window.codync.app.copy(entry.data.text)
   // A picture here has the same menu as the bubble: reactions and Reply, its own copy items in place of Copy.
   const menu: MessageMenu = { items: () => (reply ? [{ title: 'Reply', icon: 'arrowshape.turn.up.left', action: reply }] : []), reactions: reactionPick(store, entry) }
   return (
@@ -146,12 +145,12 @@ export function UserBubble({ entry, reply }: { entry: Entry; reply?: () => void 
             className="bubble user selectable"
             reactions={reactionPick(store, entry)}
             items={() => [
-              { title: 'Copy', icon: 'square.on.square', action: copy },
+              { title: 'Copy', icon: 'square.on.square', action: () => copyMessageText(entry) },
               ...(reply ? [{ title: 'Reply', icon: 'arrowshape.turn.up.left', action: reply }] : []),
             ]}
           >
             {entry.data.replyTo ? <QuoteRow quote={entry.data.replyTo} /> : null}
-            {entry.data.text}
+            <span data-find-text>{entry.data.text}</span>
           </Bubble>
         ) : null}
         {status && status !== 'sent' ? <UserStatus entry={entry} hovering={hovering} /> : null}
@@ -187,34 +186,36 @@ export function AgentBubble({ entry, openTrace, reply, openArtifact }: { entry: 
   const store = useStore()
   const [hovering, setHovering] = useState(false)
   const voiceNote = voiceNoteOf(entry.data)
+  const reactions = reactionPick(store, entry)
   const rest = (): MenuItem[] => [
     ...(reply ? [{ title: 'Reply', icon: 'arrowshape.turn.up.left', action: reply }] : []),
     { title: 'Show what it did', icon: 'list.bullet', action: openTrace },
   ]
-  // A shared picture has the same menu as the bubble: reactions, Reply and what it did, its own copy items in place of Copy.
-  const menu: MessageMenu = { items: rest, reactions: reactionPick(store, entry) }
+  // A shared picture or voice note has the same menu as the bubble: reactions, Reply and what it did, its own items in place of Copy.
+  const menu: MessageMenu = { items: rest, reactions }
+  const download = (file: SharedFile) => downloadItem(store.fileDownloads.states.get(file.id), () => store.fileDownloads.toggle(store.client, entry.id, file))
   return (
     <div className="message agent" title={fullDate.format(entry.createdAt)} onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
       <div className="message-body">
         <Bubble
           className={!voiceNote && (entry.data.files?.length || entry.data.artifact) ? 'file-message' : 'bubble agent'}
-          reactions={reactionPick(store, entry)}
-          items={() => [...messageCopyItems(store, entry), ...(voiceNote ? [downloadItem(store.fileDownloads.states.get(voiceNote.id), () => store.fileDownloads.toggle(store.client, entry.id, voiceNote))] : []), ...rest()]}
+          reactions={reactions}
+          items={() => [...messageCopyItems(store, entry), ...(voiceNote ? [download(voiceNote)] : []), ...rest()]}
         >
           {entry.data.artifact ? (
             <ArtifactCard botId={entry.botId} card={entry.data.artifact} open={() => openArtifact?.(entry.data.artifact!.id)} />
           ) : voiceNote ? (
             <>
-              <VoiceNotePlayer entry={entry} file={voiceNote} />
-              <MarkdownText text={entry.data.text ?? ''} />
+              <VoiceNotePlayer entry={entry} file={voiceNote} menu={menu} />
+              <MarkdownText text={entry.data.text ?? ''} findable />
             </>
           ) : entry.data.files?.length ? (
             <div className="file-message-cards">{entry.data.files.map((file) => <FileDownloadCard key={file.id} entry={entry} file={file} menu={menu} />)}</div>
           ) : (
-            <MarkdownText text={entry.data.text ?? ''} />
+            <MarkdownText text={entry.data.text ?? ''} findable />
           )}
         </Bubble>
-        <MessageActions className="trailing" visible={hovering} reactions={reactionPick(store, entry)} reply={reply} trace={openTrace} copy={messageCopyItems(store, entry)} />
+        <MessageActions className="trailing" visible={hovering} reactions={reactions} reply={reply} trace={openTrace} copy={messageCopyItems(store, entry)} />
       </div>
     </div>
   )

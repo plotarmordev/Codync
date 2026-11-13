@@ -126,8 +126,8 @@ host answers and sends it once the host is up.
 | `voice_call_started` | host `track` (desktop), iOS, Android | A voice call starts, with the engine it really uses after any fallback | `engine` (`on_device`; `openai`/`gemini` realtime; `cloud`: cloud speech to text and back) |
 | `voice_call_quality` | host `track` (desktop), iOS, Android | One engine of a call is replaced or the call ends | `engine` (as `voice_call_started`), `ready_ms` (milliseconds until the provider confirmed the session and the microphone delivered; left out if it never was), `reconnects`, `stuck` (`none`/`connecting`/`reconnecting` over 20 s/`speaking`: playback stalled after the voice's turn), `failure` (`none`/`microphone`/`connection`/`provider`) |
 | `voice_call_finished` | host | `endCall` (older apps `logCall`) | `seconds` |
-| `remote_screen_opened` | host | `screenPrepare` (each connection, reconnects included) | — |
-| `remote_screen_finished` | host | A viewer's screen session ends (closed, expired, revoked, Remote screen turned off, the helper restarting; any client) | `platform` (the viewer's), `outcome` (`connected`/`not_connected`: the helper answered but the picture never arrived/`failed`: the helper couldn't answer/`abandoned`: reserved, never offered), `relay` (TURN servers handed out), `seconds` (from `screenPrepare`) |
+| `remote_screen_opened` | host | `screenPrepare` (each connection, reconnects included; the bot details' Computer tab picture counts too, one per visit, as `screen_viewed` `bot_computer` shows) | — |
+| `remote_screen_finished` | host | A viewer's screen session ends (closed, expired, revoked, Remote screen turned off, the helper restarting; any client; the Computer tab picture's sessions included) | `platform` (the viewer's), `outcome` (`connected`/`not_connected`: the helper answered but the picture never arrived/`failed`: the helper couldn't answer/`abandoned`: reserved, never offered), `relay` (TURN servers handed out), `seconds` (from `screenPrepare`) |
 | `screen_taken_over` | host | `screenTakeover` (taking control, not handing it back) | — |
 | `connector_installed` | host | `installConnector`; a Composio app once its connection is `active` | `connector` (catalog name, `composio` or `custom`) |
 | `connectors_imported` | host | `importConnectors` | `count` |
@@ -138,6 +138,8 @@ host answers and sends it once the host is up.
 | `skill_removed` | host | `removeSkill` | — |
 | `skill_written` | host | A bot's `save_skill` (`chatCall`) | `change` (`new`/`update`) |
 | `artifact_published` | host | A bot's `publish_artifact` (`chatCall`) | `change` (`new`/`update`), `card` (whether its card went into the bot's chat), never its title |
+| `voice_note_sent` | host | A bot's `send_file` with text (`chatCall`): a message that carries a voice note | never the file, its name or the text |
+| `voice_note_played` | host `track` (desktop), iOS, Android | A voice note's play button starts it from its beginning (not a resume) | `outcome` (`played`/`failed`), `error` when failed (`load`: fetching or opening it; `playback`: starting it), never which note |
 | `credential_saved` | host | A key, login or vault is saved (clearing one isn't) | `kind` (`login`/`onepassword`/`connector`/`composio`/`voice`/`agent_env`) |
 | `agent_setup_started` | host | `agentSetup` (an agent's install or sign-in terminal) | `agent` |
 | `agent_signed_in` | host | `agentAuthenticate` | `agent` |
@@ -163,6 +165,7 @@ host answers and sends it once the host is up.
 | `chat` | a conversation opened | a conversation opened | a conversation opened |
 | `trace` | full conversation | full conversation | full trace |
 | `bot_details` | bot details | details panel | settings page |
+| `bot_computer` | the Computer tab in bot details | the details panel's Computer tab | Computer page |
 | `memory` | bot memory (Android: the Memory tab in bot details) | memory tab | memory overlay |
 | `routines` | routines (iPhone: a routine's editor, the list being part of bot details) | a routine's editor | routines overlay |
 | `marketplace` | extensions | extensions | marketplace overlay |

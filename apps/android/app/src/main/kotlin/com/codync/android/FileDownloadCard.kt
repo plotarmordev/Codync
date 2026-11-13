@@ -45,6 +45,7 @@ import com.codync.android.design.*
 import com.kyant.shapes.Capsule
 import com.kyant.shapes.RoundedRectangle
 import kotlin.math.roundToInt
+import kotlin.math.sign
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -56,7 +57,7 @@ import kotlinx.coroutines.launch
     val focus = LocalFocusManager.current
     var viewing by remember { mutableStateOf(false) }
     var reading by remember { mutableStateOf<OpenFile?>(null) }
-    val player = if (file.showsAsAudio) rememberSharedAudio(entry, file, store) else null
+    val player = if (file.playsInChat) rememberSharedAudio(entry, file, store) else null
     val scope = rememberCoroutineScope()
     val translate = translator()
     val download = state.fileDownloads[file.id]
@@ -134,12 +135,20 @@ import kotlinx.coroutines.launch
     }
 }
 
-/** TalkBack reads a voice note's position and moves it (swipe up/down or the volume keys) once its length is known. */
+/** Seconds TalkBack's adjust moves a voice note's playhead, as VoiceOver's on iOS and the arrow keys on desktop. */
+private const val SEEK_STEP = 5.0
+
+/** TalkBack reads a voice note's position and moves it five seconds (swipe up/down or the volume keys) once its length is known. */
 internal fun SemanticsPropertyReceiver.audioSeek(audio: SharedAudio?) {
     if (audio == null || audio.duration <= 0.0) return
-    progressBarRangeInfo = ProgressBarRangeInfo(audio.elapsed.toFloat(), 0f..audio.duration.toFloat())
-    setProgress { audio.seek(it.toDouble()); true }
+    val elapsed = audio.elapsed.toFloat()
+    progressBarRangeInfo = ProgressBarRangeInfo(elapsed, 0f..audio.duration.toFloat())
+    setProgress { audio.seek(seekStepTarget(audio.elapsed, it.compareTo(elapsed))); true }
 }
+
+/** Where an accessibility adjust toward `direction` (its sign; 0 at either end) moves a playhead at `elapsed`: one [SEEK_STEP]
+ *  that way, whatever value the service asked for, so every note moves alike whatever its length. */
+internal fun seekStepTarget(elapsed: Double, direction: Int): Double = elapsed + SEEK_STEP * direction.sign
 
 /** Seconds as `m:ss` (`h:mm:ss` past an hour). */
 internal fun clock(seconds: Double): String {

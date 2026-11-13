@@ -1348,7 +1348,6 @@
   "Version {version}": "Versione {version}",
   "Version {version} is available.": "La versione {version} è disponibile.",
   "Version {version} is available: run codync-host update": "La versione {version} è disponibile: esegui codync-host update",
-  "View": "Vista",
   "View conversation details": "Visualizza i dettagli della conversazione",
   "View only. To allow control, open Codync → Settings → Computer access on the computer.": "Solo visualizzazione. Per consentire il controllo, apri Codync → Impostazioni → Accesso al computer sul computer.",
   "Voice": "Voce",
@@ -1921,6 +1920,8 @@
   "Scan with the Codync app or the iPhone Camera.": "Scansiona con l'app Codync o la fotocamera dell'iPhone.",
   "Phones paired without this account lose access and must pair again.": "I telefoni associati senza questo account perdono l'accesso e devono essere associati di nuovo.",
   "This message's files aren't on this device anymore. Delete it and attach them again.": "I file di questo messaggio non sono più su questo dispositivo. Eliminalo e allega di nuovo i file.",
+  "Couldn't play. Click to retry.": "Impossibile riprodurre. Fai clic per riprovare.",
+  "View": "Visualizza",
   "Summarize long chats": "Riassunto delle chat lunghe",
   "Auto leaves it to the agent, which summarizes once the chat fills up. The others have Codync do it sooner.": "«Automatico» lascia fare all’agente, che riassume quando la chat è piena. Con le altre scelte Codync lo fa prima.",
   "Early": "Presto",
@@ -2024,5 +2025,7 @@
   "Couldn't connect to the remote screen. Check the computer's connection and try again.": "Impossibile connettersi allo schermo remoto. Controlla la connessione del computer e riprova.",
   "Move active bots to the top": "Sposta in alto i bot attivi",
   "Active bots move to the top": "I bot attivi salgono in alto",
-  "Bots keep the order you set": "I bot mantengono l'ordine che hai scelto"
+  "Bots keep the order you set": "I bot mantengono l'ordine che hai scelto",
+  "Waking the computer…": "Riattivazione del computer…",
+  "Open the screen": "Apri lo schermo"
 }

@@ -265,13 +265,15 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
             val player = rememberSharedAudio(entry, voiceNote, store)
             val download = state.fileDownloads[voiceNote.id]
             val busy = download is FileDownloadState.Downloading
-            val save = { if (busy) store.cancelFile(voiceNote.id) else store.saveFile(entry.id, entry.botId, voiceNote) }
+            val save = { store.toggleFile(entry.id, entry.botId, voiceNote) }
+            // Its Download follows Copy, as on desktop and iPhone.
+            val downloadItem = MenuItem(if (busy) "Cancel download" else "Download", icon = if (busy) "xmark" else "arrow.down.to.line", action = save)
             Box(Modifier.clip(RoundedRectangle(18.dp)).background(Palette.bubbleAgent)
                 .contextActions(reactions = menu.reactions, onClick = { focus.clearFocus() },
-                    preview = { VoiceNoteMessage(entry.text, voiceNote, player, download, save, selectable = true) }) {
-                    menu.items(listOf(textCopyItem(context, entry.text),
-                        MenuItem(if (busy) "Cancel download" else "Download", icon = if (busy) "xmark" else "arrow.down.to.line", action = save)))
-                }) { VoiceNoteMessage(entry.text, voiceNote, player, download, save, selectable = false) }
+                    preview = { VoiceNoteMessage(entry.text, voiceNote, player, download, save, selectable = true) },
+                    items = { menu.items(listOf(textCopyItem(context, entry.text), downloadItem)) })) {
+                VoiceNoteMessage(entry.text, voiceNote, player, download, save, selectable = false)
+            }
         }
         // Each card holds its own menu: a picture's copies the picture.
         else if (files.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

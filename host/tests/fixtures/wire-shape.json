@@ -1,5 +1,5 @@
 {
-  "minApp": "2.36.0",
+  "minApp": "2.45.1",
   "shapes": {
     "event:bot": "object",
     "event:bot.bot": "object",
@@ -231,6 +231,7 @@
     "hello.name": "string",
     "hello.os": "string",
     "hello.rev": "number",
+    "hello.schema": "number",
     "hello.signKey": "string",
     "hello.version": "string"
   }

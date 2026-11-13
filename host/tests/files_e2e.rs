@@ -271,7 +271,7 @@ fn assert_one_voice_message(entries: &[Value]) {
     assert_eq!(shared.len(), 1, "{entries:?}");
     let message = &shared[0]["data"];
     assert_eq!((message["text"].as_str(), message["voiceNote"].as_bool()), (Some("Here is the **plan**."), Some(true)));
-    assert_eq!(message["files"][0]["name"], "note.m4a");
+    assert_eq!((&message["files"][0]["name"], &message["files"][0]["playsInChat"]), (&json!("note.m4a"), &json!(true)));
     assert!(entries.iter().all(|e| e["data"]["text"] != "The files are ready." || e["data"]["final"] != true));
 }
 

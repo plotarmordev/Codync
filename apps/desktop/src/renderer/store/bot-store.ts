@@ -229,15 +229,11 @@ export class BotStore extends BotSync {
 
   /** Shown at once, put back if the computer refuses. */
   async setAutoOrder(enabled: boolean) {
-    const show = (on: boolean) => {
-      if (this.hello) this.hello = { ...this.hello, autoOrder: on }
-      this.changed()
-    }
-    show(enabled)
+    this.showAutoOrder(enabled)
     try {
       await (await this.ready()).call('setAutoOrder', { enabled })
     } catch (e) {
-      show(!enabled)
+      this.showAutoOrder(!enabled)
       throw e
     }
   }
@@ -502,7 +498,8 @@ export class BotStore extends BotSync {
   }
 
   async loadOlder(botId: string) {
-    if (!this.client || this.historyComplete.has(botId)) return
+    // Held while everything is fetched again, like `canLoadOlder`.
+    if (!this.client || this.refetched || this.historyComplete.has(botId)) return
     const first = this.allEntries(botId).find((e) => e.seq > 0 && e.seq !== Number.MAX_SAFE_INTEGER)?.seq ?? Number.MAX_SAFE_INTEGER
     try {
       const older = await this.client.history(botId, first, 100)

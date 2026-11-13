@@ -9,9 +9,11 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 ## 2.46.1
 ### zh-Hant
 - 手機重新連上電腦後（包括電腦上的 Codync 更新之後），只補上錯過的訊息，不再重新載入每個聊天。
+- 語音訊息一出現就顯示播放鍵、進度條和長度（例如 0:00 / 0:09）；單獨傳來的音檔也用同一個播放器，下載鍵在同一個位置。
 
 ### en-US
 - When your phone reconnects to a computer, including after Codync on it updates, it fetches only what it missed instead of reloading every chat.
+- A voice note shows its play button, progress bar and length (like 0:00 / 0:09) from the start, and a sound file sent on its own uses the same player, with download in the same place.
 
 ## 2.46.0
 ### zh-Hant

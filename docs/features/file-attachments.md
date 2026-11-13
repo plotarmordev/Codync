@@ -94,13 +94,19 @@ Downloads use bounded memory and check size and SHA-256 before save/export.
 
 An image file (by extension) up to 20 MB also shows inline above its card on iPhone,
 Android and desktop, tap/click for full size. A sound file (`mp3`, `m4a`, `wav`, `aac`, a
-voice note) up to 20 MB gets a play/pause button in place of its icon: the host stamps it
-`playsInChat` on the file's metadata (`SharedFile::plays_in_chat`, the one rule; the clients
-only read the flag, and a file without it, from an older host, stays a plain card). For either the
+voice note) up to 20 MB plays in the voice-note player below instead of a file card: the host
+stamps it `playsInChat` on the file's metadata (`SharedFile::plays_in_chat`, the one rule; the
+clients only read the flag, and a file without it, from an older host, stays a plain card), and
+`durationMs`, its length read from its headers with `lofty` (format sniffed from the bytes; an
+estimate for an MP3 or AAC stream without a length header; omitted when unreadable or from an
+older host), so the player shows its bar and clock before the sound is fetched. For either the
 client reads the whole file into memory through the same `readFile` chunks, checks size
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
-read leaves the placeholder. While a sound loads its button shows a spinner; once loaded
-its caption reads elapsed / total time over a progress bar. Tapping or dragging the bar
+read leaves the placeholder. The player is one row: play/pause (a bare glyph in every state,
+no tile on hover; a spinner while the sound loads), the progress bar, the caption (elapsed /
+length from the first frame when `durationMs` is known, the decoded length once loaded; else the
+size until loaded), then the download button, a bare glyph too. A sound sent on its own is that
+row in a bubble of its own with the file's name under it. Tapping or dragging the loaded bar
 (clicking on desktop) moves the sound there, playing or paused; its touch area runs past the
 4 pt bar without taking layout (on desktop only to the thumb's 12 px height, so a click
 elsewhere on the card or player, including beside the bar, plays or pauses), and VoiceOver/TalkBack adjust or the arrow keys move it five
@@ -126,13 +132,11 @@ completion; a saved recording category alone does not mean the microphone is act
 sound the chat plays (the extensions above, up to 20 MiB; `SharedFile::plays_in_chat`) and
 checks it like `send_message` (nonempty, at most 32 KiB). The message counts as one the bot
 sent: like `send_message`, the agent's own reply text then stays in the trace, and in a
-routine run it is the run's result. iPhone, Android and desktop show the player at the top of
-the bubble on one centred row (play/pause with its spinner, the progress bar once the length is
-known, then elapsed / length, or the size before the first play, the same "Couldn't play"
-caption), its glyph on the text's edge, and the Markdown text under it; screen readers
+routine run it is the run's result. iPhone, Android and desktop show the same player row at
+the top of the bubble, its glyph on the text's edge, and the Markdown text under it; screen readers
 get the player as one element, "Voice note, <caption>", with Play/Pause and Download as its
-actions, and the text as its own. The terminal UI shows the file line, then the text. A
-voice note sent without `text` keeps its own card. Older clients show the card alone.
+actions, and the text as its own (a sound sent on its own reads "<file name>, <caption>"). The
+terminal UI shows the file line, then the text. Older clients show the card alone.
 Analytics: the host reports `voice_note_sent`, and each app `voice_note_played` (`played`, or
 `failed` with the step that broke: `load` or `playback`) when a tap starts a note from its beginning; never the file or the text
 ([event catalog](../reference/analytics-events.md)).

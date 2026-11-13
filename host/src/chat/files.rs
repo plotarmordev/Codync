@@ -20,6 +20,10 @@ pub struct SharedFile {
     /// every client follows one rule; missing (an older host) means a plain file card.
     #[serde(default, rename = "playsInChat")]
     pub plays_in_chat: bool,
+    /// A playable sound's length (milliseconds), read from its headers when shared, so a player shows its bar and
+    /// clock before the sound is fetched; missing when unknown (an older host, an unreadable header).
+    #[serde(default, rename = "durationMs", skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 /// The largest sound a chat fetches whole to play.
@@ -28,6 +32,15 @@ const PLAYABLE_BYTES: u64 = 20 * 1024 * 1024;
 fn plays_in_chat(name: &str, size: u64) -> bool {
     let extension = name.rsplit_once('.').map(|(_, ext)| ext.to_ascii_lowercase());
     matches!(extension.as_deref(), Some("mp3" | "m4a" | "wav" | "aac")) && size <= PLAYABLE_BYTES
+}
+
+/// A sound's length from its headers; the stored copy has no extension, so its format is sniffed from the bytes. An
+/// MP3 or AAC stream without a length header gets an estimate; the player swaps in the decoded length once loaded.
+fn duration_ms(path: &Path) -> Option<u64> {
+    use lofty::file::AudioFile as _;
+    let file = lofty::probe::Probe::open(path).ok()?.guess_file_type().ok()?.read().ok()?;
+    let millis = file.properties().duration().as_millis();
+    (millis > 0).then(|| u64::try_from(millis).ok()).flatten()
 }
 
 /// Removes an unpublished snapshot on every failure, including a dropped actor.
@@ -111,7 +124,7 @@ pub fn snapshot(
     let final_path = path(root, &id)?;
     let partial = final_path.with_extension("partial");
     let mut owned = Snapshot {
-        meta: SharedFile { id, name: display, size: 0, sha256: String::new(), plays_in_chat: false },
+        meta: SharedFile { id, name: display, size: 0, sha256: String::new(), plays_in_chat: false, duration_ms: None },
         path: partial.clone(),
         committed: false,
     };
@@ -130,6 +143,9 @@ pub fn snapshot(
     owned.path = final_path;
     owned.meta.sha256 = digest;
     owned.meta.plays_in_chat = plays_in_chat(&owned.meta.name, owned.meta.size);
+    if owned.meta.plays_in_chat {
+        owned.meta.duration_ms = duration_ms(&owned.path);
+    }
     Ok(owned)
 }
 

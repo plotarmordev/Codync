@@ -7,6 +7,13 @@ released version's section; a version without one gets the PRs' "What's New: And
 else a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.46.1
+### zh-Hant
+- 手機重新連上電腦後（包括電腦上的 Codync 更新之後），只補上錯過的訊息，不再重新載入每個聊天。
+
+### en-US
+- When your phone reconnects to a computer, including after Codync on it updates, it fetches only what it missed instead of reloading every chat.
+
 ## 2.46.0
 ### zh-Hant
 - bot 詳細資料新增「電腦」分頁：顯示 bot 所在的電腦和連線狀態，以及那臺電腦螢幕的即時小畫面，可以看著 bot 操作；點一下畫面就開啟完整螢幕，需要時可以接手。「使用電腦」開關也移到這個分頁。

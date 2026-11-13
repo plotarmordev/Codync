@@ -147,6 +147,38 @@ fn wav(millis: u32) -> Vec<u8> {
 }
 
 #[test]
+fn backfill_stamps_a_persisted_sounds_length_once() {
+    let store = crate::store::Store::open(Path::new(":memory:")).unwrap();
+    let bot = uuid::Uuid::new_v4().to_string();
+    let root = root(&bot);
+    std::fs::create_dir_all(&root).unwrap();
+    let id = uuid::Uuid::new_v4().to_string();
+    let bytes = wav(1500);
+    std::fs::write(root.join(&id), &bytes).unwrap();
+    let lane = crate::store::Lane::main(&bot);
+    let note = serde_json::json!({
+        "text": "note", "final": true, "voiceNote": true,
+        "files": [{"id": id, "name": "note.wav", "size": bytes.len(), "sha256": "", "playsInChat": true}]
+    });
+    let entry = store.insert_entry(&lane, crate::store::EntryKind::Agent, 1, &note).unwrap();
+    let plain = serde_json::json!({
+        "text": "report", "final": true,
+        "files": [{"id": uuid::Uuid::new_v4().to_string(), "name": "report.pdf", "size": 3, "sha256": ""}]
+    });
+    let untouched = store.insert_entry(&lane, crate::store::EntryKind::Agent, 2, &plain).unwrap();
+    backfill_durations(&store).unwrap();
+    let saved = store.entry(&entry.id).unwrap();
+    assert_eq!(saved.data["files"][0]["durationMs"], 1500);
+    assert_eq!(saved.data["contentRev"], entry.rev, "a message the user read stays read");
+    assert!(saved.rev > entry.rev, "clients fetch the message again");
+    assert_eq!(store.entry(&untouched.id).unwrap().rev, untouched.rev, "a plain file is left alone");
+    // A second start changes nothing.
+    backfill_durations(&store).unwrap();
+    assert_eq!(store.entry(&entry.id).unwrap().rev, saved.rev);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn snapshots_stamp_a_playable_sounds_length_and_omit_an_unknown_one() {
     let temp = Temp::new();
     let root = temp.0.join("snapshots");

@@ -43,6 +43,39 @@ fn duration_ms(path: &Path) -> Option<u64> {
     (millis > 0).then(|| u64::try_from(millis).ok()).flatten()
 }
 
+/// Fills in the length of playable sounds shared before the host read lengths, so their players show a bar and clock
+/// from the first frame. Runs once per database (`kv` `files.duration`); a changed message gets a new rev, keeping its
+/// content rev so a message the user read stays read, and clients fetch it again.
+pub fn backfill_durations(store: &crate::store::Store) -> Result<()> {
+    const DONE: &str = "files.duration";
+    if store.kv_get(DONE).is_some() {
+        return Ok(());
+    }
+    for entry in store.unstamped_sounds()? {
+        let root = root(&entry.bot_id);
+        let mut data = entry.data.clone();
+        let mut changed = false;
+        for file in data["files"].as_array_mut().into_iter().flatten() {
+            if file["playsInChat"] != true || !file["durationMs"].is_null() {
+                continue;
+            }
+            let Some(id) = file["id"].as_str() else { continue };
+            let Ok(path) = path(&root, id) else { continue };
+            if let Some(millis) = duration_ms(&path) {
+                file["durationMs"] = millis.into();
+                changed = true;
+            }
+        }
+        if changed {
+            if data["contentRev"].is_null() {
+                data["contentRev"] = entry.rev.into();
+            }
+            store.update_entry(&entry.id, &data)?;
+        }
+    }
+    store.kv_set(DONE, "1")
+}
+
 /// Removes an unpublished snapshot on every failure, including a dropped actor.
 pub struct Snapshot {
     pub meta: SharedFile,

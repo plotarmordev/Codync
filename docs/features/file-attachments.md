@@ -98,8 +98,10 @@ voice note) up to 20 MB plays in the voice-note player below instead of a file c
 stamps it `playsInChat` on the file's metadata (`SharedFile::plays_in_chat`, the one rule; the
 clients only read the flag, and a file without it, from an older host, stays a plain card), and
 `durationMs`, its length read from its headers with `lofty` (format sniffed from the bytes; an
-estimate for an MP3 or AAC stream without a length header; omitted when unreadable or from an
-older host), so the player shows its bar and clock before the sound is fetched. For either the
+estimate for an MP3 or AAC stream without a length header; omitted when unreadable), so the
+player shows its bar and clock before the sound is fetched; a sound shared before the host read
+lengths gets one filled in at the next start, and its message a new rev so clients fetch it
+again. For either the
 client reads the whole file into memory through the same `readFile` chunks, checks size
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
 read leaves the placeholder. The player is one row: play/pause (a bare glyph in every state,

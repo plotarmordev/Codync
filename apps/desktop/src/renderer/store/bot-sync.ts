@@ -234,6 +234,9 @@ export class BotSync extends BotMirror {
     const epoch = ++this.iconsEpoch
     const h = await client.hello()
     if (this.retired || loop !== this.eventsLoop || epoch !== this.iconsEpoch) return
+    // Another host database: its revisions say nothing about this cache's, so start over before subscribing from it.
+    if (this.hostId && this.hostId !== h.hostId) this.resetMirror()
+    this.hostId = h.hostId
     this.iconsRevision = -1
     this.hello = h
     this.applyIcons(h.icons ?? {}, h.iconsRevision)

@@ -76,6 +76,9 @@ extension BotStore {
         guard !Task.isCancelled, !retired else { return }
         // hello first: whatever the version change shows (notices, reminders) reads it.
         guard epoch == iconsEpoch else { return }
+        // Another host database: its revisions say nothing about this cache's, so start over before subscribing from it.
+        if let hostId, hostId != h.hostId { resetMirror() }
+        hostId = h.hostId
         iconsRevision = -1
         hello = h
         applyIcons(h.icons ?? [:], revision: h.iconsRevision ?? 0)

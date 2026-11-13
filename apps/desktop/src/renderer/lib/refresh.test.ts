@@ -87,15 +87,15 @@ test('an already-online computer stays refreshing until the replacement stream a
   store.retire()
 })
 
-test('a cache from an older app keeps its cursor across a host update; another format or store schema fetches everything', async () => {
+test('a cache from an older app keeps its cursor across a host update; another format, store schema or host database fetches everything', async () => {
   const key = 'codync-mirror-local-test'
   const cached = { hostId: 'h1', rev: 77, bots: [{ id: 'b1', name: 'Bot' }], entries: [] }
-  const since = async (cache: object) => {
+  const since = async (cache: object, hello: object = {}) => {
     storage.set(key, JSON.stringify(cache))
     let resolve!: (sub: string) => void
     const path = new Promise<string>((r) => { resolve = r })
     const store = sync({
-      call: async () => ({ version: '2.30.0', name: 'Test', backends: [], schema: 8 }),
+      call: async () => ({ hostId: 'h1', version: '2.30.0', name: 'Test', backends: [], schema: 8, ...hello }),
       stream: (sub) => { resolve(sub); return () => {} },
     })
     store.start()
@@ -113,6 +113,8 @@ test('a cache from an older app keeps its cursor across a host update; another f
   assert.equal(await since({ ...cached, format: 1, schema: 8 }), '77')
   // The host migrated its store: rows may have changed in place without a new rev.
   assert.equal(await since({ ...cached, format: 1, schema: 7 }), '0')
+  // A replacement host database, already past the cached cursor: its revisions say nothing about the cache's.
+  assert.equal(await since({ ...cached, format: 1, schema: 8 }, { hostId: 'h2', rev: 300 }), '0')
 })
 
 test('a stale cache saved before the first hello stays stale for the next launch', () => {
@@ -185,7 +187,7 @@ function syncOverStaleCache() {
   const streams: { path: string; send: (event: object) => void }[] = []
   let opened = deferred()
   const store = sync({
-    call: async () => ({ version: '2.29.0', name: 'Test', backends: [] }),
+    call: async () => ({ hostId: 'h1', version: '2.29.0', name: 'Test', backends: [] }),
     stream: (path, onData) => { streams.push({ path, send: (event) => onData(JSON.stringify(event)) }); opened.resolve(); return () => {} },
   })
   const nextStream = async () => { await opened.promise; opened = deferred(); return streams[streams.length - 1] }

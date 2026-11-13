@@ -183,4 +183,12 @@ class SharedAudioTest {
         assertEquals(9.0, stamped.duration, 0.0)
         assertEquals(0.0, stamped.elapsed, 0.0)
     }
+
+    @Test fun `a backfilled length arriving after the card mounted shows without the sound`() {
+        assertEquals(0.0, audio.duration, 0.0)
+        audio.setKnownDuration(9.0)
+        assertEquals(9.0, audio.duration, 0.0)
+        audio.setKnownDuration(12.0)
+        assertEquals(9.0, audio.duration, 0.0)
+    }
 }

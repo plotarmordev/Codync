@@ -99,7 +99,7 @@
   outline: 2px solid var(--secondary);
   outline-offset: 2px;
 }
-/* Play and download: 36 px targets over 21 x 24 px slots (the slot keeps its size while the sound loads). */
+/* Play: a 36 px target over a 21 x 24 px slot (the slot keeps its size while the sound loads). */
 .voice-note-slot {
   width: 21px;
   height: 24px;

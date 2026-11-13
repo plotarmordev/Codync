@@ -25,22 +25,6 @@ struct AudioPlayButton: View {
     }
 }
 
-/// The player row's trailing download, drawn like its play button: a plain glyph, no tile in any state.
-struct AudioDownloadButton: View {
-    let downloading: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: downloading ? "xmark" : "arrow.down.to.line")
-                .font(.system(size: 24)).foregroundStyle(Palette.text)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 /// How far a shared sound has played: a 4 pt bar filling left to right, always shown — empty and inert until the
 /// sound's length is known (the loaded sound, or the computer's stamp). Tap or drag it to move there; its touch
 /// area runs 20 pt over and under the bar without taking up layout, as the play button's does.

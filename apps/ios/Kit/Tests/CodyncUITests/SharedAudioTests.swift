@@ -85,6 +85,16 @@ private func silentWAV() -> Data {
         }
     }
 
+    @Test func aBackfilledLengthArrivingAfterTheBubbleMountedShowsWithoutTheSound() async {
+        await playing { audio, _, _, _ in
+            #expect(audio.duration == nil)
+            audio.setKnownDuration(9)
+            #expect(audio.duration == 9)
+            audio.setKnownDuration(12)
+            #expect(audio.duration == 9, "the first known length stays")
+        }
+    }
+
     @Test func aVoiceNoteThatFailsToPlayShowsItsFailureAndTheNextTapLoadsAgain() async {
         await playing { audio, load, store, note in
             let first = Task { await audio.toggle(note, entryId: "entry", model: store) }

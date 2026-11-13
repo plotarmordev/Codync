@@ -15,6 +15,8 @@ export function useSharedAudio(file: SharedFile, entryId: string) {
     open: (data, events) => audioElement(data, events),
   }, setSnapshot, known))
   useEffect(() => () => audio.dispose(), [audio])
+  // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load.
+  useEffect(() => audio.setKnownDuration(known), [audio, known])
   return { snapshot, toggle: () => void play(audio), seek: (seconds: number) => audio.seek(seconds) }
 }
 

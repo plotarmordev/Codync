@@ -83,7 +83,7 @@ internal interface Sound {
 internal class SharedAudio(
     private val load: suspend () -> File,
     private val open: suspend (File, stopped: (SoundStop) -> Unit) -> Sound,
-    private val knownDuration: Double = 0.0,
+    private var knownDuration: Double = 0.0,
 ) {
     var phase by mutableStateOf(AudioPhase.Idle)
         private set
@@ -133,6 +133,13 @@ internal class SharedAudio(
         }
         catch (_: Exception) { drop(); phase = AudioPhase.Failed }
         if (fromStart) Analytics.capture(AnalyticsEvent.VoiceNotePlayed(failure.takeIf { phase == AudioPhase.Failed }))
+    }
+
+    /** The computer's length arriving after the card mounted (a backfilled note): shown until the sound says. */
+    fun setKnownDuration(seconds: Double) {
+        if (seconds <= 0.0 || duration > 0.0) return
+        knownDuration = seconds
+        duration = seconds
     }
 
     /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */
@@ -249,6 +256,8 @@ private class MediaSound(private val manager: AudioManager, private val player: 
             knownDuration = (file.durationMs ?: 0L) / 1000.0)
     }
     DisposableEffect(audio) { onDispose { audio.release() } }
+    // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load.
+    LaunchedEffect(audio, file.durationMs) { audio.setKnownDuration((file.durationMs ?: 0L) / 1000.0) }
     return audio
 }
 
@@ -266,8 +275,8 @@ private class MediaSound(private val manager: AudioManager, private val player: 
 }
 
 /** The one voice-note player both bubbles share: the play button, the always-shown progress bar (empty until the
- *  length is known), the caption and the download button. One accessibility element — "[label], <caption>" — whose
- *  buttons become named actions. */
+ *  length is known) and the caption. One accessibility element — "[label], <caption>" — whose buttons become named
+ *  actions; download is in the bubble's menu. */
 @Composable internal fun SharedAudioRow(entry: Entry, file: SharedFile, audio: SharedAudio, label: String,
     state: AppState, store: AppStore) {
     val scope = rememberCoroutineScope()
@@ -289,7 +298,6 @@ private class MediaSound(private val manager: AudioManager, private val player: 
         // Steady digits, so the bar's end doesn't move as the clock runs.
         Text(caption, style = Type.caption2.monospacedDigit,
             color = if (audio.phase == AudioPhase.Failed) Palette.danger else Palette.secondary)
-        DownloadButton(entry, file, state, store)
     }
 }
 

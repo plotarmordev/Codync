@@ -51,7 +51,7 @@ export class SharedAudio {
   private readonly platform: SharedAudioPlatform
   private readonly changed: (snapshot: AudioSnapshot) => void
   /** The length the host read from the sound's headers (0 when unknown), shown until the sound itself says. */
-  private readonly known: number
+  private known: number
 
   constructor(platform: SharedAudioPlatform, changed: (snapshot: AudioSnapshot) => void, known: number) {
     this.platform = platform
@@ -86,6 +86,14 @@ export class SharedAudio {
     this.disposed = true
     this.drop()
     this.phase = 'idle'
+  }
+
+  /** The host's length arriving after the card mounted (a backfilled note): shown until the sound itself says. */
+  setKnownDuration(seconds: number) {
+    if (seconds <= 0 || this.duration > 0) return
+    this.known = seconds
+    this.duration = seconds
+    this.changed(this.snapshot)
   }
 
   /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */

@@ -15,7 +15,6 @@ import { imageCopyItems, type MessageMenu } from './use-image-actions'
 import { analytics } from '../../store/analytics'
 import { imageActionEvent } from '../../lib/image-analytics.ts'
 import { FileViewer } from './FileViewer'
-import type { DownloadState } from '../../store/file-downloads'
 import type { AudioSnapshot } from './shared-audio'
 import { useSharedAudio } from './use-shared-audio'
 import { useTr } from '../../lib/use-language'
@@ -28,7 +27,7 @@ export function FileDownloadCard({ entry, file, menu }: { entry: Entry; file: Sh
 /**
  * A voice note's player, the same for one inside a message (at the top of its bubble, the text follows) and one sent
  * on its own (`named`: a bubble of its own, the file's name under the row): play, the bar and the clock from the first
- * frame (the host reads the length), then the download.
+ * frame (the host reads the length). Download is in the message's menu, not a button of its own.
  */
 export function VoiceNotePlayer({ entry, file, menu, named = false }: { entry: Entry; file: SharedFile; menu: MessageMenu; named?: boolean }) {
   const tr = useTr()
@@ -41,7 +40,6 @@ export function VoiceNotePlayer({ entry, file, menu, named = false }: { entry: E
           <AudioIcon snapshot={snapshot} toggle={toggle} />
           <AudioProgress snapshot={snapshot} seek={seek} />
           <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail">{stop.detail}</Text>
-          <DownloadButton state={stop.state} download={stop.download} />
         </HStack>
         {named ? <Text as="div" size="subheadline" weight="semibold" truncate title={file.name}>{file.name}</Text> : null}
       </VStack>
@@ -160,13 +158,6 @@ function AudioIcon({ snapshot, toggle }: { snapshot: AudioSnapshot; toggle: () =
     {snapshot.phase === 'loading'
       ? <Spinner size={18} />
       : <IconButtonBase title={snapshot.phase === 'playing' ? 'Pause' : 'Play'} icon={snapshot.phase === 'playing' ? 'pause.circle' : 'play.circle'} size={36} tabIndex={-1} className="voice-note-glyph" onClick={toggle} />}
-  </div>
-}
-
-/** The download (or its cancel) at the row's end, drawn like the play glyph. */
-function DownloadButton({ state, download }: { state: DownloadState | undefined; download: () => void }) {
-  return <div className="voice-note-slot">
-    <IconButtonBase title={downloadAction(state)} icon={state?.kind === 'downloading' ? 'xmark' : 'arrow.down.to.line'} size={36} tabIndex={-1} className="voice-note-glyph" onClick={download} />
   </div>
 }
 

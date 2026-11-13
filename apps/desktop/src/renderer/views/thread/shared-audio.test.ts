@@ -134,6 +134,19 @@ test("the host's length shows before the first play, survives a failure, and giv
   assert.deepEqual(audio.snapshot, { phase: 'failed', elapsed: 0, duration: 9 })
 })
 
+test("a backfilled length arriving after the card mounted shows without the sound, and the sound's own wins", async () => {
+  const { audio, loads, events } = setup()
+  assert.deepEqual(audio.snapshot, { phase: 'idle', elapsed: 0, duration: 0 })
+  audio.setKnownDuration(9)
+  assert.deepEqual(audio.snapshot, { phase: 'idle', elapsed: 0, duration: 9 })
+  const tap = audio.toggle()
+  loads[0](new Uint8Array([1]))
+  await tap
+  events().time(0, 48)
+  audio.setKnownDuration(12)
+  assert.equal(audio.snapshot.duration, 48, "the loaded sound's length stays")
+})
+
 test('seeking holds the playhead to the sound and keeps it playing or paused', async () => {
   const { audio, log, loads, events } = setup()
   audio.seek(3)

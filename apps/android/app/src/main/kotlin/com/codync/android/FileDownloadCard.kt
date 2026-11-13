@@ -90,7 +90,7 @@ internal fun clock(seconds: Double): String {
     return if (total >= 3600) "%d:%02d:%02d".format(total / 3600, total / 60 % 60, total % 60) else "%d:%02d".format(total / 60, total % 60)
 }
 
-/** A shared file's download button, trailing in the voice note player row and on a file card, and in the file's
+/** A shared file's download button, trailing on a file card and in the file's
  *  viewer: downloads (again after a failure or a save), or cancels the download under way. In the image viewer
  *  (`inViewer`) its end is reported. */
 @Composable internal fun DownloadButton(entry: Entry, file: SharedFile, state: AppState, store: AppStore, inViewer: Boolean = false) {

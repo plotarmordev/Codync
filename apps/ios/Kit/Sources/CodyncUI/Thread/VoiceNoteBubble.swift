@@ -31,19 +31,20 @@ struct VoiceNoteBubble<Below: View>: View {
         .padding(.vertical, 10)
         .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .onDisappear { audio.stop() }
+        // A backfilled note's length arrives after the bubble mounted: show it without waiting for the sound to load.
+        .onChange(of: file.durationMs) { _, millis in audio.setKnownDuration(millis.map { TimeInterval($0) / 1000 }) }
     }
 
-    /// The play/pause button, the progress bar, its clock and the download on one row.
+    /// The play/pause button, the progress bar and its clock on one row; download is in the message's menu.
     private var player: some View {
         let state = model.fileDownloads.states[file.id]
         let caption = FileDownloadCard.detail(state, play: audio.state, elapsed: audio.elapsed, duration: audio.duration, size: file.size)
-        // The 44 pt hit areas overflow the 24 pt glyphs, so the glyphs line up with the text under them.
+        // The 44 pt hit area overflows the 24 pt glyph, so the glyph lines up with the text under it.
         return HStack(spacing: 12) {
             AudioPlayButton(state: audio.state, action: play).padding(-10)
             AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
             // Steady digits, so the bar's end doesn't move as the clock runs.
             Text(caption).font(.caption2.monospacedDigit()).foregroundStyle(audio.state == .failed ? Palette.danger : Palette.secondary)
-            AudioDownloadButton(downloading: model.fileDownloads.isDownloading(file.id), action: download).padding(-10)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // One element reads the whole player; its buttons become named actions.

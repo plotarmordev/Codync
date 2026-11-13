@@ -274,8 +274,8 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
 
 /**
  * A reply carrying a voice note, or a sound sent as a file (`attachment`), as a messaging app shows one with a
- * caption: the player at the top of the bubble, the message (or a file's name) under it. Download lives on the
- * row's trailing button and in the bubble's menu, after Copy, as on desktop and iPhone.
+ * caption: the player at the top of the bubble, the message (or a file's name) under it. Download lives in the
+ * bubble's menu, after Copy, as on desktop and iPhone.
  */
 @Composable private fun AudioBubble(entry: Entry, file: SharedFile, menu: MessageMenu, state: AppState, store: AppStore,
     focus: FocusManager, attachment: Boolean) {

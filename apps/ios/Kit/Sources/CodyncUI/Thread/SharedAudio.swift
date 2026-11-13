@@ -19,7 +19,7 @@ final class SharedAudio {
     /// Seconds into the sound; ticks about four times a second while it plays.
     private(set) var elapsed: TimeInterval = 0
     /// The length the computer read from the sound's headers (nil when it couldn't), shown until the sound says.
-    private let known: TimeInterval?
+    private var known: TimeInterval?
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private var done: PlayDone?
     /// Whether this player turned the audio session on (a call or dictation keeps its own).
@@ -92,6 +92,13 @@ final class SharedAudio {
         interruptions?.stop()
         interruptions = nil
         finish()
+    }
+
+    /// The computer's length arriving after the bubble mounted (a backfilled note): shown until the sound says.
+    func setKnownDuration(_ seconds: TimeInterval?) {
+        guard let seconds, seconds > 0, duration == nil else { return }
+        known = seconds
+        duration = seconds
     }
 
     /// Moves a loaded sound's playhead, held to its length; playing or paused, it stays so.

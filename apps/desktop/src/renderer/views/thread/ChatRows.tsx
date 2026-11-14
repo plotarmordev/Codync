@@ -155,7 +155,7 @@ export function UserBubble({ entry, reply }: { entry: Entry; reply?: () => void 
         ) : null}
         {status && status !== 'sent' ? <UserStatus entry={entry} hovering={hovering} /> : null}
         {/* Beside the bubble, inside its hover region: showing them never changes the height. */}
-        <MessageActions className="leading" visible={hovering} reactions={reactionPick(store, entry)} reply={reply} items={messageCopyItems(store, entry)} />
+        <MessageActions className="leading" visible={hovering} reactions={reactionPick(store, entry)} reply={reply} items={() => messageCopyItems(store, entry)} />
       </div>
     </div>
   )
@@ -217,7 +217,7 @@ export function AgentBubble({ entry, openTrace, reply, openArtifact }: { entry: 
             <MarkdownText text={entry.data.text ?? ''} findable />
           )}
         </Bubble>
-        <MessageActions className="trailing" visible={hovering} reactions={reactions} reply={reply} trace={openTrace} items={own()} />
+        <MessageActions className="trailing" visible={hovering} reactions={reactions} reply={reply} trace={openTrace} items={own} />
       </div>
     </div>
   )
@@ -292,8 +292,9 @@ function MessageActions({ visible, className, reactions, reply, trace, items }: 
   reactions: ReactionPick
   reply?: () => void
   trace?: () => void
-  /** The message's own items, before what it did: Copy (`copyItems`), a voice note's Download. */
-  items: MenuItem[]
+  /** The message's own items, before what it did: Copy (`copyItems`), a voice note's Download. Computed when
+   *  the menu opens, so a language change reaches them without this row re-rendering. */
+  items: () => MenuItem[]
 }) {
   const [menu, setMenu] = useState<'reactions' | 'more' | null>(null)
   const smile = useRef<HTMLButtonElement>(null)
@@ -313,7 +314,7 @@ function MessageActions({ visible, className, reactions, reply, trace, items }: 
         open={menu === 'more'}
         onClose={() => setMenu(null)}
         anchor={more}
-        items={() => [...items, ...(trace ? [{ title: 'Show what it did', icon: 'list.bullet', action: trace }] : [])]}
+        items={() => [...items(), ...(trace ? [{ title: 'Show what it did', icon: 'list.bullet', action: trace }] : [])]}
       />
     </div>
   )

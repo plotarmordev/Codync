@@ -155,7 +155,7 @@ export function UserBubble({ entry, reply }: { entry: Entry; reply?: () => void 
         ) : null}
         {status && status !== 'sent' ? <UserStatus entry={entry} hovering={hovering} /> : null}
         {/* Beside the bubble, inside its hover region: showing them never changes the height. */}
-        <MessageActions className="leading" visible={hovering} reactions={reactionPick(store, entry)} reply={reply} copy={messageCopyItems(store, entry)} />
+        <MessageActions className="leading" visible={hovering} reactions={reactionPick(store, entry)} reply={reply} items={() => messageCopyItems(store, entry)} />
       </div>
     </div>
   )
@@ -193,14 +193,16 @@ export function AgentBubble({ entry, openTrace, reply, openArtifact }: { entry: 
   ]
   // A shared picture or voice note has the same menu as the bubble: reactions, Reply and what it did, its own items in place of Copy.
   const menu: MessageMenu = { items: rest, reactions }
+  // Copy, then Download for each voice note (inside the message or sent on its own): the bubble's and the "…" menu's.
   const download = (file: SharedFile) => downloadItem(store.fileDownloads.states.get(file.id), () => store.fileDownloads.toggle(store.client, entry.id, file))
+  const own = (): MenuItem[] => [...messageCopyItems(store, entry), ...(entry.data.files ?? []).filter((file) => file.playsInChat).map(download)]
   return (
     <div className="message agent" title={fullDate.format(entry.createdAt)} onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
       <div className="message-body">
         <Bubble
           className={!voiceNote && (entry.data.files?.length || entry.data.artifact) ? 'file-message' : 'bubble agent'}
           reactions={reactions}
-          items={() => [...messageCopyItems(store, entry), ...(voiceNote ? [download(voiceNote)] : []), ...rest()]}
+          items={() => [...own(), ...rest()]}
         >
           {entry.data.artifact ? (
             <ArtifactCard botId={entry.botId} card={entry.data.artifact} open={() => openArtifact?.(entry.data.artifact!.id)} />
@@ -215,7 +217,7 @@ export function AgentBubble({ entry, openTrace, reply, openArtifact }: { entry: 
             <MarkdownText text={entry.data.text ?? ''} findable />
           )}
         </Bubble>
-        <MessageActions className="trailing" visible={hovering} reactions={reactions} reply={reply} trace={openTrace} copy={messageCopyItems(store, entry)} />
+        <MessageActions className="trailing" visible={hovering} reactions={reactions} reply={reply} trace={openTrace} items={own} />
       </div>
     </div>
   )
@@ -283,15 +285,16 @@ export function ReactionsRow({ entry }: { entry: Entry }) {
   )
 }
 
-/** Compact actions beside the bubble: a reaction strip, reply, and more (copy, what it did). */
-function MessageActions({ visible, className, reactions, reply, trace, copy }: {
+/** Compact actions beside the bubble: a reaction strip, reply, and more (its own items, then what it did). */
+function MessageActions({ visible, className, reactions, reply, trace, items }: {
   visible: boolean
   className: string
   reactions: ReactionPick
   reply?: () => void
   trace?: () => void
-  /** What its Copy is (`copyItems`). */
-  copy: MenuItem[]
+  /** The message's own items, before what it did: Copy (`copyItems`), a voice note's Download. Computed when
+   *  the menu opens, so a language change reaches them without this row re-rendering. */
+  items: () => MenuItem[]
 }) {
   const [menu, setMenu] = useState<'reactions' | 'more' | null>(null)
   const smile = useRef<HTMLButtonElement>(null)
@@ -311,7 +314,7 @@ function MessageActions({ visible, className, reactions, reply, trace, copy }: {
         open={menu === 'more'}
         onClose={() => setMenu(null)}
         anchor={more}
-        items={() => [...copy, ...(trace ? [{ title: 'Show what it did', icon: 'list.bullet', action: trace }] : [])]}
+        items={() => [...items(), ...(trace ? [{ title: 'Show what it did', icon: 'list.bullet', action: trace }] : [])]}
       />
     </div>
   )

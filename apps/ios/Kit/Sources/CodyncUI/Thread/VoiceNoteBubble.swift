@@ -35,7 +35,8 @@ struct VoiceNoteBubble<Below: View>: View {
         .onChange(of: file.durationMs) { _, millis in audio.setKnownDuration(millis.map { TimeInterval($0) / 1000 }) }
     }
 
-    /// The play/pause button, the progress bar and its clock on one row; download is in the message's menu.
+    /// The play/pause button, the progress bar and its clock on one row; a failed play or download puts its error in
+    /// the bar's place. Download is in the message's menu.
     private var player: some View {
         let state = model.fileDownloads.states[file.id]
         let caption = FileDownloadCard.voiceNoteDetail(state, play: audio.state, elapsed: audio.elapsed, duration: audio.duration)
@@ -43,10 +44,15 @@ struct VoiceNoteBubble<Below: View>: View {
         // The 44 pt hit area overflows the 24 pt glyph, so the glyph lines up with the text under it.
         return HStack(spacing: 12) {
             AudioPlayButton(state: audio.state, action: play).padding(-10)
-            AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
-            if !caption.isEmpty {
-                // Steady digits, so the bar's end doesn't move as the clock runs.
-                Text(caption).font(.caption2.monospacedDigit()).foregroundStyle(failed ? Palette.danger : Palette.secondary)
+            if failed {
+                Text(caption).font(.caption2).foregroundStyle(Palette.danger)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
+                if !caption.isEmpty {
+                    // Steady digits, so the bar's end doesn't move as the clock runs.
+                    Text(caption).font(.caption2.monospacedDigit()).foregroundStyle(Palette.secondary)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -16,6 +16,7 @@ public struct ThreadView: View {
     @State var botChat: BotChatTarget?
     @State var openArtifact: ArtifactTarget?
     @State var openCall: Entry?
+    @State var showTasks = false
     @State var editingGroup = false
     @State var details: DetailsRequest?
     @State var openFile: FileViewerTarget?
@@ -34,6 +35,8 @@ public struct ThreadView: View {
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
     var bot: Bot? { model.bots[botId] }
+    /// The bot's background tasks, shown in its own chat only.
+    private var tasks: [BotTask] { bot.flatMap { $0.isGroup ? nil : $0.tasks } ?? [] }
 
     /// The messages, the composer and the find bar, without the platform's top chrome.
     private var chat: some View {
@@ -51,6 +54,10 @@ public struct ThreadView: View {
                         .padding(.bottom, 8)
                         .transition(.opacity)
                 } else {
+                    if !tasks.isEmpty {
+                        TaskCapsule(botId: botId, tasks: tasks) { showTasks = true }
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
                     Composer(botId: botId, replyingTo: $replyingTo,
                              queued: model.chat(botId).hidingCalls().queue(working: busy),
                              onCall: !calling && bot != nil ? { calling = true } : nil,
@@ -58,6 +65,7 @@ public struct ThreadView: View {
                 }
             }
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: model.mismatch)
+            .animation(Motion.reduced(Motion.layout, reduceMotion), value: tasks.isEmpty)
         }
         // Grok Bot's call: a bar floating over the chat, which stays readable and usable.
         .overlay(alignment: .top) {
@@ -137,6 +145,7 @@ public struct ThreadView: View {
             .codyncSheet(item: $openArtifact) { ArtifactView(target: $0) }
             .codyncSheet(item: $openFile) { FileViewer(file: $0.file, entryId: $0.entryId, botId: $0.botId) }
             .codyncSheet(item: $openCall) { CallConversationView(line: $0) }
+            .codyncSheet(isPresented: $showTasks) { TasksSheet(botId: botId, tasks: tasks) }
             .codyncSheet(item: $details) { request in
                 BotDetailsView(botId: request.botId ?? botId, request: request) { artifact in
                     details = nil
@@ -151,6 +160,7 @@ public struct ThreadView: View {
     /// Open Live Mode from Shortcuts: closes whatever covers the chat, then starts the call.
     private func startShortcutCall() {
         showTrace = false
+        showTasks = false
         botChat = nil
         openArtifact = nil
         openFile = nil

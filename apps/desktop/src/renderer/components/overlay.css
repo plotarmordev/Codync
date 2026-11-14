@@ -339,6 +339,20 @@
   opacity: 0.35;
 }
 
+/* A hover glyph (`hoverIcon`) cross-fades with the resting one in the same cell. */
+.icon-button-rest,
+.icon-button-hover {
+  grid-area: 1 / 1;
+  transition: opacity var(--hover);
+}
+.icon-button-hover,
+.icon-button:hover:not(:disabled) > .icon-button-rest {
+  opacity: 0;
+}
+.icon-button:hover:not(:disabled) > .icon-button-hover {
+  opacity: 1;
+}
+
 /* Modals center below the hidden title bar (28 pt on macOS). */
 html[data-platform="darwin"] .modal-card,
 html[data-platform="darwin"] .dialog {

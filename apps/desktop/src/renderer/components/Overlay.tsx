@@ -293,10 +293,12 @@ export function ModalHeader({ title, subtitle, icon, trailing, onClose, closeTit
   )
 }
 
-/** Plain icon button that lights up on hover and press. Icon-only, labelled for VoiceOver. */
-export function IconButtonBase({ title, icon, onClick, selected = false, size = 28, disabled, className, buttonRef, menuOpen, tabIndex }: {
+/** Plain icon button that lights up on hover and press. Icon-only, labelled for VoiceOver. A `hoverIcon` fades in
+ *  over `icon` (which fades out) while the pointer is on it. */
+export function IconButtonBase({ title, icon, hoverIcon, onClick, selected = false, size = 28, disabled, className, buttonRef, menuOpen, tabIndex }: {
   title: string
   icon: string
+  hoverIcon?: string
   onClick?: (e: React.MouseEvent) => void
   selected?: boolean
   size?: number
@@ -323,7 +325,8 @@ export function IconButtonBase({ title, icon, onClick, selected = false, size = 
       onClick={onClick}
       tabIndex={tabIndex}
     >
-      <Icon name={icon} size={size / 2} weight="medium" />
+      <Icon name={icon} size={size / 2} weight="medium" className={hoverIcon ? 'icon-button-rest' : undefined} />
+      {hoverIcon ? <Icon name={hoverIcon} size={size / 2} weight="medium" className="icon-button-hover" /> : null}
     </button>
   )
 }

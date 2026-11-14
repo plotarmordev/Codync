@@ -67,13 +67,24 @@ test('a click on the voice note plays or pauses it; only its bar seeks', async (
     await expect(player).toBeVisible()
     // The host read the length when the note was shared: the bar and clock show before the first play.
     await expect(player.locator('.file-card-detail')).toHaveText('0:00 / 0:04')
-    // The play button plays; a click on the player's clock pauses.
+    // Hovering fades the glyph to its filled form over the app's hover time, never a sudden switch.
+    const filled = play.locator('.icon-button-hover')
+    await play.hover()
+    await expect(filled).toHaveCSS('transition-duration', '0.12s')
+    await expect(filled).toHaveCSS('opacity', '1')
+    await page.mouse.move(0, 0)
+    await expect(filled).toHaveCSS('opacity', '0')
+    // The play button plays, and the row stays put: the bar and clock keep their places once the sound loads.
+    const bar = player.locator('input.voice-note-progress')
+    const clock = player.locator('.file-card-detail')
+    const atRest = [await bar.boundingBox(), await clock.boundingBox()]
     await play.click()
     await expect(pause).toBeVisible()
-    await player.locator('.file-card-detail').click()
+    expect([await bar.boundingBox(), await clock.boundingBox()]).toEqual(atRest)
+    // A click on the player's clock pauses.
+    await clock.click()
     await expect(play).toBeVisible()
     // Beside the bar, above its 12 px box, the click still plays rather than seeking.
-    const bar = player.locator('input.voice-note-progress')
     const box = (await bar.boundingBox())!
     const playerBox = (await player.boundingBox())!
     await page.mouse.click(box.x + box.width * 0.75, playerBox.y + 1)

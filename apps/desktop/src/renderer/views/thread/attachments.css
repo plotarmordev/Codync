@@ -109,7 +109,7 @@
 .voice-note-slot > button {
   margin: -6px -7.5px;
 }
-/* Bare glyphs in every state: hover and press darken them, never draw a tile. */
+/* Bare glyphs in every state, never a tile: hover fills the glyph (AudioIcon) and brings it to the text color. */
 .voice-note-glyph.icon-button:hover:not(:disabled),
 .voice-note-glyph.icon-button:active:not(:disabled) {
   background: none;

@@ -152,12 +152,14 @@ function withDivider(items: MenuItem[]) {
   return items.map((item, i) => i === 0 ? { ...item, divider: true } : item)
 }
 
-/** The play/pause glyph, or the spinner while the sound comes over; no tile behind it in any state. */
+/** The play/pause glyph, filled while the pointer is on it, or the spinner while the sound comes over; no tile behind it in any state. */
 function AudioIcon({ snapshot, toggle }: { snapshot: AudioSnapshot; toggle: () => void }) {
-  return <div className="voice-note-slot">
+  const [hovered, setHovered] = useState(false)
+  const glyph = `${snapshot.phase === 'playing' ? 'pause' : 'play'}.circle${hovered ? '.fill' : ''}`
+  return <div className="voice-note-slot" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
     {snapshot.phase === 'loading'
       ? <Spinner size={18} />
-      : <IconButtonBase title={snapshot.phase === 'playing' ? 'Pause' : 'Play'} icon={snapshot.phase === 'playing' ? 'pause.circle' : 'play.circle'} size={36} tabIndex={-1} className="voice-note-glyph" onClick={toggle} />}
+      : <IconButtonBase title={snapshot.phase === 'playing' ? 'Pause' : 'Play'} icon={glyph} size={36} tabIndex={-1} className="voice-note-glyph" onClick={toggle} />}
   </div>
 }
 

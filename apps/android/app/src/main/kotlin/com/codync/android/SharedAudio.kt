@@ -274,9 +274,9 @@ private class MediaSound(private val manager: AudioManager, private val player: 
     }
 }
 
-/** The one voice-note player both bubbles share: the play button, the always-shown progress bar (empty until the
- *  length is known) and the caption. One accessibility element — "[label], <caption>" — whose buttons become named
- *  actions; download is in the bubble's menu. */
+/** The one voice-note player both bubbles share: the play button, the progress bar (empty until the length is known)
+ *  and the caption; a failed play or download puts its error in the bar's place. One accessibility element —
+ *  "[label], <caption>" — whose buttons become named actions; download is in the bubble's menu. */
 @Composable internal fun SharedAudioRow(entry: Entry, file: SharedFile, audio: SharedAudio, label: String,
     state: AppState, store: AppStore) {
     val scope = rememberCoroutineScope()
@@ -295,9 +295,13 @@ private class MediaSound(private val manager: AudioManager, private val player: 
         onClick(label = translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true }
     }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         SharedAudioButton(audio, play)
-        AudioProgress(audio, Modifier.weight(1f))
-        // Steady digits, so the bar's end doesn't move as the clock runs.
-        if (caption.isNotEmpty()) Text(caption, style = Type.caption2.monospacedDigit, color = if (failed) Palette.danger else Palette.secondary)
+        if (failed) {
+            Text(caption, Modifier.weight(1f), style = Type.caption2, color = Palette.danger)
+        } else {
+            AudioProgress(audio, Modifier.weight(1f))
+            // Steady digits, so the bar's end doesn't move as the clock runs.
+            if (caption.isNotEmpty()) Text(caption, style = Type.caption2.monospacedDigit, color = Palette.secondary)
+        }
     }
 }
 

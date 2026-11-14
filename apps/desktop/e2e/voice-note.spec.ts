@@ -26,6 +26,8 @@ test('a failed voice note offers retry in the selected language', async () => {
     await expect(caption).toHaveCount(0)
     await player.locator('.voice-note-glyph').click()
     await expect(player).toContainText('Lecture impossible. Cliquez pour réessayer.')
+    // The error takes the bar's place: no empty bar beside it.
+    await expect(player.locator('input.voice-note-progress')).toHaveCount(0)
     await caption.click()
     await expect(player).toContainText('Lecture impossible. Cliquez pour réessayer.')
     await setPref(page, 'appLanguage', 'en')

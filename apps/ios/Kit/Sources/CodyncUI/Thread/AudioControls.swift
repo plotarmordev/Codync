@@ -25,9 +25,10 @@ struct AudioPlayButton: View {
     }
 }
 
-/// How far a shared sound has played: a 4 pt bar filling left to right, always shown — empty and inert until the
-/// sound's length is known (the loaded sound, or the computer's stamp). Tap or drag it to move there; its touch
-/// area runs 20 pt over and under the bar without taking up layout, as the play button's does.
+/// How far a shared sound has played: a 4 pt bar filling left to right, shown unless a play or download failed (its
+/// error takes the bar's place) — empty and inert until the sound's length is known (the loaded sound, or the
+/// computer's stamp). Tap or drag it to move there; its touch area runs 20 pt over and under the bar without taking up
+/// layout, as the play button's does.
 struct AudioProgress: View {
     let elapsed: TimeInterval
     let duration: TimeInterval

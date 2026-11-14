@@ -77,10 +77,13 @@ test('a click on the voice note plays or pauses it; only its bar seeks', async (
     // The play button plays, and the row stays put: the bar and clock keep their places once the sound loads.
     const bar = player.locator('input.voice-note-progress')
     const clock = player.locator('.file-card-detail')
-    const atRest = [await bar.boundingBox(), await clock.boundingBox()]
+    // Whole pixels, so sub-pixel drift doesn't count as the row moving.
+    const layout = async () => [await bar.boundingBox(), await clock.boundingBox()]
+      .map((box) => box && [box.x, box.y, box.width, box.height].map(Math.round))
+    const atRest = await layout()
     await play.click()
     await expect(pause).toBeVisible()
-    expect([await bar.boundingBox(), await clock.boundingBox()]).toEqual(atRest)
+    expect(await layout()).toEqual(atRest)
     // A click on the player's clock pauses.
     await clock.click()
     await expect(play).toBeVisible()

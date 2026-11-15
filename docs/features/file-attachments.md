@@ -109,8 +109,11 @@ and SHA-256, and keeps it in the sent-attachment cache under its file id; a fail
 read leaves the placeholder. The player is one row: play/pause (a bare glyph in every state,
 no tile on hover; on desktop the glyph fades to its filled form over the app's hover time,
 `IconButtonBase`'s `hoverIcon`; a spinner while the sound loads), the progress bar, the caption (elapsed /
-length from the first frame when `durationMs` is known, so the row keeps its layout when play starts; the decoded
-length once loaded; no caption, the bar alone, until then; never the file size), ending at the text's edge;
+length from the first frame when `durationMs` is known; a sound from an older host without it is fetched as its card
+shows and its length read from its headers alone (desktop `preload = 'metadata'`, iOS `AVAudioPlayer` never prepared,
+Android `MediaMetadataRetriever`), nothing played, a failure silent until a tap; the decoded length once loaded; the
+caption keeps its room while the length is unknown, so the row never moves when it arrives or when play starts;
+never the file size), ending at the text's edge;
 download is in the message's menu, not a button on the row. A sound sent on its own is that
 row in a bubble of its own with the file's name under it. Tapping or dragging the loaded bar
 (clicking on desktop) moves the sound there, playing or paused; its touch area runs past the

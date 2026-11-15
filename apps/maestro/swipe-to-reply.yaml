@@ -32,14 +32,18 @@ onFlowComplete:
     commands:
       - launchApp:
           appId: com.pokai.Codync.android.dev
-# A bot made a moment ago can take a while to reach the phone's list, and a cold launch can take 45 s to connect.
+# A cold launch can take minutes to connect and bring a bot made a moment ago to the list; swipe only once its chat
+# is shown and online.
 - extendedWaitUntil:
     visible: ${output.bot.name}
-    timeout: 60000
+    timeout: 240000
 - tapOn: ${output.bot.name}
 - extendedWaitUntil:
     visible: "Here is the plan."
-    timeout: 20000
+    timeout: 240000
+- extendedWaitUntil:
+    notVisible: "Offline"
+    timeout: 240000
 - takeScreenshot: swipe-to-reply-rest
 # A mostly vertical drag stays the list's scroll.
 - swipe:

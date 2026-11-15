@@ -1,6 +1,5 @@
-2026-11-16 04:58:48 +0800 shutdown done; booting
-2026-11-16 04:58:50 +0800 	Finished
-2026-11-16 04:58:50 +0800 booted; head 2f2e63543fec60f38a6583682770a80f0d321db4
-2026-11-16 04:59:16 +0800 Waiting for flows to complete...
-2026-11-16 05:00:51 +0800 [Passed] swipe-to-reply (1m 35s)
-2026-11-16 05:00:51 +0800 1/1 Flow Passed in 1m 35s
+2026-11-16 07:03:28 +0800 shutdown done; booting
+2026-11-16 07:03:40 +0800 booted; head 5c875f840530d46f6e5e67c98eb98aba8d15b39e
+2026-11-16 07:03:57 +0800 Waiting for flows to complete...
+2026-11-16 07:05:35 +0800 [Passed] swipe-to-reply (1m 37s)
+2026-11-16 07:05:35 +0800 1/1 Flow Passed in 1m 37s

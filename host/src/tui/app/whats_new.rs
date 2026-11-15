@@ -141,7 +141,7 @@ mod tests {
                 Feature { title: "U".into(), body: "C".into(), beta: true, film },
             ]
         );
-        assert!(all[0].notes.is_empty());
+        assert_eq!(all[0].notes, Vec::<String>::new());
     }
 
     #[test]

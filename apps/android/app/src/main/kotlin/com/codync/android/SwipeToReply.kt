@@ -114,21 +114,26 @@ internal enum class ReplyDirection(val sign: Float) {
                         }
                         if (abs(dy) > viewConfiguration.touchSlop && abs(dy) >= abs(dx)) return@awaitEachGesture
                     }
-                    var travel = dx * direction.sign
-                    var past = ReplySwipe.offset(travel, threshold) >= threshold
-                    var lifted = false
-                    while (true) {
-                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
-                        if (change.changedToUp()) { change.consume(); lifted = true; break }
-                        if (change.isConsumed || !change.pressed) break
-                        travel += change.positionChange().x * direction.sign
-                        change.consume()
+                    var travel = 0f
+                    var past = false
+                    fun pull(delta: Float) {
+                        travel += delta * direction.sign
                         offset = ReplySwipe.offset(travel, threshold)
                         val now = offset >= threshold
                         if (now != past) {
                             past = now
                             if (now) haptics.performHapticFeedback(HapticFeedbackType.GestureThresholdActivate)
                         }
+                    }
+                    // The move that crossed the slop already counts, so a lift right after it still replies.
+                    pull(dx)
+                    var lifted = false
+                    while (true) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.changedToUp()) { change.consume(); lifted = true; break }
+                        if (change.isConsumed || !change.pressed) break
+                        change.consume()
+                        pull(change.positionChange().x)
                     }
                     // Only a lift replies; a touch the system cancelled springs back like an early release.
                     if (lifted && offset >= threshold) {

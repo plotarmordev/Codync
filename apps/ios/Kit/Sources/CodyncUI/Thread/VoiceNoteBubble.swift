@@ -12,6 +12,8 @@ struct VoiceNoteBubble<Below: View>: View {
     let below: Below
     @Environment(BotStore.self) private var model
     @State private var audio: SharedAudio
+    /// Whether the phone's network counts bytes (cellular, a hotspot): a bigger note's sound waits for a tap there.
+    @State private var cost = NetworkCost.shared
 
     init(entry: Entry, file: SharedFile, name: String, @ViewBuilder below: () -> Below) {
         self.entry = entry
@@ -32,11 +34,13 @@ struct VoiceNoteBubble<Below: View>: View {
         .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .onDisappear { audio.stop() }
         // A backfilled note's length arrives after the bubble mounted: show it without waiting for the sound to load.
-        // A note with none is measured instead, again once the computer is online (a chat shown before it connects
-        // reads nothing).
-        .task(id: Measure(known: file.durationMs, online: model.connection == .online)) {
+        // The sound itself is fetched too, so the first tap plays at once — unless the fetch would cost (a metered
+        // network and a big note), where a tap still fetches. A chat shown before the computer connects reads nothing.
+        .task(id: Preload(known: file.durationMs, online: model.connection == .online, expensive: cost.expensive)) {
             audio.setKnownDuration(file.durationMs.map { TimeInterval($0) / 1000 })
-            if model.connection == .online { await audio.measure(file, entryId: entry.id, model: model) }
+            if SharedAudio.preloads(online: model.connection == .online, expensive: cost.expensive, bytes: file.size) {
+                await audio.preload(file, entryId: entry.id, model: model)
+            }
         }
     }
 
@@ -54,11 +58,11 @@ struct VoiceNoteBubble<Below: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
-                // The clock keeps the room of the widest one, an hour's, with steady digits, whether its length is
-                // known yet or not: the bar ends in one place from the first frame, when the length arrives, and as
-                // the clock runs.
+                // The clock keeps exactly its own room — the caption's shape for this length — whether the length is
+                // known yet or not: the gap to the bar's end stays the row's spacing from the first frame, when the
+                // length arrives, and as the clock runs.
                 ZStack(alignment: .trailing) {
-                    Text(verbatim: "0:00:00 / 0:00:00").hidden()
+                    Text(verbatim: FileDownloadCard.voiceNoteRoom(audio.duration)).hidden()
                     Text(verbatim: caption).foregroundStyle(Palette.secondary)
                 }
                 .font(.caption2.monospacedDigit())
@@ -85,8 +89,10 @@ struct VoiceNoteBubble<Below: View>: View {
     }
 }
 
-/// What the bubble's length task follows: the computer's stamp, and whether a note without one can be fetched to measure.
-private struct Measure: Equatable {
+/// What the bubble's preload follows: the computer's stamp of the length, and whether the network lets the sound
+/// itself be fetched yet.
+private struct Preload: Equatable {
     let known: Int64?
     let online: Bool
+    let expensive: Bool
 }

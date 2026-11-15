@@ -95,33 +95,71 @@ private func silentWAV() -> Data {
         }
     }
 
-    @Test func aNoteSharedWithNoLengthReadsItFromTheSoundAsTheBubbleShowsPlayingNothing() async {
+    @Test func aPreloadedVoiceNotePlaysItsFetchedBytesSoATapFetchesNothing() async {
         await playing { audio, load, store, note in
-            let measuring = Task { await audio.measure(note, entryId: "entry", model: store) }
+            let preloading = Task { await audio.preload(note, entryId: "entry", model: store) }
             #expect(await load.asked())
             load.answer(silentWAV())
-            await measuring.value
-            #expect(audio.duration == 1)
-            #expect(audio.state == .idle, "only the headers are read: nothing plays")
-            await audio.measure(note, entryId: "entry", model: store)
-            #expect(load.calls == 1, "a known length is never fetched again")
-        }
-        await playing { audio, load, store, note in
-            let measuring = Task { await audio.measure(note, entryId: "entry", model: store) }
-            #expect(await load.asked())
-            load.answer(nil)
-            await measuring.value
-            #expect(audio.duration == nil && audio.state == .idle, "a failed fetch stays quiet until a tap")
+            await preloading.value
+
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(load.calls == 1)
+            #expect(audio.state == .playing)
         }
     }
 
-    @Test func aBubbleGoneWhileItsSoundLoadsForItsLengthMeasuresNothing() async {
+    @Test func aTapWhileTheSoundPreloadsWaitsForTheSameFetchAndPlays() async {
         await playing { audio, load, store, note in
-            let measuring = Task { await audio.measure(note, entryId: "entry", model: store) }
+            let preloading = Task { await audio.preload(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await until { audio.state == .loading })
+            await audio.toggle(note, entryId: "entry", model: store)
+            load.answer(silentWAV())
+            await preloading.value
+            await tap.value
+
+            #expect(load.calls == 1)
+            #expect(audio.state == .playing)
+        }
+    }
+
+    @Test func aNoteSharedWithNoLengthReadsItOffItsPreloadAndTheTapFetchesNothingAgain() async {
+        await playing { audio, load, store, note in
+            let preloading = Task { await audio.preload(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await preloading.value
+            #expect(audio.duration == 1)
+            #expect(audio.state == .idle, "only the headers are read: nothing plays")
+
+            await audio.toggle(note, entryId: "entry", model: store)
+            #expect(load.calls == 1)
+            #expect(audio.state == .playing)
+        }
+        await playing { audio, load, store, note in
+            let preloading = Task { await audio.preload(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(nil)
+            await preloading.value
+            #expect(audio.duration == nil && audio.state == .idle, "a failed fetch stays quiet until a tap")
+
+            // The failed fetch is forgotten: the tap fetches again and reports it.
+            let tap = Task { await audio.toggle(note, entryId: "entry", model: store) }
+            #expect(await until { load.calls == 2 })
+            load.answer(silentWAV())
+            await tap.value
+            #expect(audio.state == .playing)
+        }
+    }
+
+    @Test func aBubbleGoneWhileItsSoundPreloadsReadsNoLength() async {
+        await playing { audio, load, store, note in
+            let preloading = Task { await audio.preload(note, entryId: "entry", model: store) }
             #expect(await load.asked())
             audio.stop()
             load.answer(silentWAV())
-            await measuring.value
+            await preloading.value
             #expect(audio.duration == nil)
         }
     }
@@ -160,16 +198,17 @@ private func silentWAV() -> Data {
         }
     }
 
-    @Test func aStaleLoadFinishingAfterANewerTapLeavesThatTapPlaying() async {
+    @Test func aStaleFetchLandingAfterAStopLeavesTheNewerTapPlaying() async {
         await playing { audio, load, store, note in
+            // The first tap's fetch stays the newer tap's: every asker shares it, and the tap the card outlived
+            // reads its answer late without touching state.
             let old = Task { await audio.toggle(note, entryId: "entry", model: store) }
             #expect(await load.asked())
             audio.stop()
             let new = Task { await audio.toggle(note, entryId: "entry", model: store) }
-            #expect(await until { load.calls == 2 })
+            #expect(load.calls == 1, "a tap waits on the fetch already running")
             load.answer(silentWAV())
             await new.value
-            load.answer(silentWAV())
             await old.value
 
             #expect(audio.state == .playing)
@@ -326,6 +365,11 @@ private func silentWAV() -> Data {
     #expect(FileDownloadCard.voiceNoteDetail(.downloading(500_000), play: .playing, duration: 12) == "0:00 / 0:12")
     #expect(FileDownloadCard.voiceNoteDetail(.saved, play: .paused, elapsed: 7, duration: 48) == "0:07 / 0:48")
     #expect(FileDownloadCard.voiceNoteDetail(nil, play: .paused, elapsed: 7, duration: 48) == "0:07 / 0:48")
+    #expect(FileDownloadCard.voiceNoteDetail(nil, elapsed: 3, duration: 10) == "0:03 / 0:10")
+    #expect(FileDownloadCard.voiceNoteDetail(nil, play: .paused, elapsed: 5, duration: 720) == "00:05 / 12:00",
+            "the elapsed count keeps the duration's shape, so the caption is always as wide as its room")
+    #expect(FileDownloadCard.voiceNoteDetail(nil, elapsed: 5, duration: 3720) == "0:00:05 / 1:02:00")
+    #expect(FileDownloadCard.voiceNoteDetail(nil, play: .paused, elapsed: 750, duration: 3720) == "0:12:30 / 1:02:00")
     #expect(FileDownloadCard.voiceNoteDetail(nil, duration: 9) == "0:00 / 0:09",
             "the length the computer read shows before the first play")
     for download: FileDownloads.State? in [nil, .saved, .downloading(500_000)] {
@@ -338,4 +382,19 @@ private func silentWAV() -> Data {
     #expect(FileDownloadCard.detail(nil, size: size) == "1.3 MB")
     #expect(FileDownloadCard.detail(.downloading(500_000), size: size) == "500 KB of 1.3 MB")
     #expect(FileDownloadCard.detail(.saved, size: size) == "1.3 MB · Downloaded")
+}
+
+@MainActor @Test func aVoiceNoteClocksRoomIsItsCaptionsShapeAMinutesWhileUnknown() {
+    #expect(FileDownloadCard.voiceNoteRoom(nil) == "0:00 / 0:00")
+    #expect(FileDownloadCard.voiceNoteRoom(10) == "0:00 / 0:00")
+    #expect(FileDownloadCard.voiceNoteRoom(720) == "00:00 / 00:00")
+    #expect(FileDownloadCard.voiceNoteRoom(3720) == "0:00:00 / 0:00:00")
+}
+
+@MainActor @Test func aBubblePreloadsItsSoundUnlessTheFetchWouldCost() {
+    let big = SharedAudio.preloadLimit + 1, small = SharedAudio.preloadLimit - 1
+    #expect(SharedAudio.preloads(online: true, expensive: true, bytes: big) == false)
+    #expect(SharedAudio.preloads(online: true, expensive: true, bytes: small) == true)
+    #expect(SharedAudio.preloads(online: true, expensive: false, bytes: big) == true)
+    #expect(SharedAudio.preloads(online: false, expensive: false, bytes: small) == false)
 }

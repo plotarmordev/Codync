@@ -243,6 +243,19 @@ impl Hub {
         self.bots.locked().contains_key(bot_id)
     }
 
+    /// Stops `bot_id`'s actor, and so its agent process; its row and transcript stay.
+    pub(crate) fn stop_actor(&self, bot_id: &str) {
+        if let Some(handle) = self.bots.locked().remove(bot_id) {
+            let _ = handle.tx.send(Cmd::Shutdown);
+        }
+    }
+
+    /// A task's actor is gone: what it was doing goes with it.
+    pub(crate) fn forget_runtime(&self, bot_id: &str) {
+        self.runtime.locked().remove(bot_id);
+        self.update_keep_awake();
+    }
+
     pub fn send_cmd(&self, bot_id: &str, cmd: Cmd) -> Result<()> {
         let bots = self.bots.locked();
         let h = bots.get(bot_id).ok_or_else(|| anyhow!("unknown bot"))?;
@@ -276,6 +289,14 @@ impl Hub {
     #[cfg(test)]
     pub fn bot_value_for_test(&self, id: &str) -> Value {
         self.bot_value(id).unwrap_or(Value::Null)
+    }
+
+    /// Stands in for bot `id`'s actor: what is sent to it arrives on the returned receiver.
+    #[cfg(test)]
+    pub fn attach_bot_for_test(&self, id: &str) -> tokio::sync::mpsc::UnboundedReceiver<Cmd> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        self.bots.locked().insert(id.into(), BotHandle { tx, task: tokio::spawn(async {}) });
+        rx
     }
 
     fn bot_value(&self, id: &str) -> Option<Value> {

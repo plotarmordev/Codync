@@ -91,10 +91,15 @@ public struct Bot: Codable, Identifiable, Hashable, Sendable {
     public var agentStep: AgentStep?
     /// Agents of its chain resting now.
     public var resting: [AgentRest] = []
+    /// The `/` commands of the agent it runs on now. Empty from an older host, and for a group.
+    public var agentCommands: [AgentCommand] = []
     /// What it keeps running on the computer. Empty from an older host, and for a group.
     public var devServers: [DevServer] = []
-    /// Its background tasks still going (`BotTask.swift`). Empty from an older host: the feature doesn't show.
-    public var tasks: [BotTask] = []
+    /// Its box (`WorkItem.swift`): live and waiting items, then the ones ended in the last day. Empty from an
+    /// older host: the feature doesn't show.
+    public var work: [WorkItem] = []
+    /// The most agents that work its items at once (1 to 6). Nil from an older host: no setting to show.
+    public var maxAgents: Int?
     public var unread: Int
     public var lastMessage: String?
     public var lastAt: Int64
@@ -166,8 +171,10 @@ extension Bot {
         workingChat = try c.decodeIfPresent(String.self, forKey: .workingChat)
         agentStep = try? c.decodeIfPresent(AgentStep.self, forKey: .agentStep)
         resting = (try? c.decodeIfPresent([AgentRest].self, forKey: .resting)) ?? []
+        agentCommands = (try? c.decodeIfPresent([AgentCommand].self, forKey: .agentCommands)) ?? []
         devServers = (try? c.decodeIfPresent([DevServer].self, forKey: .devServers)) ?? []
-        tasks = (try? c.decodeIfPresent([BotTask].self, forKey: .tasks)) ?? []
+        work = (try? c.decodeIfPresent(WorkList.self, forKey: .work))?.items ?? []
+        maxAgents = (try? c.decodeIfPresent(Int.self, forKey: .maxAgents)).map { min(max($0, Bot.maxAgentsRange.lowerBound), Bot.maxAgentsRange.upperBound) }
         unread = try c.decodeIfPresent(Int.self, forKey: .unread) ?? 0
         lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
         lastAt = try c.decodeIfPresent(Int64.self, forKey: .lastAt) ?? createdAt

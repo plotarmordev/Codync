@@ -30,6 +30,7 @@ struct ChatRow: View {
                 UserBubble(entry: entry, reply: reply)
                 ReactionsRow(entry: entry)
             }
+            .swipeToReply(.left, reply: reply)
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: entry.data.reactions)
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: entry.data.botReactions)
             .padding(.top, groupStart ? 12 : 4)
@@ -40,6 +41,7 @@ struct ChatRow: View {
                 ReactionsRow(entry: entry)
                     .padding(.leading, chat?.isGroup == true ? 34 : 0)
             }
+            .swipeToReply(.right, reply: reply)
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: entry.data.reactions)
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: entry.data.botReactions)
             .padding(.top, groupStart ? 12 : 4)

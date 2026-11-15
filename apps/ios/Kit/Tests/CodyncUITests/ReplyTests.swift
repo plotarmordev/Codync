@@ -27,6 +27,22 @@ private func message(_ id: String, kind: String, final: Bool? = nil, text: Strin
     #expect(e.data.replyTo?.text == "")
 }
 
+@Test func onlyASidewaysDragTheMessagesWayStartsASwipe() {
+    #expect(ReplySwipe.begins(CGPoint(x: 124, y: 0), .right))
+    #expect(ReplySwipe.begins(CGPoint(x: -300, y: 40), .left))
+    #expect(!ReplySwipe.begins(CGPoint(x: -300, y: 40), .right), "the other way")
+    #expect(!ReplySwipe.begins(CGPoint(x: 200, y: 260), .right), "mostly vertical stays the scroll")
+}
+
+@Test func aSwipedMessageFollowsTheFingerThenResistsPastTheThreshold() {
+    #expect(ReplySwipe.travel(40, .right) == 40)
+    #expect(ReplySwipe.travel(-40, .left) == 40)
+    #expect(ReplySwipe.travel(ReplySwipe.threshold + 40, .right) == ReplySwipe.threshold + 10)
+    #expect(ReplySwipe.travel(-30, .right) == 0, "never the other way")
+    #expect(AnalyticsEvent.replySwiped.name == "reply_swiped")
+    #expect(AnalyticsEvent.replySwiped.properties.isEmpty)
+}
+
 @MainActor @Test func aReplySendsItsTargetAndShowsTheQuoteAtOnce() async throws {
     let suite = "ReplyTests.\(UUID().uuidString)"
     let storage = SharedStore.Context(accountID: UUID().uuidString, suite: suite)

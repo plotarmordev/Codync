@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testsuites>
+  <testsuite name="Test Suite" device="Codync 43-swipe-a-message-bubble-to-reply-iphone - iOS 27.2 - E29A9469-4914-4CF1-A301-C7B4F57E45D6" tests="1" failures="0" time="95.032" timestamp="2026-11-16T04:59:16">
+    <testcase id="swipe-to-reply" name="swipe-to-reply" classname="swipe-to-reply" file="apps/maestro/swipe-to-reply.yaml" time="95.021" timestamp="2026-11-16T04:59:16" status="SUCCESS">
+      <properties>
+        <property name="tags" value="conversation"/>
+      </properties>
+    </testcase>
+  </testsuite>
+</testsuites>

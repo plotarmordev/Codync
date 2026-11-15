@@ -1,0 +1,6 @@
+2026-11-16 04:57:15 +0800 shutdown done; booting
+2026-11-16 04:57:18 +0800 	Finished
+2026-11-16 04:57:18 +0800 booted; head 2f2e63543fec60f38a6583682770a80f0d321db4
+2026-11-16 04:57:43 +0800 Waiting for flows to complete...
+2026-11-16 04:58:41 +0800 [Passed] swipe-to-reply (58s)
+2026-11-16 04:58:41 +0800 1/1 Flow Passed in 58s

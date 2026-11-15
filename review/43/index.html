@@ -1,8 +1,20 @@
-<!doctype html><meta charset=utf-8><title>Swipe to reply review</title><style>body{font:14px -apple-system,system-ui;margin:24px;background:#888}h2{margin-top:40px}section{margin:16px 0}figure{display:inline-block;margin:8px;vertical-align:top}img,video{display:block;max-width:none;border:1px solid #444}figcaption{font-weight:600}code{background:#fff;padding:1px 4px}</style>
+<!doctype html><meta charset=utf-8><title>Swipe to reply review</title><style>body{font:14px -apple-system,system-ui;margin:24px;background:#888}h2{margin-top:40px}section{margin:16px 0}figure{display:inline-block;margin:8px;vertical-align:top}img,video{display:block;max-width:none;border:1px solid #444}figcaption{font-weight:600}code{background:#fff;padding:1px 4px}pre{background:#fff;padding:8px}</style>
 <h1>Swipe a message bubble to reply (iPhone)</h1>
 <p>Code head: <code>2f2e63543fec60f38a6583682770a80f0d321db4</code> (branch <code>feat/43-swipe-a-message-bubble-to-reply-iphone</code>). Every image is at full size (1:1 pixels, 1206×2622), light and dark side by side. Mid-drag and threshold are frames of the simulator recording; rest and done are Maestro screenshots.</p>
 <h2>Recording (17.9 s)</h2><p>Early release, then voice note, file and own message in light; voice note again in dark.</p>
 <video src="swipe-to-reply-iphone.mp4" controls muted playsinline></video>
+<h2>Maestro: the committed flow, twice, each from a fresh simulator boot</h2><p><code>apps/maestro/swipe-to-reply.yaml</code> as committed at the code head (600 ms swipes). Before each run the simulator was shut down and booted again; the lines are the console output, timestamped as printed.</p>
+<pre>Run 1  (<a href="maestro/run-1.log">log</a>, <a href="maestro/run-1.xml">JUnit</a>)
+2026-11-16 04:57:15 +0800 shutdown done; booting
+2026-11-16 04:57:18 +0800 booted; head 2f2e63543fec60f38a6583682770a80f0d321db4
+2026-11-16 04:58:41 +0800 [Passed] swipe-to-reply (58s)
+2026-11-16 04:58:41 +0800 1/1 Flow Passed in 58s
+
+Run 2  (<a href="maestro/run-2.log">log</a>, <a href="maestro/run-2.xml">JUnit</a>)
+2026-11-16 04:58:48 +0800 shutdown done; booting
+2026-11-16 04:58:50 +0800 booted; head 2f2e63543fec60f38a6583682770a80f0d321db4
+2026-11-16 05:00:51 +0800 [Passed] swipe-to-reply (1m 35s)
+2026-11-16 05:00:51 +0800 1/1 Flow Passed in 1m 35s</pre>
 <h2>iPhone</h2>
 <section><h3>Rest: rest</h3><figure><figcaption>rest · light</figcaption><a href="ios/rest-light.png"><img src="ios/rest-light.png"></a></figure><figure><figcaption>rest · dark</figcaption><a href="ios/rest-dark.png"><img src="ios/rest-dark.png"></a></figure></section>
 <section><h3>Released early (springs back, nothing quoted): peak, under the threshold</h3><figure><figcaption>peak, under the threshold · light</figcaption><a href="ios/early-release-peak-light.png"><img src="ios/early-release-peak-light.png"></a></figure><figure><figcaption>peak, under the threshold · dark</figcaption><a href="ios/early-release-peak-dark.png"><img src="ios/early-release-peak-dark.png"></a></figure></section>

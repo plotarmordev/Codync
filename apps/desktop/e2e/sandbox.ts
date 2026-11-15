@@ -12,8 +12,10 @@ const root = resolve(__dirname, '../../..')
 const steerAgent = join(root, 'host/tests/fixtures/steer_agent.py')
 // A scripted agent that answers each message with its text (host/tests/fixtures/mode_agent.py).
 const echoAgent = join(root, 'host/tests/fixtures/mode_agent.py')
-// A scripted agent that starts background tasks and is the task itself (host/tests/fixtures/task_agent.py).
+// A scripted agent that puts items in its box and is the task that works them (host/tests/fixtures/task_agent.py).
 const taskAgent = join(root, 'host/tests/fixtures/task_agent.py')
+// The stand-in agent CLIs a `--cdp` sandbox's host finds first on its PATH (host/tests/fixtures/bin/README.md).
+const standIns = join(root, 'host/tests/fixtures/bin')
 
 /** This worktree's sandbox: its name, data folder, host port and DevTools port (`npm run dev -- --cdp` opens port + 10000). */
 export function sandbox() {
@@ -78,13 +80,59 @@ export async function echoBot(page: Page, name: string) {
   return bot
 }
 
-/** A bot on the scripted agent that starts a background task for `START <title>|<brief>`; it asks before it acts. */
+/** A bot on the scripted agent that adds an item to its box for `ADD <title>|<brief>`; it asks before it acts. */
 export async function taskBot(page: Page, name: string) {
   const { bot } = await api<{ bot: { id: string } }>(page, 'createBot', {
     name, backend: 'custom', command: `python3 -X utf8 -u '${taskAgent}'`, connectors: [], skills: [], notify: false,
   })
   await api(page, 'updateBot', { id: bot.id, permission: 'ask' })
   return bot
+}
+
+type LoginProfile = { id: string; kind: 'account' | 'apiKey'; name: string | null; signedIn: boolean; vars: string[] }
+export type Agent = { id: string; name: string; path?: string | null; installed?: boolean; loginProfiles?: LoginProfile[]; defaultLoginProfile?: { label?: string | null } }
+
+/** The agents the sandbox host knows, as its `hello` lists them. */
+export async function agents(page: Page) {
+  return (await api<{ backends: Agent[] }>(page, 'hello', {})).backends
+}
+
+/** The agent `id`, which must be the sandbox's stand-in of that name: no real agent runs and no real account is touched. */
+export async function standInAgent(page: Page, id: string) {
+  const agent = (await agents(page)).find((b) => b.id === id)
+  if (agent?.path !== join(standIns, id)) throw new Error(`The sandbox host doesn't run the stand-in ${id}: start it with \`npm run dev -- --cdp\`.`)
+  return agent
+}
+
+/** The login profiles the host has for the agent `id`. */
+export async function loginProfilesOf(page: Page, id: string) {
+  return (await agents(page)).find((b) => b.id === id)?.loginProfiles ?? []
+}
+
+/** Opens the agent's sheet from Extensions. */
+export async function openAgentSheet(page: Page, name: string) {
+  await page.getByRole('button', { name: /Extensions/ }).click()
+  await page.locator('.agent-grid').getByText(name, { exact: true }).click()
+}
+
+/**
+ * Add account on the agent's sheet: its sign-in opens in a terminal, and leaving it signs nothing in. Returns the new
+ * login profile's id, with the sheet showing its "New login profile" row; `made` hears the id as soon as the host has
+ * it, so a test that fails later still removes it.
+ */
+export async function addAccount(page: Page, agent: Agent, made: (id: string) => void) {
+  const before = new Set((await loginProfilesOf(page, agent.id)).map((p) => p.id))
+  await openAgentSheet(page, agent.name)
+  await page.getByRole('button', { name: /Add account/ }).click()
+  await expect(page.locator('.market-screen-title', { hasText: `Sign in to ${agent.name}` })).toBeVisible()
+  await expect(page.locator('.setup-terminal-surface')).toBeVisible()
+  let id: string | undefined
+  await expect.poll(async () => (id = (await loginProfilesOf(page, agent.id)).find((p) => !before.has(p.id))?.id)).toBeTruthy()
+  if (!id) throw new Error('Add account made no login profile.')
+  made(id)
+  await page.locator('.market-screen-header').getByRole('button', { name: 'Back' }).click()
+  await expect(page.locator('.login-profile', { hasText: 'New login profile' })).toContainText('Not signed in')
+  return id
 }
 
 /** Sends `text` from the open chat's composer. */
@@ -97,6 +145,19 @@ export async function typeMessage(page: Page, text: string) {
 export async function openGeneralSettings(page: Page) {
   await page.locator('.sidebar-account').click()
   await page.locator('.account-panel').getByText('Settings', { exact: true }).click()
+}
+
+/** Settings › Voice chat. */
+export async function openVoiceSettings(page: Page) {
+  await openGeneralSettings(page)
+  await page.locator('.settings-item', { hasText: 'Voice chat' }).click()
+}
+
+/** Picks `option` in the settings picker now showing `current`. */
+export async function pick(page: Page, current: string, option: string) {
+  await page.locator(`.choice-picker[title="${current}"]`).click()
+  await page.getByRole('menuitemradio', { name: option, exact: true }).click()
+  await expect(page.locator(`.choice-picker[title="${option}"]`)).toBeVisible()
 }
 
 type Host = {

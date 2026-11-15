@@ -6,9 +6,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 
 use super::super::app::{
-    App, Background, Bot, Click, Focus, Mark, RosterLine, Status, cursor_line, roster_lines, stops,
+    App, Bot, Click, Focus, Mark, RosterLine, Status, WorkStatus, counts, cursor_line, roster_lines, stops,
 };
-use super::super::l10n::{self, tr};
+use super::super::l10n::tr;
 use super::super::md::{self, truncate, width as w};
 use super::buffer::{fill, hline, put, put_line, restyle, rput, u};
 use super::style::{avatar, glyph, theme};
@@ -127,7 +127,7 @@ fn bot_row(buf: &mut Buffer, row: Rect, app: &mut App, b: &Bot, bar: Option<Styl
         mark_cursor(buf, row, bar);
     }
     put_line(buf, x0 + 2, y, 2, &avatar(app, b));
-    let (g, gs) = glyph(app, b.mark());
+    let (g, gs) = glyph(app, b.roster_mark());
     let time = if b.status == Status::Working { elapsed(b.started_at) } else { when(b.last_at) };
     let tx = rput(buf, row.right() - 1, y, &time, if b.unread > 0 { t.bold } else { t.dim });
     let gx = tx.saturating_sub(2);
@@ -161,22 +161,20 @@ pub(super) fn preview(b: &Bot) -> (String, Style) {
 
 fn preview_raw(b: &Bot) -> (String, Style) {
     let t = theme();
-    // An idle chat whose bot works away from it says so.
-    if b.status == Status::Idle
-        && let Some(background) = Background::of(&b.tasks)
-    {
-        let line = l10n::fill(&tr("In the background: {what}"), &[("what", &background.what)]);
-        return (line, if background.needs_you { t.amber } else { t.secondary });
-    }
+    // The most pressing first: it needs the user (its chat, then an item of its box), what its chat does, how many
+    // items work and wait; else the row reads as usual.
+    let background = counts(&b.work);
     match b.mark() {
         Mark::Need => (
             if b.activity.is_empty() { tr("Needs your approval").into_owned() } else { tr(&b.activity).into_owned() },
             t.amber,
         ),
+        _ if b.work.iter().any(|i| i.status == WorkStatus::NeedsYou) => (tr("Needs you").into_owned(), t.amber),
         Mark::Work => (
             if b.activity.is_empty() { tr("Working…").into_owned() } else { tr(&b.activity).into_owned() },
             t.secondary,
         ),
+        _ if !background.is_empty() => (background, t.secondary),
         Mark::Error => (
             if b.last_message.is_empty() { tr("Something went wrong").into_owned() } else { b.last_message.clone() },
             t.red,
@@ -218,7 +216,7 @@ pub(super) fn compact_roster(buf: &mut Buffer, r: Rect, app: &mut App) {
             }
             RosterLine::Bot(b) => {
                 put_line(buf, r.x + 1, y, 2, &avatar(app, b));
-                let (g, gs) = glyph(app, b.mark());
+                let (g, gs) = glyph(app, b.roster_mark());
                 put(buf, r.x + 3, y, 1, g, gs);
                 if b.lead && y + 1 < r.bottom() {
                     put(buf, r.x + 2, y + 1, 1, "★", t.amber);
@@ -262,16 +260,39 @@ mod tests {
     }
 
     #[test]
-    fn an_idle_bot_with_tasks_previews_what_runs_in_the_background() {
-        let bot = |status: &str| {
-            let tasks = serde_json::json!([{"id": "task-1", "title": "Fix login", "status": "working"}]);
-            Bot::parse(&serde_json::json!({"id": "a", "status": status, "lastMessage": "On it.", "tasks": tasks}))
-                .expect("a bot with an id parses")
+    fn a_row_is_marked_by_how_the_bot_stands_outside_its_chat() {
+        let bot = |more: serde_json::Value| {
+            let mut bot = serde_json::json!({"id": "a", "status": "idle", "unread": 2});
+            bot.as_object_mut().expect("an object").extend(more.as_object().cloned().unwrap_or_default());
+            Bot::parse(&bot).expect("a bot with an id parses")
         };
-        assert_eq!(preview(&bot("idle")).0, "In the background: Fix login");
-        assert_eq!(preview(&bot("working")).0, "Working…", "its own turn comes first");
-        let none = Bot::parse(&serde_json::json!({"id": "a", "lastMessage": "On it."})).expect("a bot");
-        assert_eq!(preview(&none).0, "On it.", "a host from before tasks");
+        let background = bot(serde_json::json!({"outside": {"status": "working", "startedAt": 5}}));
+        assert_eq!((background.roster_mark(), background.mark()), (Mark::Work, Mark::Unread), "only its box works");
+        let asked = bot(serde_json::json!({"status": "working", "outside": {"status": "needsInput"}}));
+        assert_eq!((asked.roster_mark(), asked.mark()), (Mark::Need, Mark::Work), "an item waits on a card");
+        assert_eq!(bot(serde_json::json!({"outside": {"status": "idle"}})).roster_mark(), Mark::Unread);
+        let older = bot(serde_json::json!({"status": "needsInput"}));
+        assert_eq!(older.roster_mark(), Mark::Need, "a host before `outside`: the chat's own status");
+        assert_eq!(bot(serde_json::json!({"outside": {"status": "napping"}})).roster_mark(), Mark::Unread, "unknown");
+    }
+
+    #[test]
+    fn a_row_previews_the_most_pressing_thing_first() {
+        let line = |status: &str, items: &[&str]| {
+            let work: Vec<_> =
+                items.iter().map(|s| serde_json::json!({"id": s, "title": "Fix login", "status": s})).collect();
+            let bot = serde_json::json!({"id": "a", "status": status, "lastMessage": "On it.", "work": work});
+            preview(&Bot::parse(&bot).expect("a bot with an id parses")).0
+        };
+        assert_eq!(line("idle", &["working", "working", "waiting", "waiting", "waiting"]), "2 working · 3 waiting");
+        assert_eq!(line("idle", &["working", "done"]), "1 working", "either part alone when the other is zero");
+        assert_eq!(line("idle", &["waiting", "waiting", "failed"]), "2 waiting");
+        assert_eq!(line("needsInput", &["needsYou", "working"]), "Needs your approval", "the chat's own card first");
+        assert_eq!(line("idle", &["working", "needsYou", "waiting"]), "Needs you", "then an item that needs you");
+        assert_eq!(line("working", &["working", "needsYou"]), "Needs you");
+        assert_eq!(line("working", &["working", "waiting"]), "Working…", "then the chat's own activity");
+        assert_eq!(line("idle", &["done", "stopped", "later"]), "On it.", "nothing live or waiting: the last message");
+        assert_eq!(line("idle", &[]), "On it.", "a host from before the box");
     }
 
     #[test]

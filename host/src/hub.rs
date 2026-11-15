@@ -109,6 +109,8 @@ pub struct Hub {
     pub(crate) emit_lock: Mutex<()>,
     bots: Mutex<HashMap<String, BotHandle>>,
     runtime: Mutex<HashMap<String, Runtime>>,
+    /// Bot → the status its Live Activities last heard (`outside_changed`).
+    outside: Mutex<HashMap<String, BotStatus>>,
     pub phone_clients: AtomicUsize,
     pub usage: Mutex<Usage>,
     /// An agent became wanted: its usage is read now, not at the next poll.
@@ -172,6 +174,7 @@ impl Hub {
             emit_lock: Mutex::new(()),
             bots: Mutex::default(),
             runtime: Mutex::default(),
+            outside: Mutex::default(),
             phone_clients: AtomicUsize::new(0),
             usage: Mutex::default(),
             usage_wake: tokio::sync::Notify::new(),
@@ -243,6 +246,19 @@ impl Hub {
         self.bots.locked().contains_key(bot_id)
     }
 
+    /// Stops `bot_id`'s actor, and so its agent process; its row and transcript stay.
+    pub(crate) fn stop_actor(&self, bot_id: &str) {
+        if let Some(handle) = self.bots.locked().remove(bot_id) {
+            let _ = handle.tx.send(Cmd::Shutdown);
+        }
+    }
+
+    /// A task's actor is gone: what it was doing goes with it.
+    pub(crate) fn forget_runtime(&self, bot_id: &str) {
+        self.runtime.locked().remove(bot_id);
+        self.update_keep_awake();
+    }
+
     pub fn send_cmd(&self, bot_id: &str, cmd: Cmd) -> Result<()> {
         let bots = self.bots.locked();
         let h = bots.get(bot_id).ok_or_else(|| anyhow!("unknown bot"))?;
@@ -276,6 +292,14 @@ impl Hub {
     #[cfg(test)]
     pub fn bot_value_for_test(&self, id: &str) -> Value {
         self.bot_value(id).unwrap_or(Value::Null)
+    }
+
+    /// Stands in for bot `id`'s actor: what is sent to it arrives on the returned receiver.
+    #[cfg(test)]
+    pub fn attach_bot_for_test(&self, id: &str) -> tokio::sync::mpsc::UnboundedReceiver<Cmd> {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        self.bots.locked().insert(id.into(), BotHandle { tx, task: tokio::spawn(async {}) });
+        rx
     }
 
     fn bot_value(&self, id: &str) -> Option<Value> {
@@ -328,8 +352,13 @@ impl Hub {
             }
             self.update_keep_awake();
         }
-        if before.status != after.status && !crate::store::is_task_id(id) {
-            push::live_activity_update(self, id, &after);
+        if before.status != after.status && crate::store::is_task_id(id) {
+            // A task's status is its bot's to what follows the bot from outside its chat.
+            if let Some(owner) = self.store.bot(id).ok().flatten().and_then(|row| row.config.task_of) {
+                self.outside_changed(&owner);
+            }
+        } else if before.status != after.status {
+            self.outside_changed(id);
             // A group's Live Activity follows its busy member.
             for lane in [&before.lane, &after.lane].into_iter().flatten().filter(|l| l.chat != id) {
                 if let Ok(Some(group)) = self.store.bot(&lane.chat) {
@@ -341,6 +370,26 @@ impl Hub {
 
     pub fn runtime(&self, id: &str) -> Runtime {
         self.runtime.locked().get(id).cloned().unwrap_or_default()
+    }
+
+    /// A bot's runtime as what shows it outside its chat reads it (a Live Activity, an ongoing notification): its
+    /// chat's, with the status and start its work in the background gives it (`chat::tasks::outside`).
+    pub fn outside_runtime(&self, cfg: &BotConfig) -> Runtime {
+        let chat = self.runtime(&cfg.id);
+        let (status, started_at) = crate::chat::tasks::outside(self, cfg, &chat);
+        Runtime { status, started_at, ..chat }
+    }
+
+    /// `bot`'s chat or its box changed: its Live Activities hear how it stands now, when that is new to them. So
+    /// one doesn't end while items work, and ends once the box is empty and the chat idle.
+    pub fn outside_changed(&self, bot: &str) {
+        let row = self.store.bot(bot).ok().flatten().filter(|row| !row.config.is_group() && !row.config.is_task());
+        let Some(row) = row else { return };
+        let rt = self.outside_runtime(&row.config);
+        let before = self.outside.locked().insert(bot.to_owned(), rt.status);
+        if before.unwrap_or_default() != rt.status {
+            push::live_activity_update(self, bot, &rt);
+        }
     }
 
     pub(crate) fn update_keep_awake(&self) {

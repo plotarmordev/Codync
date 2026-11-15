@@ -82,7 +82,7 @@ impl Hub {
     }
 
     pub fn delete_bot(&self, id: &str) -> Result<()> {
-        // Its tasks go first: they are the bot's own work.
+        // Its tasks go first: they are the bot's own work. Its box goes below.
         for task in crate::chat::tasks::of(&self.store, id) {
             self.delete_bot(&task.id)?;
         }
@@ -102,7 +102,7 @@ impl Hub {
                 let _ = self.events.send(deleted);
             }
         }
-        crate::chat::tasks::forget(&self.store, id);
+        crate::chat::tasks::forget(self, id);
         crate::network::publish(self);
         // Its shared files and artifacts are unreachable once the bot is deleted.
         let folders = [crate::chat::files::root(id), crate::chat::artifacts::root(id)];

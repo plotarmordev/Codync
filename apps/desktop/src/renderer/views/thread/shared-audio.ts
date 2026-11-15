@@ -37,6 +37,8 @@ export interface SharedAudioPlatform {
   load(): Promise<Uint8Array | null>
   /** A player for the bytes. */
   open(data: Uint8Array, events: SoundEvents): Sound
+  /** The bytes' length (seconds) from their headers, without playing them; 0 when they don't say. */
+  length(data: Uint8Array): Promise<number>
 }
 
 /** Plays a sound a bot shared (a voice note); one card's player, disposed when the card goes. */
@@ -50,7 +52,7 @@ export class SharedAudio {
   failure: AudioFailure = 'load'
   private readonly platform: SharedAudioPlatform
   private readonly changed: (snapshot: AudioSnapshot) => void
-  /** The length the host read from the sound's headers (0 when unknown), shown until the sound itself says. */
+  /** The length the host or the card read from the sound's headers (0 when unknown), shown until the sound itself says. */
   private known: number
 
   constructor(platform: SharedAudioPlatform, changed: (snapshot: AudioSnapshot) => void, known: number) {
@@ -94,6 +96,15 @@ export class SharedAudio {
     this.known = seconds
     this.duration = seconds
     this.changed(this.snapshot)
+  }
+
+  /** A note shared with no length (an older computer): read it from the sound's headers as the card shows, so the
+   *  clock is there before the first play. A fetch or read that fails stays quiet: the tap retries and reports it. */
+  async measure() {
+    if (this.duration > 0 || this.disposed) return
+    const data = await this.platform.load()
+    const seconds = data && !this.disposed ? await this.platform.length(data) : 0
+    if (!this.disposed) this.setKnownDuration(seconds)
   }
 
   /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */

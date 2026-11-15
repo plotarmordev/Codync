@@ -39,7 +39,8 @@ export function VoiceNotePlayer({ entry, file, menu, named = false }: { entry: E
         <HStack gap={10}>
           <AudioIcon snapshot={snapshot} toggle={toggle} />
           {stop.failed ? null : <AudioProgress snapshot={snapshot} seek={seek} />}
-          {stop.detail ? <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail" grow={stop.failed}>{stop.detail}</Text> : null}
+          {/* An unknown length keeps the clock's room, so the bar doesn't shrink when the length arrives. */}
+          <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className={stop.detail ? 'file-card-detail' : 'file-card-detail voice-note-unknown'} grow={stop.failed}>{stop.detail || '0:00 / 0:00'}</Text>
         </HStack>
         {named ? <Text as="div" size="subheadline" weight="semibold" truncate title={file.name}>{file.name}</Text> : null}
       </VStack>

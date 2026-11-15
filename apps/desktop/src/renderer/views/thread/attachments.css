@@ -119,6 +119,9 @@
 .voice-note .file-card-detail {
   font-variant-numeric: tabular-nums;
 }
+.voice-note-unknown {
+  visibility: hidden;
+}
 .file-card-image-menu {
   display: flex;
   align-self: flex-start;

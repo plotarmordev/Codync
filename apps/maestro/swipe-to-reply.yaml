@@ -32,6 +32,10 @@ onFlowComplete:
     commands:
       - launchApp:
           appId: com.pokai.Codync.android.dev
+# A bot made a moment ago can take a while to reach the phone's list, and a cold launch can take 45 s to connect.
+- extendedWaitUntil:
+    visible: ${output.bot.name}
+    timeout: 60000
 - tapOn: ${output.bot.name}
 - extendedWaitUntil:
     visible: "Here is the plan."

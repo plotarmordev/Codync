@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -97,7 +96,7 @@ val LocalNetworkImages = staticCompositionLocalOf<ImageLoader> { error("Missing 
 }
 
 /** A table: a bold header and hairlines between rows, its cells wrapping to fit the bubble; a
- *  table too wide for that scrolls sideways. */
+ *  table with too many columns to fit scrolls sideways. */
 @Composable private fun MarkdownTable(table: Block.Table, code: Color, ink: Color) {
     val columns = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0)
     val rows = listOf(table.header) + table.rows
@@ -119,10 +118,10 @@ val LocalNetworkImages = staticCompositionLocalOf<ImageLoader> { error("Missing 
 }
 
 /** A table's cells in a grid that shares each row's height across its columns. A column is as
- *  wide as its widest cell when the columns fit in [viewport] together and, when they don't, as
- *  wide as the space allows between its longest word and that (the desktop's `auto` grid tracks,
- *  iOS `TableLayout` shrinking). The children come row by row: each row after the first preceded
- *  by its hairline. */
+ *  wide as its widest cell when the columns fit in [viewport] together and, when they don't, the
+ *  space is shared out equally, a column stopping at its widest cell (the desktop's `auto` grid
+ *  tracks, iOS `TableLayout`). A cell wider than its column wraps mid-word. The children come row
+ *  by row: each row after the first preceded by its hairline. */
 @Composable private fun TableGrid(columns: Int, viewport: Dp, content: @Composable () -> Unit) {
     Layout(content) { measurables, constraints ->
         val gap = 16.dp.roundToPx()
@@ -142,30 +141,8 @@ val LocalNetworkImages = staticCompositionLocalOf<ImageLoader> { error("Missing 
         val hairlines = rows.map { if (it.size == 1 + columns) it.first() else null }
         val cellRows = rows.map { if (it.size == 1 + columns) it.drop(1) else it }
 
-        fun columnContent(pick: (Measurable) -> Int) = IntArray(columns) { column -> cellRows.maxOf { pick(it[column]) } }
-        val maxContent = columnContent { it.maxIntrinsicWidth(height) }
-        val widths = if (maxContent.sum() <= available) maxContent
-        else {
-            // A column never goes narrower than its longest word; what's left is shared out
-            // equally, as the desktop's `auto` grid tracks do, and a column stops growing at its
-            // widest cell.
-            val minContent = columnContent { it.minIntrinsicWidth(height) }
-            val share = minContent.map { it.toDouble() }.toMutableList()
-            var remaining = (available - minContent.sum()).toDouble()
-            var growable = share.indices.filter { maxContent[it] > minContent[it] }
-            while (remaining > 0 && growable.isNotEmpty()) {
-                val each = remaining / growable.size
-                var used = 0.0
-                for (column in growable) {
-                    val add = minOf(each, maxContent[column] - share[column])
-                    share[column] += add
-                    used += add
-                }
-                remaining -= used
-                growable = growable.filter { share[it] < maxContent[it] }
-            }
-            share.map { it.toInt() }.toIntArray()
-        }
+        val maxContent = IntArray(columns) { column -> cellRows.maxOf { it[column].maxIntrinsicWidth(height) } }
+        val widths = tableColumnWidths(maxContent, available)
         val tableWidth = widths.sum() + gap * (columns - 1)
 
         val placeableRows = cellRows.mapIndexed { index, row ->
@@ -189,6 +166,27 @@ val LocalNetworkImages = staticCompositionLocalOf<ImageLoader> { error("Missing 
             }
         }
     }
+}
+
+/** A table's column widths: each as wide as its widest cell when they fit in [available]
+ *  together, otherwise the space shared out equally, a column stopping at its widest cell. */
+internal fun tableColumnWidths(maxContent: IntArray, available: Int): IntArray {
+    if (maxContent.sum() <= available) return maxContent
+    val widths = DoubleArray(maxContent.size)
+    var remaining = available.toDouble()
+    var growable = maxContent.indices.filter { maxContent[it] > 0 }
+    while (remaining > 0 && growable.isNotEmpty()) {
+        val each = remaining / growable.size
+        var used = 0.0
+        for (column in growable) {
+            val add = minOf(each, maxContent[column] - widths[column])
+            widths[column] += add
+            used += add
+        }
+        remaining -= used
+        growable = growable.filter { widths[it] < maxContent[it] }
+    }
+    return IntArray(maxContent.size) { widths[it].toInt() }
 }
 
 private val inlineParser = Parser.builder().extensions(listOf(StrikethroughExtension.create())).build()

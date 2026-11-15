@@ -45,6 +45,10 @@ impl Actor {
                     self.cancel_turn().await;
                 }
             }
+            // An item in its box, so the chat stays free; a bot that needs its chat's tools for it takes it here.
+            Cmd::BotRequest(request) if tasks::boxed(&self.base) => {
+                tasks::add_request(&self.hub, &self.cfg.id, request);
+            }
             Cmd::BotRequest(request) => self.enqueue(Queued::BotRequest(request), done_tx).await,
             Cmd::BotReply(reply) => self.enqueue(Queued::BotReply(reply), done_tx).await,
             Cmd::Prompt { text, call } => self.enqueue(Queued::Prompt { text, call }, done_tx).await,
@@ -236,11 +240,8 @@ impl Actor {
                             self.hub.routines.release(&self.cfg.id);
                         }
                         Err(error) => {
-                            self.finish_routine(
-                                crate::routines::Status::Failed,
-                                Some(format!("Could not start routine: {error:#}")),
-                                None,
-                            );
+                            let why = crate::routines::could_not_start(format_args!("{error:#}"));
+                            self.finish_routine(crate::routines::Status::Failed, Some(why), None);
                         }
                     }
                     continue;
@@ -382,10 +383,11 @@ impl Actor {
         if self.turn.is_some() {
             self.report_turn(false, Some(e), "start_failed");
         }
-        self.finish_routine(crate::routines::Status::Failed, Some(format!("Could not start routine: {e:#}")), None);
-        self.complete_request(Err(anyhow!("couldn't start recipient: {e:#}")), false);
+        let why = crate::routines::could_not_start(format_args!("{e:#}"));
+        self.finish_routine(crate::routines::Status::Failed, Some(why), None);
+        self.complete_request(Err(crate::chat::team::no_reply::not_started(format_args!("{e:#}"))), false);
         self.complete_group(Err(anyhow!("couldn't start: {e:#}")));
-        self.turn_over(Outcome::Failed(Failure::Start, format!("it could not start: {e:#}")));
+        self.turn_over(Outcome::not_started(e));
         if !self.invite_sign_in(e) {
             // `{:#}` keeps the reason ("starting `npx …`: EACCES"), not just "agent process exited".
             self.failure_notice(e, &format!("Couldn't start the agent: {e:#}"), "start_failed");
@@ -488,7 +490,8 @@ impl Actor {
                 self.notice(&tasks::report_notice(report), NoticeStyle::Info);
             }
         }
-        tasks::reported(&self.hub, &self.cfg.id, &reports);
+        let items: Vec<String> = reports.into_iter().map(|report| report.item).collect();
+        tasks::reported(&self.hub, &self.cfg.id, &items);
     }
 
     /// The turn is over, however it ended (or never began): a task's item says how and its bot gets the report;
@@ -534,13 +537,14 @@ impl Actor {
         let Some(completion) = &self.routine_completion else {
             return true;
         };
+        let ran = crate::routines::Ran { timed_out: completion.timed_out, task: None };
         match self.hub.routines.complete(
             &self.hub,
             &completion.id,
             completion.status,
             completion.detail.clone(),
             completion.text.clone(),
-            completion.timed_out,
+            &ran,
         ) {
             Ok(()) => {
                 // A finished run's session is never resumed.

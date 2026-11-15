@@ -7,35 +7,30 @@ released version's section; a version without one gets the PRs' "What's New: And
 else a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
-## 2.48.2
+## 2.49.0
 ### zh-Hant
 - Bot 把比較久的工作放到背景做，聊天照常回你。
+- 例行任務和其他 Bot 的請求也在背景進行，不再占住聊天。
+- Bot 列表的「工作」按鈕列出每個 Bot 的背景工作。
+- 背景工作要核准、要問你問題或傳檔案時，會出現在聊天裡。
 - 點輸入框上方的膠囊開啟 Bot 的「詳情」：Threads（正在跑的）和 Event Box（等待中的：先做、插隊、丟掉）。
-- 背景工作要核准時，卡片出現在聊天裡。
 - 「同時幾個 agent」在 Bot 的「設定」。
-- 從任何 App 的分享選單把文字、連結、照片或檔案傳給 Bot。
-- Bot 可以設定跟進，晚點自己回來；例行任務接著上次做。
-- 可以只回覆訊息的其中一段：長按訊息選「選取文字」。
-- 開始 OpenAI 即時語音通話或遠端螢幕時，App 不會再關閉。
-- 選擇卡片可以直接打字回答。
-- 改用備援時，智慧體卡片會說明原因，只有用量上限才顯示重設時間。
-- 輸入 `/` 時，清單最後會列出 Bot 所用智慧體自己的指令（Claude Code、Codex、OpenCode 等），和 Codync 自己的指令、技能分開，標上智慧體的名稱、圖示和說明；選一個會填入 `/<指令>`，送出後由智慧體直接執行。
+- 「每個 agent 一個 worktree」：同時在同一個 repository 工作的 agent 各有自己的分支。
+- 改用備援時，智慧體卡片會說明原因。
+- 輸入 `/` 時會列出 Bot 所用智慧體自己的指令。
 - 語音訊息一出現就顯示播放鍵、進度條和長度，下載移到訊息的選單裡；載入時離開聊天，它不會在離開後才開始播放。
 - 重新連上電腦後只補上錯過的訊息。
 - 訊息裡的表格放不進泡泡時，過長的文字會在格子裡換行，不再被截斷。
 
 ### en-US
 - Bots do long work in the background and keep answering.
-- The capsule over the message box opens Details: Threads and Event box.
-- Its approval cards appear in the chat.
-- Agents at once is in the bot's Settings.
-- Share text, links, photos or files to a bot from any app.
-- Bots can check back later; routines resume.
-- Reply to one part of a message.
-- OpenAI calls and remote screen no longer close the app.
-- Choice cards take your own answer.
+- Routines and other bots' requests run there too.
+- The Work button in the bot list shows every bot's background work.
+- Background work can ask, or send a file, in the chat.
+- Details: Threads (running), Event box (waiting: First, Cut in, Drop).
+- Settings: Agents at once; Worktree per agent gives each its own branch.
 - On a fallback, the Agent card says why.
-- Typing `/` now also lists the bot's agent's own commands (Claude Code, Codex, OpenCode and more), listed apart from Codync's own commands and skills under the agent's name, with its logo and description; pick one to fill in `/<command>`, and the agent runs it when you send.
+- `/` also lists the agent's own commands.
 - Voice notes show a player at once and stop when you leave.
 - Reconnects fetch only missed messages.
 - A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.

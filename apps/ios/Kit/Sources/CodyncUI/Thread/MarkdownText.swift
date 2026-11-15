@@ -80,7 +80,7 @@ struct MarkdownBlock: View {
 
 /// A table: a bold header and hairlines between rows, its cells wrapping to fit the bubble. A
 /// word longer than the space its column gets wraps mid-word, since SwiftUI's Text reports no
-/// minimum width to hold a whole word (the desktop and Android scroll such tables instead).
+/// minimum width to hold a whole word.
 private struct MarkdownTable: View {
     let header: [String]
     let rows: [[String]]
@@ -115,7 +115,7 @@ private struct TableCells: View {
 /// wide as its widest cell when the columns fit together, and when they don't, the space is
 /// shared out equally and a column stops growing at its widest cell — the desktop's `auto` grid
 /// tracks. Proposed no width, every column takes its widest cell.
-private struct TableLayout: Layout {
+struct TableLayout: Layout {
     let columns: Int
 
     struct Cache {
@@ -138,6 +138,27 @@ private struct TableLayout: Layout {
     /// The table's width: its columns and the gaps between them, which its hairlines span too.
     private func tableWidth(_ widths: [CGFloat]) -> CGFloat {
         widths.reduce(0, +) + CGFloat(columns - 1) * 16
+    }
+
+    /// The columns' widths: each as wide as its widest cell when they fit in `available`
+    /// together, otherwise the space shared out equally, a column stopping at its widest cell.
+    static func columnWidths(ideal: [CGFloat], available: CGFloat) -> [CGFloat] {
+        guard ideal.reduce(0, +) > available else { return ideal }
+        var widths = Array(repeating: CGFloat(0), count: ideal.count)
+        var remaining = available
+        var growable = Array(ideal.indices)
+        while remaining > 0, !growable.isEmpty {
+            let share = remaining / CGFloat(growable.count)
+            var used: CGFloat = 0
+            for column in growable {
+                let add = min(share, ideal[column] - widths[column])
+                widths[column] += add
+                used += add
+            }
+            remaining -= used
+            growable = growable.filter { widths[$0] < ideal[$0] }
+        }
+        return widths
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout Cache) {
@@ -168,23 +189,7 @@ private struct TableLayout: Layout {
             rows.map { subviews[$0[column]].sizeThatFits(.unspecified).width }.max() ?? 0
         }
         let available = proposal.width.map { $0 - CGFloat(columns - 1) * 16 }
-        var widths = ideal
-        if let available, ideal.reduce(0, +) > available {
-            widths = Array(repeating: 0, count: columns)
-            var remaining = available
-            var growable = Array(0 ..< columns)
-            while remaining > 0, !growable.isEmpty {
-                let share = remaining / CGFloat(growable.count)
-                var used: CGFloat = 0
-                for column in growable {
-                    let add = min(share, ideal[column] - widths[column])
-                    widths[column] += add
-                    used += add
-                }
-                remaining -= used
-                growable = growable.filter { widths[$0] < ideal[$0] }
-            }
-        }
+        let widths = available.map { Self.columnWidths(ideal: ideal, available: $0) } ?? ideal
         cache.proposal = proposal
         cache.widths = widths
         cache.heights = rows.map { row in

@@ -31,6 +31,14 @@ export function clock(seconds: number) {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
 }
 
+/** The widest clock a sound of this length shows, digits zeroed (`00:00 / 00:00`, hours past an hour): the room a
+ *  player keeps for its clock, so the bar ends in one place from the first frame, while the length is unknown and as
+ *  the clock runs. */
+export function clockRoom(duration: number) {
+  const widest = clock(Math.max(duration, 600)).replace(/\d/g, '0')
+  return `${widest} / ${widest}`
+}
+
 /** What the download button does now (also the Library's file rows). */
 export function downloadAction(state: DownloadState | undefined) {
   return state?.kind === 'downloading' ? trNow('Cancel download') : state?.kind === 'failed' ? trNow('Retry download') : state?.kind === 'saved' ? trNow('Save again') : trNow('Download')

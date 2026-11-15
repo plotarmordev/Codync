@@ -9,7 +9,7 @@ import { Spinner } from '../../components/Controls'
 import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { AttachmentImage, AttachmentViewer, attachmentSymbol, type ImageSource } from './Attachments'
-import { cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, downloadAction, downloadDetail } from './file-card'
+import { cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clockRoom, downloadAction, downloadDetail } from './file-card'
 import { ImageContextMenu } from './ImageContextMenu'
 import { imageCopyItems, type MessageMenu } from './use-image-actions'
 import { analytics } from '../../store/analytics'
@@ -38,9 +38,13 @@ export function VoiceNotePlayer({ entry, file, menu, named = false }: { entry: E
       <VStack gap={4} aria-hidden>
         <HStack gap={10}>
           <AudioIcon snapshot={snapshot} toggle={toggle} />
-          {stop.failed ? null : <AudioProgress snapshot={snapshot} seek={seek} />}
-          {/* An unknown length keeps the clock's room, so the bar doesn't shrink when the length arrives. */}
-          <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className={stop.detail ? 'file-card-detail' : 'file-card-detail voice-note-unknown'} grow={stop.failed}>{stop.detail || '0:00 / 0:00'}</Text>
+          {stop.failed ? <Text as="div" size="caption2" tone="danger" className="file-card-detail" grow>{stop.detail}</Text> : <>
+            <AudioProgress snapshot={snapshot} seek={seek} />
+            <Text as="div" size="caption2" tone="secondary" className="file-card-detail voice-note-clock">
+              <span className="voice-note-clock-room">{clockRoom(snapshot.duration)}</span>
+              <span>{stop.detail}</span>
+            </Text>
+          </>}
         </HStack>
         {named ? <Text as="div" size="subheadline" weight="semibold" truncate title={file.name}>{file.name}</Text> : null}
       </VStack>

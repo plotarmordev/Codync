@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SharedFile } from '@shared/models'
 import type { DownloadState } from '../../store/file-downloads.ts'
-import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock } from './file-card.ts'
+import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock, clockRoom } from './file-card.ts'
 import type { AudioSnapshot } from './shared-audio.ts'
 
 const file = (size: number): SharedFile => ({ id: 'f1', name: 'venue-floor-plan.pdf', size, sha256: 'a'.repeat(64) })
@@ -26,6 +26,13 @@ test('clock writes m:ss, and h:mm:ss past an hour', () => {
   assert.equal(clock(48), '0:48')
   assert.equal(clock(600), '10:00')
   assert.equal(clock(3725), '1:02:05')
+})
+
+test("a voice note's clock keeps the room of its widest form, so the bar never moves", () => {
+  assert.equal(clockRoom(0), '00:00 / 00:00', 'an unknown length')
+  assert.equal(clockRoom(9), '00:00 / 00:00')
+  assert.equal(clockRoom(600), '00:00 / 00:00')
+  assert.equal(clockRoom(3725), '0:00:00 / 0:00:00', 'past an hour')
 })
 
 test('a card that could not play says so before anything else', () => {

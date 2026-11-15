@@ -119,7 +119,15 @@
 .voice-note .file-card-detail {
   font-variant-numeric: tabular-nums;
 }
-.voice-note-unknown {
+/* The clock over its widest form (hidden), in one cell: the bar's end never moves (`clockRoom`). */
+.voice-note-clock {
+  display: grid;
+  justify-items: end;
+}
+.voice-note-clock > span {
+  grid-area: 1 / 1;
+}
+.voice-note-clock-room {
   visibility: hidden;
 }
 .file-card-image-menu {

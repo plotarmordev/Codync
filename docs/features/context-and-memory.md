@@ -214,8 +214,11 @@ Claude Code's own memory; the rules live in the `codync-mem` crate, and `chat/me
 - A request turn (the recipient's) doesn't set the restart marker: its pending notices become interrupted errors instead of automatically replaying work. A reply turn is the sender's own chat turn and sets it, so it resumes like a user turn.
 - Stop sends `session/cancel`; an agent still running 15 seconds later is stopped (it resumes its session on
   the next turn). `session/new`, `session/load`, `session/resume` and `session/fork` get three minutes before the agent is
-  stopped. Connector or computer changes restart an agent that can resume sessions before its next turn; one
-  that can't keeps its session, and its next new session gets them.
+  stopped. A reopen (`session/load`, `session/resume`) that times out may mean a process the stopped agent started still
+  holds the session: the host logs which of the user's processes have it open (`lsof`, not on Windows), then a fresh
+  agent tries the same session once more; a second timeout fails the turn (a bot with fallbacks moves on to its next
+  agent) and the chat keeps its session. Connector or computer changes restart an agent that can resume sessions before
+  its next turn; one that can't keeps its session, and its next new session gets them.
 - `turn.inflight.<bot>` records when the running turn in the bot's chat started. If the host stops mid-turn (update, crash, restart), the next
   start resumes that session with a hidden "you were interrupted, don't repeat finished steps" prompt. If the
   session can't be resumed, or the turn started over an hour ago, it does nothing.

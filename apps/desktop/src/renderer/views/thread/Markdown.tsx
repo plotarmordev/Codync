@@ -77,7 +77,8 @@ const MarkdownBlock = memo(function MarkdownBlock({ block }: { block: Block }) {
       return (
         <div className="md-table-scroll">
           {/* Each cell is its own block to find in: a match never runs from one cell into the next. */}
-          <div className="md-table md-body" style={{ gridTemplateColumns: `repeat(${columns}, max-content)` }}>
+          {/* `auto` columns share the bubble's width, so a long cell wraps instead of running past it. */}
+          <div className="md-table md-body" style={{ gridTemplateColumns: `repeat(${columns}, auto)` }}>
             {cols.map((i) => (
               <Text key={`h${i}`} weight="semibold" data-find-block>{inline(block.header[i] ?? '', `h${i}`)}</Text>
             ))}

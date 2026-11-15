@@ -28,7 +28,7 @@ async function renderMarkdown(text: string): Promise<string> {
 
 test('MarkdownText renders every row and cell of a 150,000-row table', async () => {
   const html = await renderMarkdown(`| A | B |\n|---|---|\n${'| 1 | 2 |\n'.repeat(149_999)}| 1 | 2 | 3 |`)
-  assert.match(html, /grid-template-columns:repeat\(3, max-content\)/)
+  assert.match(html, /grid-template-columns:repeat\(3, auto\)/)
   assert.equal(html.match(/class="hairline"/g)?.length, 150_000)
   assert.equal(html.match(/<span data-find-block="true">1<\/span><span data-find-block="true">2<\/span><span data-find-block="true"><\/span>/g)?.length, 149_999)
   assert.ok(html.includes('<span data-find-block="true">1</span><span data-find-block="true">2</span><span data-find-block="true">3</span></div>'))

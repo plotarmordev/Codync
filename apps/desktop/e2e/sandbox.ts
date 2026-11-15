@@ -1,4 +1,4 @@
-import { chromium, type Browser, type Page } from '@playwright/test'
+import { chromium, expect, type Browser, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -112,4 +112,14 @@ export function api<T>(page: Page, method: string, body: unknown): Promise<T> {
     if (!local) throw new Error('The sandbox host has not answered yet.')
     return host.call(local.baseURL, local.token, method, body, 30_000)
   }, [method, body] as const) as Promise<T>
+}
+
+type History = { entries: { kind: string; data: { text?: string } }[] }
+
+/** Sends `text` and waits for the echo bot's answer, so every message is its own turn. */
+export async function say(page: Page, botId: string, text: string) {
+  await api(page, 'send', { botId, text })
+  await expect
+    .poll(async () => (await api<History>(page, 'history', { botId })).entries.some((e) => e.kind !== 'user' && e.data.text?.endsWith(text)), { timeout: 30_000 })
+    .toBe(true)
 }

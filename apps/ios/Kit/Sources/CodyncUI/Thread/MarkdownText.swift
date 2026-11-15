@@ -78,33 +78,135 @@ struct MarkdownBlock: View {
     }
 }
 
-/// A Markdown table: a bold header and hairlines between rows, scrolling sideways when wide.
+/// A table: a bold header and hairlines between rows, its cells wrapping to fit the bubble. A
+/// word longer than the space its column gets wraps mid-word, since SwiftUI's Text reports no
+/// minimum width to hold a whole word.
 private struct MarkdownTable: View {
     let header: [String]
     let rows: [[String]]
 
     var body: some View {
         let columns = max(header.count, rows.map(\.count).max() ?? 0)
-        ScrollView(.horizontal, showsIndicators: false) {
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 7) {
-                GridRow {
-                    ForEach(0 ..< columns, id: \.self) { i in
-                        Text(MarkdownText.inline(i < header.count ? header[i] : "")).fontWeight(.semibold)
-                    }
-                }
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                    Rectangle().fill(Palette.border).frame(height: 1).gridCellUnsizedAxes(.horizontal)
-                    GridRow {
-                        ForEach(0 ..< columns, id: \.self) { i in
-                            Text(MarkdownText.inline(i < row.count ? row[i] : ""))
-                        }
-                    }
-                }
-            }
+        TableLayout(columns: columns) { TableCells(header: header, rows: rows, columns: columns) }
             .font(.body)
             .foregroundStyle(Palette.text)
-            .fixedSize()
             .padding(.vertical, 2)
+    }
+}
+
+/// The table's children: a row of header cells, then a hairline and a row of cells per body row.
+private struct TableCells: View {
+    let header: [String]
+    let rows: [[String]]
+    let columns: Int
+
+    var body: some View {
+        ForEach(Array(([header] + rows).enumerated()), id: \.offset) { index, row in
+            if index > 0 { Rectangle().fill(Palette.border).frame(height: 1) }
+            ForEach(0 ..< columns, id: \.self) { column in
+                Text(MarkdownText.inline(row.indices.contains(column) ? row[column] : ""))
+                    .fontWeight(index == 0 ? .semibold : .regular)
+            }
         }
+    }
+}
+
+/// A table's cells in a grid that shares each row's height across its columns. A column is as
+/// wide as its widest cell when the columns fit together, and when they don't, the space is
+/// shared out equally and a column stops growing at its widest cell — the desktop's `auto` grid
+/// tracks. Proposed no width, every column takes its widest cell.
+struct TableLayout: Layout {
+    let columns: Int
+
+    struct Cache {
+        var proposal: ProposedViewSize?
+        var widths: [CGFloat] = []
+        var heights: [[CGFloat]] = []
+    }
+
+    func makeCache(subviews: LayoutSubviews) -> Cache { Cache() }
+
+    /// The cache only shortcuts re-measuring an unchanged proposal; new subviews (a message that
+    /// streamed another row) measure anew.
+    func updateCache(_ cache: inout Cache, subviews: LayoutSubviews) { cache.proposal = nil }
+    func sizeThatFits(proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout Cache) -> CGSize {
+        measure(proposal: proposal, subviews: subviews, cache: &cache)
+        let height = cache.heights.map { $0.max() ?? 0 }.reduce(0, +) + 15 * CGFloat(max(0, cache.heights.count - 1))
+        return CGSize(width: tableWidth(cache.widths), height: height)
+    }
+
+    /// The table's width: its columns and the gaps between them, which its hairlines span too.
+    private func tableWidth(_ widths: [CGFloat]) -> CGFloat {
+        widths.reduce(0, +) + CGFloat(columns - 1) * 16
+    }
+
+    /// The columns' widths: each as wide as its widest cell when they fit in `available`
+    /// together, otherwise the space shared out equally, a column stopping at its widest cell.
+    static func columnWidths(ideal: [CGFloat], available: CGFloat) -> [CGFloat] {
+        guard ideal.reduce(0, +) > available else { return ideal }
+        var widths = Array(repeating: CGFloat(0), count: ideal.count)
+        var remaining = available
+        var growable = Array(ideal.indices)
+        while remaining > 0, !growable.isEmpty {
+            let share = remaining / CGFloat(growable.count)
+            var used: CGFloat = 0
+            for column in growable {
+                let add = min(share, ideal[column] - widths[column])
+                widths[column] += add
+                used += add
+            }
+            remaining -= used
+            growable = growable.filter { widths[$0] < ideal[$0] }
+        }
+        return widths
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout Cache) {
+        measure(proposal: proposal, subviews: subviews, cache: &cache)
+        var y = bounds.minY
+        var index = 0
+        for (rowNumber, row) in cache.heights.enumerated() {
+            if rowNumber > 0 {
+                subviews[index].place(at: CGPoint(x: bounds.minX, y: y), proposal: ProposedViewSize(width: tableWidth(cache.widths), height: 1))
+                y += 1 + 7
+                index += 1
+            }
+            var x = bounds.minX
+            for (column, cellHeight) in row.enumerated() {
+                subviews[index].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: cache.widths[column], height: cellHeight))
+                x += cache.widths[column] + 16
+                index += 1
+            }
+            y += (row.max() ?? 0) + 7
+        }
+    }
+
+    private func measure(proposal: ProposedViewSize, subviews: LayoutSubviews, cache: inout Cache) {
+        if cache.proposal == proposal { return }
+
+        let rows = cellRows(contentCount: subviews.count)
+        let ideal = (0 ..< columns).map { column in
+            rows.map { subviews[$0[column]].sizeThatFits(.unspecified).width }.max() ?? 0
+        }
+        let available = proposal.width.map { $0 - CGFloat(columns - 1) * 16 }
+        let widths = available.map { Self.columnWidths(ideal: ideal, available: $0) } ?? ideal
+        cache.proposal = proposal
+        cache.widths = widths
+        cache.heights = rows.map { row in
+            row.enumerated().map { column, cell in subviews[cell].sizeThatFits(ProposedViewSize(width: widths[column], height: nil)).height }
+        }
+    }
+
+    /// The children that are cells, row by row: the first `columns`, then every `columns` after a
+    /// hairline.
+    private func cellRows(contentCount: Int) -> [[Int]] {
+        var rows: [[Int]] = []
+        var index = 0
+        while index < contentCount {
+            if !rows.isEmpty { index += 1 }  // the hairline before this row
+            rows.append(Array(index ..< index + columns))
+            index += columns
+        }
+        return rows
     }
 }

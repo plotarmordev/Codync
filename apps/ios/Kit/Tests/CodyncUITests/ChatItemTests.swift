@@ -65,6 +65,26 @@ import Testing
     let pendingItems = ChatItem.build([optimistic])
     let deliveredItems = ChatItem.build([delivered])
     #expect(pendingItems.map(\.id) == deliveredItems.map(\.id))
+    #expect(pendingItems.map(\.display) != deliveredItems.map(\.display))
+}
+
+@Test func localMessageChangesInvalidateTheirDisplayToken() {
+    let original = Entry(id: "entry", seq: 1, botId: "b", rev: 1, kind: "user", turn: 1,
+                         data: EntryData(text: "Message"), createdAt: 0, updatedAt: 0)
+    let unchanged = ChatItem.build([original]).map(\.display)
+
+    var reacted = original
+    reacted.data.reactions = ["👍"]
+    #expect(ChatItem.build([reacted]).map(\.display) != unchanged)
+
+    var delivered = original
+    delivered.data.status = "delivering"
+    #expect(ChatItem.build([delivered]).map(\.display) != unchanged)
+
+    var edited = original
+    edited.rev += 1
+    edited.data.text = "Edited message"
+    #expect(ChatItem.build([edited]).map(\.display) != unchanged)
 }
 
 /// The trace unfolds the turn running now, not a queued message that already holds the next turn.

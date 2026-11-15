@@ -61,7 +61,7 @@ struct BotListView: View {
             // Right before the call, which moves the bots before it waits: one update shows both.
             let orderBefore = sectionOrderData
             var renamedOrder = sectionOrder
-            renamedOrder.set(sectionLines(store).compactMap { $0.sectionName(on: store.computer.id) }, on: store.computer.id)
+            renamedOrder.set(sectionLines(store, roster: accounts.roster).compactMap { $0.sectionName(on: store.computer.id) }, on: store.computer.id)
             renamedOrder.rename(name, to: newName, on: store.computer.id)
             sectionOrder = renamedOrder
             let orderAfter = sectionOrderData
@@ -76,6 +76,10 @@ struct BotListView: View {
 
     private var shownIDs: Set<ComputerID> {
         Set(ComputerSelection(all: accounts.computers.map(\.id), hidden: hiddenComputers).shown)
+    }
+
+    private var shownRoster: [RosterItem] {
+        accounts.roster.filter { shownIDs.contains($0.ref.computerId) }
     }
 
     private var shownStores: [BotStore] {
@@ -105,19 +109,19 @@ struct BotListView: View {
 
     /// The roster's rows: each shown computer's heading (with several computers), in the order
     /// they were dragged into, followed by its bots and sections unless it's folded away.
-    private var lines: [RosterLine] {
+    private func lines(roster: [RosterItem]) -> [RosterLine] {
         shownStores.flatMap { store -> [RosterLine] in
             let id = store.computer.id
-            let rows = grouped && collapsedIDs.contains(id) ? [] : sectionLines(store)
+            let rows = grouped && collapsedIDs.contains(id) ? [] : sectionLines(store, roster: roster)
             return grouped ? [.computer(id, store)] + rows : rows
         }
     }
 
     /// A computer's bots: pinned ones, then each section's heading with its bots (none while
     /// folded), then the bots in no section (under the "Bots" label when there are sections).
-    private func sectionLines(_ store: BotStore) -> [RosterLine] {
+    private func sectionLines(_ store: BotStore, roster: [RosterItem]) -> [RosterLine] {
         let id = store.computer.id
-        let items = accounts.roster.filter { $0.ref.computerId == id }
+        let items = roster.filter { $0.ref.computerId == id }
         return RosterSection.lines(items, folded: foldedSections, order: sectionOrder.saved(on: id)) { $0.bot }.map { line -> RosterLine in
             switch line {
             case let .header(section): .section(section, id, store)
@@ -128,10 +132,11 @@ struct BotListView: View {
     }
 
     var body: some View {
-        let roster = accounts.roster.filter { shownIDs.contains($0.ref.computerId) }
-        let lines = self.lines
+        let roster = shownRoster
+        let lines = lines(roster: roster)
         let movingComputer = lines.contains { $0.id == lifted && $0.computerId != nil }
         let movingSection = lines.first { $0.id == lifted }?.sectionComputer
+        let mixesAgents = Dictionary(shownStores.map { ($0.computer.id, $0.mixesAgents) }, uniquingKeysWith: { first, _ in first })
         List {
             Group {
                 // A newer app release (dismissible; everything still works). Computers update
@@ -164,7 +169,9 @@ struct BotListView: View {
                         // A dragged heading folds every computer's bots into their headings. Each
                         // row stays, empty: taking it out would move the lifted heading's place in
                         // the list, and the system then drops the drag.
-                        if movingComputer || movingSection == item.ref.computerId { Color.clear.frame(height: 0) } else { row(item, store: store) }
+                        if movingComputer || movingSection == item.ref.computerId { Color.clear.frame(height: 0) } else {
+                            row(item, store: store, mixesAgents: mixesAgents[item.ref.computerId] == true)
+                        }
                     }
                 }
                 .onMove(perform: moveLines)
@@ -257,7 +264,7 @@ struct BotListView: View {
     /// section, an order the host syncs to every device: dropped among others (another section,
     /// another computer), it goes first or last of its own. Section headings and the Bots label move as groups on this device.
     private func moveLines(from source: IndexSet, to destination: Int) {
-        let before = lines
+        let before = lines(roster: shownRoster)
         guard let from = source.first, before.indices.contains(from) else { return }
         var after = before
         after.move(fromOffsets: source, toOffset: destination)
@@ -303,7 +310,7 @@ struct BotListView: View {
     /// remove it, its bots staying without one. An older computer has no section menu.
     @ViewBuilder private func sectionHeading(_ section: RosterSection, store: BotStore) -> some View {
         let header = RosterSectionHeader(section: section, hasMenu: store.supportsSections, toggle: { toggleSection(section.name) },
-                                         moving: lines.first { $0.id == lifted }?.sectionComputer == store.computer.id)
+                                         moving: lines(roster: shownRoster).first { $0.id == lifted }?.sectionComputer == store.computer.id)
             .itemProvider { lift(.section(section, store.computer.id, store)) }
             .accessibilityActions {
                 Button(L10n.tr("Move up")) { moveSection(.section(section, store.computer.id, store), by: -1) }
@@ -327,18 +334,18 @@ struct BotListView: View {
 
     private func moveSection(_ line: RosterLine, by offset: Int) {
         guard let computer = line.sectionComputer, let name = line.sectionName(on: computer) else { return }
-        var names = lines.compactMap { $0.sectionName(on: computer) }
+        var names = lines(roster: shownRoster).compactMap { $0.sectionName(on: computer) }
         guard let from = names.firstIndex(of: name), names.indices.contains(from + offset) else { return }
         names.swapAt(from, from + offset)
         withAnimation(Motion.reduced(Motion.layout, reduceMotion)) { sectionOrder.set(names, on: computer) }
     }
 
-    private func row(_ item: RosterItem, store: BotStore) -> some View {
+    private func row(_ item: RosterItem, store: BotStore, mixesAgents: Bool) -> some View {
         let bot = item.bot
         let line = RosterLine.bot(item, store)
         let card = RoundedRectangle(cornerRadius: 16, style: .continuous)
         // The agent's logo marks the avatar only while the computer's bots mix agents.
-        let agent = agentLogos && !bot.isGroup && store.mixesAgents ? bot.runningAgent : nil
+        let agent = agentLogos && !bot.isGroup && mixesAgents ? bot.runningAgent : nil
         let name = agent.map { "\(bot.name), \(store.backendName($0))" } ?? bot.name
         // A plain button instead of a NavigationLink: same push, no chevron.
         return Button { accounts.selection = item.ref } label: {

@@ -6,6 +6,13 @@ any left). tools/asc-submit.py reads the released version's section;
 a version without one gets a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.48.1
+### zh-Hant
+- 改善 Bot 清單與長聊天的捲動效能；其他聊天更新時，目前聊天不再重新整理所有訊息。
+
+### en-US
+- Smoother scrolling in the bot list and long chats; activity in other chats no longer refreshes every message in the open chat.
+
 ## 2.48.0
 ### zh-Hant
 - Bot 會把比較久的工作交給背景進行：聊天不會被占住，你可以繼續傳訊息，它也會照常回答。輸入框上方會顯示「背景」和目前的進度與時間，點一下可以看它做了什麼，也可以停止（已經改的內容會留著）。

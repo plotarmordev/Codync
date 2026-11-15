@@ -28,6 +28,7 @@ public struct ThreadView: View {
     /// The chat stays on the newest message until the reader scrolls away.
     @State var following = true
     @State var loadingEarlier = false
+    @State private var itemsCache = ChatItemsCache()
     /// Find in the conversation; nil while its bar is closed.
     @State var find: ConversationFind?
     /// Bumped to bring the shown match's message into view (a new text, a step).
@@ -39,8 +40,14 @@ public struct ThreadView: View {
     private var tasks: [BotTask] { bot.flatMap { $0.isGroup ? nil : $0.tasks } ?? [] }
 
     /// The messages, the composer and the find bar, without the platform's top chrome.
+    /// iPhone's messages: all this device has, earlier ones from the computer as the reader
+    /// scrolls up; the chat follows the newest message until they scroll away, and a reply is
+    /// revealed steadily as it's written. What voice calls carried shows in each call's
+    /// conversation, not in the chat; messages waiting behind the bot's work show above the
+    /// composer instead.
     private var chat: some View {
-        let items = chatItems
+        let messages = model.chat(botId).hidingCalls()
+        let items = itemsCache.items(for: messages.hidingQueue(working: busy))
         let matches = find.map { ConversationFind.matches(in: Self.findable(items), query: $0.query) } ?? []
         let shown = find?.index(in: matches).map { matches[$0] }
         return transcript(items, shown: shown)
@@ -59,7 +66,7 @@ public struct ThreadView: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     Composer(botId: botId, replyingTo: $replyingTo,
-                             queued: model.chat(botId).hidingCalls().queue(working: busy),
+                             queued: messages.queue(working: busy),
                              onCall: !calling && bot != nil ? { calling = true } : nil,
                              onInterrupt: callSpeaking ? interruptCall : nil)
                 }
@@ -294,7 +301,40 @@ public struct ThreadView: View {
 
 // MARK: - Chat model
 
+/// Another bot's event reaches this view through the store's dictionary, but must not rebuild
+/// this bot's transcript. Host changes carry a revision; local delivery and reactions don't.
+@MainActor private final class ChatItemsCache {
+    private var state: [ChatItem.EntrySignal]?
+    private var items: [ChatItem] = []
+
+    func items(for entries: [Entry]) -> [ChatItem] {
+        let state = entries.map(ChatItem.EntrySignal.init)
+        guard state != self.state else { return items }
+        self.state = state
+        items = ChatItem.build(entries)
+        return items
+    }
+}
+
 struct ChatItem: Identifiable {
+    /// Host changes carry a revision; local delivery and reactions don't. The transcript cache
+    /// and row token both use this signal so either path notices exactly the same edits.
+    struct EntrySignal: Hashable {
+        let id: String
+        let rev: Int64
+        let updatedAt: Int64
+        let status: String?
+        let reactions: [String]?
+
+        init(_ entry: Entry) {
+            id = entry.id
+            rev = entry.rev
+            updatedAt = entry.updatedAt
+            status = entry.data.status
+            reactions = entry.data.reactions
+        }
+    }
+
     enum Kind {
         case separator(Date)
         case entry(Entry, groupStart: Bool)
@@ -334,6 +374,24 @@ struct ChatItem: Identifiable {
             }
         }
         return out
+    }
+
+    /// What a visible row must be rebuilt for. Host changes carry a new revision; a local
+    /// reaction or delivery-status change doesn't, so those are compared separately.
+    enum Display: Hashable {
+        case separator(Date, today: Bool, yesterday: Bool)
+        case entry(EntrySignal, groupStart: Bool)
+        case exchanges(id: String, revisions: [Int64])
+    }
+
+    var display: Display {
+        switch kind {
+        case .separator(let date):
+            .separator(date, today: Calendar.current.isDateInToday(date), yesterday: Calendar.current.isDateInYesterday(date))
+        case .entry(let entry, let groupStart):
+            .entry(EntrySignal(entry), groupStart: groupStart)
+        case .exchanges(let group): .exchanges(id: group.id, revisions: group.exchanges.map(\.rev))
+        }
     }
 
     var isUserMessage: Bool {
@@ -416,13 +474,18 @@ extension ThreadView {
     /// The bot works anywhere (a room, a routine): the user's messages here wait above the composer.
     private var busy: Bool { bot?.isWorking == true }
 
-    /// iPhone's messages: all this device has, earlier ones from the computer as the reader
-    /// scrolls up; the chat follows the newest message until they scroll away, and a reply is
-    /// revealed steadily as it's written.
-    /// What voice calls carried shows in each call's conversation, not in the chat.
-    /// Messages waiting behind the bot's work show above the composer instead.
-    var chatItems: [ChatItem] {
-        ChatItem.build(model.chat(botId).hidingCalls().hidingQueue(working: busy))
+    /// Everything a message row shows besides what it reads from the store itself: its cell is
+    /// configured again only when this changes.
+    private struct RowValue: Hashable {
+        let item: ChatItem.Display
+        let highlighted: Bool
+        let isGroup: Bool?
+        let replyable: Bool
+    }
+
+    private struct WorkingRowValue: Hashable {
+        let bot: Bot
+        let steps: [Entry]
     }
 
     /// `shown`: the find's current match, whose message is highlighted and brought into view.
@@ -444,17 +507,21 @@ extension ThreadView {
             })
         }
         rows += items.map { item in
-            ConversationRow(item.id, isUserMessage: item.isUserMessage) {
+            let highlighted = shown?.id == item.id
+            let value = RowValue(item: item.display, highlighted: highlighted, isGroup: bot?.isGroup,
+                                 replyable: model.mismatch == nil)
+            return ConversationRow(item.id, isUserMessage: item.isUserMessage, value: value) {
                 row(item)
-                    .background(shown?.id == item.id ? Palette.attention.opacity(0.18) : .clear)
-                    .accessibilityAddTraits(shown?.id == item.id ? .isSelected : [])
+                    .background(highlighted ? Palette.attention.opacity(0.18) : .clear)
+                    .accessibilityAddTraits(highlighted ? .isSelected : [])
             }
         }
         // Offline, "working" is only what the computer last said; don't show it as live.
         if let bot, working {
-            rows.append(ConversationRow("working") {
+            let steps = Entry.workingSteps(model.chat(botId))
+            rows.append(ConversationRow("working", value: WorkingRowValue(bot: bot, steps: steps)) {
                 // Each turn starts folded.
-                WorkingIndicator(bot: bot, steps: Entry.workingSteps(model.chat(botId)))
+                WorkingIndicator(bot: bot, steps: steps)
                     .id(bot.startedAt)
                     .padding(.top, 6)
             })

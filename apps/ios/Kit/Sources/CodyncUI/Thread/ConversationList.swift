@@ -3,16 +3,49 @@ import SwiftUI
 import UIKit
 
 /// One row of a conversation: a message, a separator, the working indicator…
+/// Its view is built only when its cell is configured, so a long chat costs only the rows on screen.
 struct ConversationRow {
     let id: String
     /// The reader's own new message: the list goes back down to it.
     var isUserMessage = false
-    let content: AnyView
+    /// What the row shows: while it stays equal, the row's cell isn't configured again on an
+    /// update elsewhere in the chat. Without one, the row is configured on every update.
+    let value: AnyHashable?
+    let content: () -> AnyView
 
-    init(_ id: String, isUserMessage: Bool = false, @ViewBuilder content: () -> some View) {
+    init(_ id: String, isUserMessage: Bool = false, value: AnyHashable? = nil, @ViewBuilder content: @escaping () -> some View) {
         self.id = id
         self.isUserMessage = isUserMessage
-        self.content = AnyView(content())
+        self.value = value
+        self.content = { AnyView(content()) }
+    }
+
+    func shows(sameAs other: ConversationRow) -> Bool {
+        value != nil && value == other.value
+    }
+}
+
+/// The environment a row's hosted view reads that UIKit doesn't pass down by itself: when it
+/// changes, every row is configured again.
+private struct RowEnvironment: Equatable {
+    let colorScheme: ColorScheme
+    let dynamicTypeSize: DynamicTypeSize
+    let displayScale: CGFloat
+    let layoutDirection: LayoutDirection
+    let locale: Locale
+    let timeZone: TimeZone
+    let legibilityWeight: LegibilityWeight?
+    let accessibilityReduceMotion: Bool
+
+    init(_ environment: EnvironmentValues) {
+        colorScheme = environment.colorScheme
+        dynamicTypeSize = environment.dynamicTypeSize
+        displayScale = environment.displayScale
+        layoutDirection = environment.layoutDirection
+        locale = environment.locale
+        timeZone = environment.timeZone
+        legibilityWeight = environment.legibilityWeight
+        accessibilityReduceMotion = environment.accessibilityReduceMotion
     }
 }
 
@@ -89,7 +122,10 @@ private struct ConversationCollection: UIViewRepresentable {
     @MainActor final class Coordinator: NSObject, UICollectionViewDelegate {
         private var view: ConversationCollectionView!
         private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
-        private var contents: [String: AnyView] = [:]
+        private var rows: [String: ConversationRow] = [:]
+        private var rowEnvironment: RowEnvironment?
+        /// The ids the data source shows, in order.
+        private var shownIds: [String] = []
         private var environment = EnvironmentValues()
         private var parent: ConversationCollection?
         /// What the list is telling `following` (it reaches the binding after the update).
@@ -124,7 +160,7 @@ private struct ConversationCollection: UIViewRepresentable {
                 guard let self else { return }
                 cell.backgroundConfiguration = .clear()
                 cell.contentConfiguration = UIHostingConfiguration { [weak view] in
-                    ConversationCell(content: contents[id] ?? AnyView(EmptyView()))
+                    ConversationCell(content: rows[id]?.content() ?? AnyView(EmptyView()))
                         .contentShape(Rectangle())
                         .onTapGesture { [weak view] in view?.dismissComposerKeyboard() }
                         .environment(\.self, environment)
@@ -147,7 +183,11 @@ private struct ConversationCollection: UIViewRepresentable {
             var seen = Set<String>()
             // A repeated id would crash the data source; the first one wins.
             let rows = parent.rows.filter { seen.insert($0.id).inserted }
-            contents = Dictionary(rows.map { ($0.id, $0.content) }, uniquingKeysWith: { a, _ in a })
+            let previous = self.rows
+            self.rows = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            let rowEnvironment = RowEnvironment(context.environment)
+            let environmentChanged = rowEnvironment != self.rowEnvironment
+            self.rowEnvironment = rowEnvironment
 
             // Reserve the offset before any snapshot or inset update can lay out the list.
             // Otherwise enabling following pins it to the end before the animation starts.
@@ -169,30 +209,44 @@ private struct ConversationCollection: UIViewRepresentable {
             }
 
             let ids = rows.map(\.id)
-            let old = dataSource.snapshot().itemIdentifiers
-            var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
-            snapshot.appendSections([0])
-            snapshot.appendItems(ids)
-            // Rows that stay re-render with their new content (SwiftUI skips what didn't change).
-            let kept = Set(old)
-            snapshot.reconfigureItems(ids.filter(kept.contains))
+            let old = shownIds
+            shownIds = ids
+            // Rows that stay re-render only when what they show changed: a reply growing at the
+            // end leaves every other cell alone.
+            let changed = rows.filter { row in
+                guard let before = previous[row.id] else { return false }
+                return environmentChanged || !row.shows(sameAs: before)
+            }.map(\.id)
             let first = lastId == nil
             lastId = rows.last?.id
 
-            if old == ids || first || view.scrollingToEnd || jump || sent {
-                dataSource.apply(snapshot, animatingDifferences: false)
-            } else if view.following, !reduceMotion {
-                // New rows pop in as the list moves up to them, in one motion (Grok Bot's
-                // 0.24 s ease-out).
-                UIViewPropertyAnimator(duration: 0.24, controlPoint1: CGPoint(x: 0.23, y: 1),
-                                       controlPoint2: CGPoint(x: 0.32, y: 1)) {
-                    self.dataSource.apply(snapshot, animatingDifferences: true)
-                    self.view.layoutIfNeeded()
-                    self.view.pinToEnd()
+            if old == ids, !first {
+                // The same rows: only the changed cells again, and no update at all when none changed.
+                if !changed.isEmpty {
+                    var snapshot = dataSource.snapshot()
+                    snapshot.reconfigureItems(changed)
+                    dataSource.apply(snapshot, animatingDifferences: false)
                 }
-                .startAnimation()
             } else {
-                applyKeepingPlace(snapshot)
+                var snapshot = NSDiffableDataSourceSnapshot<Int, String>()
+                snapshot.appendSections([0])
+                snapshot.appendItems(ids)
+                snapshot.reconfigureItems(changed)
+                if first || view.scrollingToEnd || jump || sent {
+                    dataSource.apply(snapshot, animatingDifferences: false)
+                } else if view.following, !reduceMotion {
+                    // New rows pop in as the list moves up to them, in one motion (Grok Bot's
+                    // 0.24 s ease-out).
+                    UIViewPropertyAnimator(duration: 0.24, controlPoint1: CGPoint(x: 0.23, y: 1),
+                                           controlPoint2: CGPoint(x: 0.32, y: 1)) {
+                        self.dataSource.apply(snapshot, animatingDifferences: true)
+                        self.view.layoutIfNeeded()
+                        self.view.pinToEnd()
+                    }
+                    .startAnimation()
+                } else {
+                    applyKeepingPlace(snapshot)
+                }
             }
             if jump || sent { view.scrollToEnd(animated: !reduceMotion) }
             reveal(parent.reveal)

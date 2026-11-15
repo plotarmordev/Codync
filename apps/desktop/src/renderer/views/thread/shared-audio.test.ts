@@ -148,29 +148,60 @@ test("a backfilled length arriving after the card mounted shows without the soun
   assert.equal(audio.snapshot.duration, 48, "the loaded sound's length stays")
 })
 
-test('a note shared with no length reads it from the sound as the card shows, playing nothing', async () => {
+test('a note shared with no length reads it from the preloaded sound, playing nothing, and a tap fetches nothing more', async () => {
   const { audio, loads, log } = setup()
-  const measured = audio.measure()
+  const preloaded = audio.preload()
   loads[0](new Uint8Array([1]))
-  await measured
+  await preloaded
   assert.deepEqual(log, ['length'], 'only the headers are read: no player opens')
   assert.deepEqual(audio.snapshot, { phase: 'idle', elapsed: 0, duration: 9.4 })
-  const failed = setup()
-  const unreadable = failed.audio.measure()
-  failed.loads[0](null)
-  await unreadable
-  assert.deepEqual(failed.audio.snapshot, { phase: 'idle', elapsed: 0, duration: 0 }, 'a failed fetch stays quiet until a tap')
+  await audio.toggle()
+  assert.equal(loads.length, 1, 'the tap plays the bytes the preload fetched')
+  assert.deepEqual(log, ['length', 'open', 'play'])
 })
 
-test('a note with a length, or a card gone while its sound loads, is not measured', async () => {
-  const known = setup(9)
-  await known.audio.measure()
-  assert.equal(known.loads.length, 0, 'the host stamped it: nothing to fetch')
+test('a preloaded note with a length plays at once, without reading its headers', async () => {
+  const { audio, loads, log } = setup(9)
+  const preloaded = audio.preload()
+  loads[0](new Uint8Array([1]))
+  await preloaded
+  await audio.toggle()
+  assert.equal(loads.length, 1)
+  assert.deepEqual(log, ['open', 'play'])
+  assert.equal(audio.snapshot.phase, 'playing')
+})
+
+test('a tap while the preload runs shows loading and plays once the bytes arrive', async () => {
+  const { audio, loads, log } = setup(9)
+  void audio.preload()
+  const tap = audio.toggle()
+  assert.equal(audio.snapshot.phase, 'loading')
+  loads[0](new Uint8Array([1]))
+  await tap
+  assert.equal(loads.length, 1, 'the tap waits on the preload, no second fetch')
+  assert.deepEqual(log, ['open', 'play'])
+  assert.equal(audio.snapshot.phase, 'playing')
+})
+
+test('a failed preload stays quiet and the tap fetches again', async () => {
   const { audio, loads, log } = setup()
-  const measured = audio.measure()
+  const preloaded = audio.preload()
+  loads[0](null)
+  await preloaded
+  assert.deepEqual(audio.snapshot, { phase: 'idle', elapsed: 0, duration: 0 })
+  const tap = audio.toggle()
+  assert.equal(loads.length, 2)
+  loads[1](new Uint8Array([1]))
+  await tap
+  assert.deepEqual(log, ['open', 'play'])
+})
+
+test('a card gone while its sound preloads reads and plays nothing', async () => {
+  const { audio, loads, log } = setup()
+  const preloaded = audio.preload()
   audio.dispose()
   loads[0](new Uint8Array([1]))
-  await measured
+  await preloaded
   assert.deepEqual(log, [])
 })
 

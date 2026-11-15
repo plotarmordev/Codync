@@ -14,7 +14,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 完成後 Bot 會用一則訊息告訴你結果。
 - 從任何 App 的分享選單選「Codync」，就能把文字、連結、照片或檔案傳給 Bot，還能附上一段訊息。上次分享的對象會排在「最近」並預先選好，原本輸入框裡的草稿不會被動到。
 - 更新提示會清楚指出需要更新這個 App，還是電腦上的 Codync；雲端電腦更新時也會顯示進度說明。
-- 語音訊息一出現就顯示播放鍵、進度條和長度，下載移到訊息的選單裡；載入時離開聊天，它不會在離開後才開始播放。
+- 語音訊息一出現就顯示播放鍵、進度條和長度，進度條兩側間距相同，聲音先在背景載入，按下就播放（行動數據時只預先載入 2 MB 以下）；下載移到訊息的選單裡；載入時離開聊天，它不會在離開後才開始播放。
 - 選擇卡片改用編號選項；最後一列「其他答案」可以直接打字回答，bot 會帶著你的話繼續。
 - 智慧體可以有多個「登入設定」：新增賬戶（Claude Code、Codex 等），或為任何智慧體新增 API 金鑰；每個都能取名，bot 在「智慧體」選擇要用哪一個。
 - 備援可以選同一個智慧體的另一個登入設定。
@@ -30,7 +30,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - When it's done, the bot tells you what it found.
 - Share text, links, photos or files to a bot from any app.
 - Update notices say what needs updating: this app or your computer.
-- Voice notes show a player at once and stop when you leave.
+- Voice notes show a player at once, load ahead so they play on tap (under 2 MB on mobile data), and stop when you leave.
 - Choice cards number options and take your own answer.
 - Login profiles (account or API key): pick one per bot, fall back to another, see each account's limits in Usage.
 - Bots can check back later; cancel one under Routines.

@@ -32,7 +32,12 @@ struct VoiceNoteBubble<Below: View>: View {
         .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .onDisappear { audio.stop() }
         // A backfilled note's length arrives after the bubble mounted: show it without waiting for the sound to load.
-        .onChange(of: file.durationMs) { _, millis in audio.setKnownDuration(millis.map { TimeInterval($0) / 1000 }) }
+        // A note with none is measured instead, again once the computer is online (a chat shown before it connects
+        // reads nothing).
+        .task(id: Measure(known: file.durationMs, online: model.connection == .online)) {
+            audio.setKnownDuration(file.durationMs.map { TimeInterval($0) / 1000 })
+            if model.connection == .online { await audio.measure(file, entryId: entry.id, model: model) }
+        }
     }
 
     /// The play/pause button, the progress bar and its clock on one row; a failed play or download puts its error in
@@ -49,10 +54,14 @@ struct VoiceNoteBubble<Below: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
-                if !caption.isEmpty {
-                    // Steady digits, so the bar's end doesn't move as the clock runs.
-                    Text(caption).font(.caption2.monospacedDigit()).foregroundStyle(Palette.secondary)
+                // The clock keeps the room of the widest one, an hour's, with steady digits, whether its length is
+                // known yet or not: the bar ends in one place from the first frame, when the length arrives, and as
+                // the clock runs.
+                ZStack(alignment: .trailing) {
+                    Text(verbatim: "0:00:00 / 0:00:00").hidden()
+                    Text(verbatim: caption).foregroundStyle(Palette.secondary)
                 }
+                .font(.caption2.monospacedDigit())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -74,4 +83,10 @@ struct VoiceNoteBubble<Below: View>: View {
     private func download() {
         model.fileDownloads.toggle(client: model.client, entry: entry, file: file)
     }
+}
+
+/// What the bubble's length task follows: the computer's stamp, and whether a note without one can be fetched to measure.
+private struct Measure: Equatable {
+    let known: Int64?
+    let online: Bool
 }

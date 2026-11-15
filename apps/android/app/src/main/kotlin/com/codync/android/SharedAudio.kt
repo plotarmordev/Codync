@@ -3,6 +3,7 @@ package com.codync.android
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -26,6 +27,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -49,9 +51,11 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.sign
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 
 /** The state of a voice note's player, shown by its row's play button and caption. */
 enum class AudioPhase { Idle, Loading, Playing, Paused, Failed }
@@ -78,12 +82,13 @@ internal interface Sound {
  * Plays a sound a bot shared (a voice note), fetched once from the computer by [load] (iOS `SharedAudio`); one card's
  * player. [open] prepares the player and calls back when it stops on its own.
  * [knownDuration] is the length the computer stamped at share time (seconds), so the bar and clock are right from
- * the first frame; 0.0 (an older computer, an unreadable header) means unknown, shown empty until the sound loads.
+ * the first frame; 0.0 (an older computer, an unreadable header) means unknown, until [measure] reads it with [length].
  */
 internal class SharedAudio(
     private val load: suspend () -> File,
     private val open: suspend (File, stopped: (SoundStop) -> Unit) -> Sound,
     private var knownDuration: Double = 0.0,
+    private val length: suspend (File) -> Double = ::headerLength,
 ) {
     var phase by mutableStateOf(AudioPhase.Idle)
         private set
@@ -146,6 +151,14 @@ internal class SharedAudio(
         duration = seconds
     }
 
+    /** A note shared with no length (an older computer): read it from the sound's headers as the card shows, so the
+     *  clock is there before the first play. A fetch or read that fails stays quiet: the tap retries and reports it. */
+    suspend fun measure() {
+        if (duration > 0.0 || released) return
+        val seconds = try { length(load()) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { return }
+        if (!released) setKnownDuration(seconds)
+    }
+
     /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */
     fun seek(seconds: Double) {
         val current = sound ?: return
@@ -187,6 +200,14 @@ internal class SharedAudio(
     /** The card's progress ticker keeps [elapsed] honest. */
     fun syncElapsed() {
         sound?.let { if (it.playing || phase == AudioPhase.Paused) elapsed = it.position }
+    }
+}
+
+/** A sound's length (seconds) from its headers, without preparing a player; 0.0 when they don't say. */
+private suspend fun headerLength(file: File): Double = withContext(Dispatchers.IO) {
+    MediaMetadataRetriever().use {
+        it.setDataSource(file.path)
+        (it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L) / 1000.0
     }
 }
 
@@ -251,8 +272,9 @@ private class MediaSound(private val manager: AudioManager, private val player: 
     }
 }
 
-/** One card's player, remembered by the file and released with it; [SharedFile.durationMs] is its known length. */
-@Composable internal fun rememberSharedAudio(entry: Entry, file: SharedFile, store: AppStore): SharedAudio {
+/** One card's player, remembered by the file and released with it; [SharedFile.durationMs] is its known length.
+ *  [online]: the computer is connected, so a note with no length can be fetched to measure it. */
+@Composable internal fun rememberSharedAudio(entry: Entry, file: SharedFile, store: AppStore, online: Boolean): SharedAudio {
     val manager = LocalContext.current.getSystemService(AudioManager::class.java)
     val audio = remember(file.id) {
         SharedAudio(load = { store.sharedFile(entry.id, file) },
@@ -260,8 +282,12 @@ private class MediaSound(private val manager: AudioManager, private val player: 
             knownDuration = (file.durationMs ?: 0L) / 1000.0)
     }
     DisposableEffect(audio) { onDispose { audio.release() } }
-    // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load.
-    LaunchedEffect(audio, file.durationMs) { audio.setKnownDuration((file.durationMs ?: 0L) / 1000.0) }
+    // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load. A note
+    // with none is measured instead, again once the computer is online (a chat shown before it connects reads nothing).
+    LaunchedEffect(audio, file.durationMs, online) {
+        audio.setKnownDuration((file.durationMs ?: 0L) / 1000.0)
+        if (online) audio.measure()
+    }
     return audio
 }
 
@@ -303,8 +329,12 @@ private class MediaSound(private val manager: AudioManager, private val player: 
             Text(caption, Modifier.weight(1f), style = Type.caption2, color = Palette.danger)
         } else {
             AudioProgress(audio, Modifier.weight(1f))
-            // Steady digits, so the bar's end doesn't move as the clock runs.
-            if (caption.isNotEmpty()) Text(caption, style = Type.caption2.monospacedDigit, color = Palette.secondary)
+            // The clock keeps the room of the widest one, an hour's, with steady digits, whether its length is known yet
+            // or not: the bar ends in one place from the first frame, when the length arrives, and as the clock runs.
+            Box(contentAlignment = Alignment.CenterEnd) {
+                Text("0:00:00 / 0:00:00", Modifier.alpha(0f), style = Type.caption2.monospacedDigit)
+                Text(caption, style = Type.caption2.monospacedDigit, color = Palette.secondary)
+            }
         }
     }
 }

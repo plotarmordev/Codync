@@ -119,6 +119,17 @@
 .voice-note .file-card-detail {
   font-variant-numeric: tabular-nums;
 }
+/* The clock keeps the room of the widest one, an hour's (`0:00:00 / 0:00:00`), whether its length is known yet or
+   not: the bar ends in one place from the first frame, when the length arrives, and as the clock runs. */
+.voice-note-clock {
+  text-align: end;
+}
+.voice-note-clock::before {
+  content: '0:00:00 / 0:00:00';
+  display: block;
+  height: 0;
+  visibility: hidden;
+}
 .file-card-image-menu {
   display: flex;
   align-self: flex-start;

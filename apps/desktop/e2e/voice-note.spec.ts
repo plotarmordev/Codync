@@ -22,8 +22,13 @@ test('a failed voice note offers retry in the selected language', async () => {
     const player = page.locator('.voice-note')
     const caption = player.locator('.file-card-detail')
     await expect(player).toBeVisible()
-    // The fixture's sound has no length the host can read: the row is the play button and the bar alone, no size.
-    await expect(caption).toHaveCount(0)
+    // Neither the host nor the player can read this fixture's length: no clock and no size, but the clock's room stays,
+    // an hour's clock wide, so the bar ends where it will once a length shows.
+    await expect(caption).toHaveText('')
+    const bar = (await player.locator('input.voice-note-progress').boundingBox())!
+    const room = (await caption.boundingBox())!
+    expect(room.width).toBeGreaterThan(70)
+    expect(bar.x + bar.width).toBeLessThan(room.x)
     await player.locator('.voice-note-glyph').click()
     await expect(player).toContainText('Lecture impossible. Cliquez pour réessayer.')
     // The error takes the bar's place: no empty bar beside it.

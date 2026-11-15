@@ -210,4 +210,30 @@ class SharedAudioTest {
         audio.setKnownDuration(12.0)
         assertEquals(9.0, audio.duration, 0.0)
     }
+
+    @Test fun `a note shared with no length reads it from the sound as the card shows, playing nothing`() = runBlocking {
+        val measured = SharedAudio(load = { loads++; File("note.m4a") }, open = { _, _ -> speaker.log += "open"; speaker },
+            length = { 9.4 })
+        measured.measure()
+        assertEquals(9.4, measured.duration, 0.0)
+        assertEquals(AudioPhase.Idle, measured.phase)
+        assertEquals("only the headers are read: no player opens", emptyList<String>(), speaker.log)
+        // Stamped or measured once, it's never fetched again for its length.
+        measured.measure()
+        assertEquals(1, loads)
+        val unreadable = SharedAudio(load = { throw java.io.IOException("gone") }, open = { _, _ -> speaker })
+        unreadable.measure()
+        assertEquals("a failed fetch stays quiet until a tap", AudioPhase.Idle, unreadable.phase)
+        assertEquals(0.0, unreadable.duration, 0.0)
+    }
+
+    @Test fun `a card released while its sound loads for its length measures nothing`() = runBlocking {
+        val measured = SharedAudio(load = { fetch.await() }, open = { _, _ -> speaker }, length = { 9.4 })
+        val measuring = launch { measured.measure() }
+        yield()
+        measured.release()
+        fetch.complete(File("note.m4a"))
+        measuring.join()
+        assertEquals(0.0, measured.duration, 0.0)
+    }
 }

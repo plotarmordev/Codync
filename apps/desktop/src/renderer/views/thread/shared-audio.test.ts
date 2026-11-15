@@ -20,6 +20,7 @@ function setup(known = 0) {
       events = wired
       return sound
     },
+    length: async () => { log.push('length'); return 9.4 },
   }
   return { audio: new SharedAudio(platform, () => {}, known), log, loads, events: () => events, sound }
 }
@@ -145,6 +146,32 @@ test("a backfilled length arriving after the card mounted shows without the soun
   events().time(0, 48)
   audio.setKnownDuration(12)
   assert.equal(audio.snapshot.duration, 48, "the loaded sound's length stays")
+})
+
+test('a note shared with no length reads it from the sound as the card shows, playing nothing', async () => {
+  const { audio, loads, log } = setup()
+  const measured = audio.measure()
+  loads[0](new Uint8Array([1]))
+  await measured
+  assert.deepEqual(log, ['length'], 'only the headers are read: no player opens')
+  assert.deepEqual(audio.snapshot, { phase: 'idle', elapsed: 0, duration: 9.4 })
+  const failed = setup()
+  const unreadable = failed.audio.measure()
+  failed.loads[0](null)
+  await unreadable
+  assert.deepEqual(failed.audio.snapshot, { phase: 'idle', elapsed: 0, duration: 0 }, 'a failed fetch stays quiet until a tap')
+})
+
+test('a note with a length, or a card gone while its sound loads, is not measured', async () => {
+  const known = setup(9)
+  await known.audio.measure()
+  assert.equal(known.loads.length, 0, 'the host stamped it: nothing to fetch')
+  const { audio, loads, log } = setup()
+  const measured = audio.measure()
+  audio.dispose()
+  loads[0](new Uint8Array([1]))
+  await measured
+  assert.deepEqual(log, [])
 })
 
 test('seeking holds the playhead to the sound and keeps it playing or paused', async () => {

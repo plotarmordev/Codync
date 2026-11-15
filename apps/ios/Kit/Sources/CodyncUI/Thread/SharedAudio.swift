@@ -18,7 +18,7 @@ final class SharedAudio {
     private(set) var duration: TimeInterval?
     /// Seconds into the sound; ticks about four times a second while it plays.
     private(set) var elapsed: TimeInterval = 0
-    /// The length the computer read from the sound's headers (nil when it couldn't), shown until the sound says.
+    /// The length the computer, or the bubble, read from the sound's headers (nil when unknown), shown until the sound says.
     private var known: TimeInterval?
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private var done: PlayDone?
@@ -99,6 +99,17 @@ final class SharedAudio {
         guard let seconds, seconds > 0, duration == nil else { return }
         known = seconds
         duration = seconds
+    }
+
+    /// A note shared with no length (an older computer): read it from the sound's headers as the bubble shows, so the
+    /// clock is there before the first play. A fetch or read that fails stays quiet: the tap retries and reports it.
+    func measure(_ file: SharedFile, entryId: String, model: BotStore) async {
+        guard duration == nil else { return }
+        let started = generation
+        let data = await load(model, file, entryId)
+        // Only the headers are read: the player is never prepared or played.
+        guard generation == started, let data, let sound = try? AVAudioPlayer(data: data) else { return }
+        setKnownDuration(sound.duration)
     }
 
     /// Moves a loaded sound's playhead, held to its length; playing or paused, it stays so.

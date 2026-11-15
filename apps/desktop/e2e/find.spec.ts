@@ -1,21 +1,11 @@
 import { test, expect, type Browser, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { api, attach, echoBot, openGeneralSettings } from './sandbox.ts'
+import { api, attach, echoBot, openGeneralSettings, say } from './sandbox.ts'
 
 // ⌘F and ⌘G are menu accelerators, which keys sent over the DevTools protocol never reach: the specs pick the
 // menu items through System Events instead (macOS). Every unpackaged sandbox app is a process named "Electron",
 // so they pick the attached app by its process ID.
 test.skip(process.platform !== 'darwin', 'drives the app menu through System Events')
-
-type History = { entries: { kind: string; data: { text?: string } }[] }
-
-/** Sends `text` and waits for the echo bot's answer, so every message is its own turn. */
-async function say(page: Page, botId: string, text: string) {
-  await api(page, 'send', { botId, text })
-  await expect
-    .poll(async () => (await api<History>(page, 'history', { botId })).entries.some((e) => e.kind !== 'user' && e.data.text?.endsWith(text)))
-    .toBe(true)
-}
 
 /** The process ID of the app `browser` is attached to (its main process). */
 async function appPid(browser: Browser) {

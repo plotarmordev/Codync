@@ -329,10 +329,10 @@ private class MediaSound(private val manager: AudioManager, private val player: 
             Text(caption, Modifier.weight(1f), style = Type.caption2, color = Palette.danger)
         } else {
             AudioProgress(audio, Modifier.weight(1f))
-            // The clock over its widest form (hidden), with steady digits: the bar's end never moves, while the length
-            // is unknown or as the clock runs.
+            // The clock keeps the room of the widest one, an hour's, with steady digits, whether its length is known yet
+            // or not: the bar ends in one place from the first frame, when the length arrives, and as the clock runs.
             Box(contentAlignment = Alignment.CenterEnd) {
-                Text(clockRoom(audio.duration), Modifier.alpha(0f), style = Type.caption2.monospacedDigit)
+                Text("0:00:00 / 0:00:00", Modifier.alpha(0f), style = Type.caption2.monospacedDigit)
                 Text(caption, style = Type.caption2.monospacedDigit, color = Palette.secondary)
             }
         }

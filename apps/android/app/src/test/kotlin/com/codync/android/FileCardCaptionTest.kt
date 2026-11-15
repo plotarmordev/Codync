@@ -72,13 +72,6 @@ class FileCardCaptionTest {
         assertEquals("0:08", clock(7.5))
     }
 
-    @Test fun `a voice note's clock keeps the room of its widest form, so the bar never moves`() {
-        assertEquals("an unknown length", "00:00 / 00:00", clockRoom(0.0))
-        assertEquals("00:00 / 00:00", clockRoom(9.0))
-        assertEquals("00:00 / 00:00", clockRoom(600.0))
-        assertEquals("past an hour", "0:00:00 / 0:00:00", clockRoom(3725.0))
-    }
-
     @Test fun `an accessibility adjust moves five seconds whatever value it asks for`() {
         assertEquals(25.0, seekStepTarget(20.0, 48f.compareTo(20f)), 0.0)
         assertEquals(15.0, seekStepTarget(20.0, 0f.compareTo(20f)), 0.0)

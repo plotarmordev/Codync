@@ -90,14 +90,6 @@ internal fun clock(seconds: Double): String {
     return if (total >= 3600) "%d:%02d:%02d".format(total / 3600, total / 60 % 60, total % 60) else "%d:%02d".format(total / 60, total % 60)
 }
 
-/** The widest clock a sound of this length shows, digits zeroed (`00:00 / 00:00`, hours past an hour): the room a
- *  player keeps for its clock, so the bar ends in one place from the first frame, while the length is unknown and as
- *  the clock runs. */
-internal fun clockRoom(duration: Double): String {
-    val widest = clock(maxOf(duration, 600.0)).replace(Regex("\\d"), "0")
-    return "$widest / $widest"
-}
-
 /** A shared file's download button, trailing on a file card and in the file's
  *  viewer: downloads (again after a failure or a save), or cancels the download under way. In the image viewer
  *  (`inViewer`) its end is reported. */

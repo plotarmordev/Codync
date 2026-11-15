@@ -27,7 +27,7 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - 備援可以選同一個智慧體的另一個登入設定：一個的額度用完，bot 會換到下一個繼續。
 - 「用量上限」會在智慧體底下分別列出每個賬戶的額度（Claude Code、Codex），小工具顯示最接近上限的那一個。
 - 電腦重新啟動或 App、Codync 更新後，iPhone 只接收新的訊息，不再重新載入每個聊天。
-- 語音訊息一出現就顯示播放鍵、進度條和長度（例如 0:00 / 0:09）；單獨傳來的音檔也用同一個播放器，下載移到訊息的選單裡。無法播放時，錯誤訊息直接取代進度條。
+- 語音訊息一出現就顯示播放鍵、進度條和長度（例如 0:00 / 0:09），進度條兩側的間距相同；聲音會先在背景載入，按下就能播放（使用行動數據時只預先載入 2 MB 以下的語音）。單獨傳來的音檔也用同一個播放器，下載移到訊息的選單裡。無法播放時，錯誤訊息直接取代進度條。
 - 選擇卡片改用編號選項；最後一列「其他答案」可以直接打字回答，bot 會帶著你的話繼續。
 - Bot 說「晚點回來看」時會真的設定跟進：聊天裡會出現「20 分鐘後跟進」的提示，時間到了它會自己回到聊天告訴你結果，還沒有進展就不打擾你。等待中的跟進會列在例行任務上方，可以直接取消。
 - 例行任務會記住上次做到哪裡，分批進行的工作下次會接著做。
@@ -56,7 +56,7 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - A fallback can be the same agent on another of its login profiles: when one runs out of usage, the bot carries on with the next.
 - Usage limits lists each account of an agent with its own limits (Claude Code, Codex), and widgets show the one nearest its limit.
 - After your computer restarts or the app or Codync updates, the iPhone catches up on only what's new instead of reloading every chat.
-- A voice note shows its play button, progress bar and length (like 0:00 / 0:09) from the start, and a sound file sent on its own uses the same player; Download is in the message's menu. When a note can't play, the error takes the bar's place.
+- A voice note shows its play button, progress bar and length (like 0:00 / 0:09) from the start, with even space on both sides of the bar; its sound loads in the background so it plays the moment you tap (on mobile data, only notes under 2 MB load ahead). A sound file sent on its own uses the same player; Download is in the message's menu. When a note can't play, the error takes the bar's place.
 - Choice cards show numbered options, and the last row, Something else, takes your own answer; the bot continues with your words.
 - A bot that says it will check back later now sets a follow-up: "Follow-up in 20 minutes" shows in the chat, and when it's due the bot comes back to tell you what it found, or stays quiet if there's nothing yet. Waiting follow-ups are listed above the bot's routines, where you can cancel one.
 - A routine remembers where its last run stopped, so work done in parts carries on from there.

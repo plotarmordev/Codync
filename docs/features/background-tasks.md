@@ -211,10 +211,11 @@ prompt or the request as it is, not an item's brief, and **their result takes no
   hop count, as it is: a reply of exactly `(pass)` goes back as those words, and a turn that ends with no text is
   `recipient finished without a text reply`, both as from a turn in the chat. Its title is the request's first line.
 
-What such a turn could and couldn't do in the chat holds in its task (`Actor::task_source`): `request_decision`,
-`send_message`, `send_file` and artifact cards are refused with the same words; the `routines` tools work, as the
-bot (a run saves its progress and sets follow-ups, an asked bot runs its own routine); `message_bot` works from a
-run and is refused in a request; `follow_up` is refused in a request. `add_work` is refused as in any task.
+What such a turn could and couldn't do in the chat holds in its task (`Actor::task_source`): `request_decision` and
+`send_message` are refused with the same words; `send_file` and artifact cards post in the bot's chat from a run and
+are refused in a request; the `routines` tools work, as the bot (a run saves its progress and sets follow-ups, an asked
+bot runs its own routine); `message_bot` works from a run and is refused in a request; `follow_up` is refused in a
+request. `add_work` is refused as in any task.
 
 What differs from the bot's own items:
 

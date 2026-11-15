@@ -18,7 +18,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 「每個 agent 一個 worktree」：同時在同一個 repository 工作的 agent 各有自己的分支。
 - 改用備援時，智慧體卡片會說明原因。
 - 輸入 `/` 時會列出 Bot 所用智慧體自己的指令。
-- 語音訊息一出現就顯示播放鍵、進度條和長度，下載移到訊息的選單裡；載入時離開聊天，它不會在離開後才開始播放。
+- 語音訊息一出現就顯示播放鍵、進度條和長度，進度條兩側間距相同，聲音先在背景載入，按下就播放（行動數據時只預先載入 2 MB 以下）；下載移到訊息的選單裡；載入時離開聊天，它不會在離開後才開始播放。
 - 重新連上電腦後只補上錯過的訊息。
 - 訊息裡的表格放不進泡泡時，過長的文字會在格子裡換行，不再被截斷。
 
@@ -31,6 +31,6 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Settings: Agents at once; Worktree per agent gives each its own branch.
 - On a fallback, the Agent card says why.
 - `/` also lists the agent's own commands.
-- Voice notes show a player at once and stop when you leave.
+- Voice notes show a player at once, load ahead so they play on tap (under 2 MB on mobile data), and stop when you leave.
 - Reconnects fetch only missed messages.
 - A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.

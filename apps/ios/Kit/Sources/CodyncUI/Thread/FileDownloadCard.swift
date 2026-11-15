@@ -130,13 +130,23 @@ struct FileDownloadCard: View {
     }
 
     /// What a voice note's player says, never a byte count: a failed play, then a failed download, then the sound's
-    /// clock; empty (the bar alone) while its length is unknown.
+    /// clock; empty (the bar alone) while its length is unknown. The elapsed count keeps the duration's shape —
+    /// `00:05 / 12:00` — so the clock is always exactly as wide as its room and the bar's end never moves.
     static func voiceNoteDetail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,
                                 elapsed: TimeInterval = 0, duration: TimeInterval?) -> String {
         if play == .failed { return L10n.tr("Couldn't play. Tap to retry.") }
         if case .failed(let message) = download { return "\(L10n.tr(message)) \(L10n.tr("Tap to retry."))" }
         guard let duration else { return "" }
-        return "\(SharedAudio.timeText(elapsed)) / \(SharedAudio.timeText(duration))"
+        let shape = SharedAudio.timeShape(SharedAudio.timeText(duration))
+        let elapsed = SharedAudio.timeText(elapsed)
+        return "\(shape.prefix(max(0, shape.count - elapsed.count)))\(elapsed) / \(SharedAudio.timeText(duration))"
+    }
+
+    /// The room a voice note's clock keeps: its whole caption's shape once the length is known, `0:00 / 0:00` before.
+    static func voiceNoteRoom(_ duration: TimeInterval?) -> String {
+        guard let duration else { return "0:00 / 0:00" }
+        let shape = SharedAudio.timeShape(SharedAudio.timeText(duration))
+        return "\(shape) / \(shape)"
     }
 }
 

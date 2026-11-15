@@ -99,33 +99,50 @@
   outline: 2px solid var(--secondary);
   outline-offset: 2px;
 }
-/* Play: a 36 px target over a 21 x 24 px slot (the slot keeps its size while the sound loads). */
+/* Play: a 36 px target over an 18 x 24 px slot, the glyph's own width, so the gap beside it is the row's 10 px (the
+   slot keeps its size while the sound loads). */
 .voice-note-slot {
-  width: 21px;
+  width: 18px;
   height: 24px;
   display: grid;
   place-items: center;
 }
 .voice-note-slot > button {
-  margin: -6px -7.5px;
+  margin: -6px -9px;
 }
-/* Bare glyphs in every state, never a tile: hover fades the glyph to its filled form (AudioIcon) and brings it to
-   the text color. */
+/* Hover lays a soft round chip behind the outline glyph, as on other icon buttons, and press deepens it; a 28 px
+   circle, clear of the bar beside it. */
+.voice-note-glyph.icon-button,
 .voice-note-glyph.icon-button:hover:not(:disabled),
 .voice-note-glyph.icon-button:active:not(:disabled) {
   background: none;
+  transform: none;
+}
+.voice-note-glyph::before {
+  content: '';
+  grid-area: 1 / 1;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  transition: background-color var(--hover);
+}
+.voice-note-glyph > * {
+  grid-area: 1 / 1;
+}
+.voice-note-glyph:hover::before {
+  background: rgba(var(--text-rgb), 0.08);
+}
+.voice-note-glyph:active::before {
+  background: rgba(var(--text-rgb), 0.14);
 }
 /* Steady digits, so the bar's end doesn't move as the clock runs. */
 .voice-note .file-card-detail {
   font-variant-numeric: tabular-nums;
 }
-/* The clock keeps the room of the widest one, an hour's (`0:00:00 / 0:00:00`), whether its length is known yet or
-   not: the bar ends in one place from the first frame, when the length arrives, and as the clock runs. */
-.voice-note-clock {
-  text-align: end;
-}
+/* The clock keeps the room of its note's own form (`data-room`, `0:00 / 0:00` or `0:00:00 / 0:00:00` from the
+   length), the width its caption always has: the bar ends 10 px before it from the first frame and as it runs. */
 .voice-note-clock::before {
-  content: '0:00:00 / 0:00:00';
+  content: attr(data-room);
   display: block;
   height: 0;
   visibility: hidden;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SharedFile } from '@shared/models'
 import type { DownloadState } from '../../store/file-downloads.ts'
-import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock } from './file-card.ts'
+import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock, clockRoom, soundClock } from './file-card.ts'
 import type { AudioSnapshot } from './shared-audio.ts'
 
 const file = (size: number): SharedFile => ({ id: 'f1', name: 'venue-floor-plan.pdf', size, sha256: 'a'.repeat(64) })
@@ -26,6 +26,18 @@ test('clock writes m:ss, and h:mm:ss past an hour', () => {
   assert.equal(clock(48), '0:48')
   assert.equal(clock(600), '10:00')
   assert.equal(clock(3725), '1:02:05')
+})
+
+test("a sound's clock writes its elapsed half in its length's shape, as wide as its room", () => {
+  assert.equal(soundClock(3, 10), '0:03 / 0:10')
+  assert.equal(soundClock(5, 720), '00:05 / 12:00')
+  assert.equal(soundClock(5, 3720), '0:00:05 / 1:02:00')
+  assert.equal(soundClock(750, 3720), '0:12:30 / 1:02:00')
+  for (const [elapsed, duration] of [[3, 10], [5, 270], [5, 720], [5, 3720], [3719, 3720]]) {
+    assert.equal(soundClock(elapsed, duration).length, clockRoom(duration).length, `${elapsed} of ${duration}`)
+  }
+  assert.equal(clockRoom(0), '0:00 / 0:00', 'an unknown length keeps the room of a short note')
+  assert.equal(clockRoom(10), '0:00 / 0:00', "a short note never keeps an hour's room")
 })
 
 test('a card that could not play says so before anything else', () => {

@@ -42,7 +42,7 @@
   padding-left: 10px;
   box-shadow: inset 3px 0 0 var(--border);
 }
-/* Cells wrap to fit the bubble; a table too wide for that scrolls. */
+/* A table with too many columns to fit the bubble scrolls. */
 .md-table-scroll {
   overflow-x: auto;
 }
@@ -53,6 +53,8 @@
   color: var(--text);
   padding: 2px 0;
   width: fit-content;
+  /* Cells wrap to fit the bubble, breaking a long token when it has to. */
+  overflow-wrap: anywhere;
 }
 .md-code {
   background: var(--code-background);

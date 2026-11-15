@@ -58,9 +58,10 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.sign
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -97,6 +98,8 @@ internal interface Sound {
 internal class SharedAudio(
     private val load: suspend () -> File,
     private val open: suspend (File, stopped: (SoundStop) -> Unit) -> Sound,
+    /** Where the one fetch runs: the card's, so a preload or tap that stops waiting leaves it to the others. */
+    private val scope: CoroutineScope,
     private var knownDuration: Double = 0.0,
     private val length: suspend (File) -> Double = ::headerLength,
 ) {
@@ -115,7 +118,7 @@ internal class SharedAudio(
     /** The card went: a load still running then starts nothing. */
     private var released = false
     /** The one fetch of the sound's bytes preload, length reading and a play tap share; a failed one is forgotten. */
-    private var fetching: Deferred<File>? = null
+    private var fetching: Deferred<Result<File>>? = null
 
     suspend fun toggle() {
         val current = sound
@@ -173,21 +176,13 @@ internal class SharedAudio(
         if (!released) setKnownDuration(seconds)
     }
 
-    /** The sound's bytes from the computer, one fetch for everyone asking: the first caller fetches while later
-     *  ones wait on it, one after it landed reuses it, and a failed one is dropped so the next ask fetches again. */
+    /** The sound's bytes from the computer, one fetch for everyone asking: it runs in the card's [scope], so a caller
+     *  cancelled while waiting (a preload restarting) doesn't fail it for the others, and it holds a [Result] so a
+     *  failed fetch doesn't cancel the card's scope; one after it landed reuses it, and a failed one is dropped so the
+     *  next ask fetches again. */
     private suspend fun bytes(): File {
-        fetching?.let { return it.await() }
-        val running = CompletableDeferred<File>()
-        fetching = running
-        try {
-            val file = load()
-            running.complete(file)
-            return file
-        } catch (error: Exception) {
-            fetching = null
-            running.completeExceptionally(error)
-            throw error
-        }
+        val running = fetching ?: scope.async { runCatching { load() } }.also { fetching = it }
+        return running.await().onFailure { if (fetching === running) fetching = null }.getOrThrow()
     }
 
     /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */
@@ -309,9 +304,11 @@ private class MediaSound(private val manager: AudioManager, private val player: 
 @Composable internal fun rememberSharedAudio(entry: Entry, file: SharedFile, store: AppStore, online: Boolean): SharedAudio {
     val context = LocalContext.current
     val manager = context.getSystemService(AudioManager::class.java)
+    val scope = rememberCoroutineScope()
     val audio = remember(file.id) {
         SharedAudio(load = { store.sharedFile(entry.id, file) },
             open = { path, stopped -> MediaSound.open(manager, path, stopped) },
+            scope = scope,
             knownDuration = (file.durationMs ?: 0L) / 1000.0)
     }
     DisposableEffect(audio) { onDispose { audio.release() } }

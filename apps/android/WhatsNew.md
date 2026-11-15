@@ -23,6 +23,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 例行任務會記住上次做到哪裡，下次接著做。
 - 重新連上電腦後只補上錯過的訊息。
 - Gemini 即時語音新增 Google 搜尋開關，可在通話中查詢網頁資訊，預設關閉。
+- 在訊息上往旁邊滑就能回覆：你的訊息往左滑，Bot 的訊息往右滑，放開時就會開始回覆。
 
 ### en-US
 - Bots do long work in the background, so the chat stays free and keeps answering. A capsule above the message box shows what it is doing; tap it for details, or stop it.
@@ -37,3 +38,4 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Routines resume where they stopped.
 - Reconnects fetch only missed messages.
 - Optional Google Search in Gemini realtime calls, off by default.
+- Swipe a message sideways to reply: yours to the left, the bot's to the right.

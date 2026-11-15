@@ -126,16 +126,20 @@ internal fun findable(items: List<ChatItem>): List<Pair<String, String>> =
     openTrace: () -> Unit, reply: (() -> Unit)?, connect: ConnectionRequestActions, addFallback: (Bot) -> Unit, openArtifact: (OpenArtifact) -> Unit) {
     val group = chat?.kind == "group"
     when (entry.kind) {
-        "user" -> Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
-            horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            UserBubble(entry, state, store, reply)
-            ReactionsRow(entry, state, store)
+        "user" -> SwipeToReply(ReplyDirection.Left, reply) {
+            Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
+                horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                UserBubble(entry, state, store, reply)
+                ReactionsRow(entry, state, store)
+            }
         }
-        "agent" -> Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
-            verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (group && groupStart) AuthorLabel(entry.data.text("author"), state)
-            AgentBubble(entry, state, store, openTrace, reply, openArtifact)
-            Box(Modifier.padding(start = if (group) 34.dp else 0.dp)) { ReactionsRow(entry, state, store) }
+        "agent" -> SwipeToReply(ReplyDirection.Right, reply) {
+            Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (group && groupStart) AuthorLabel(entry.data.text("author"), state)
+                AgentBubble(entry, state, store, openTrace, reply, openArtifact)
+                Box(Modifier.padding(start = if (group) 34.dp else 0.dp)) { ReactionsRow(entry, state, store) }
+            }
         }
         "permission" -> Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (group) AuthorLabel(entry.data.text("author"), state)

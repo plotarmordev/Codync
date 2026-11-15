@@ -6,6 +6,8 @@ import Foundation
 public enum AnalyticsEvent: Equatable, Sendable {
     /// nil = couldn't be read; left out.
     case appOpened(notifications: Notifications? = nil, widgets: Int? = nil)
+    case openTiming(OpenPhase, open: OpenKind, ms: Int, computer: ComputerID,
+                    computers: Int, chats: Int? = nil, messages: Int? = nil)
     case onboardingStepViewed(OnboardingStep)
     case onboardingCompleted(via: OnboardingVia)
     case signInStarted(SignInProvider)
@@ -72,6 +74,8 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case shareSent(ShareSent)
 
     public enum Notifications: String, Sendable { case allowed, denied, notAsked = "not_asked" }
+    public enum OpenPhase: String, Sendable { case linkReady = "link_ready", hello, catchUp = "catch_up", chatList = "chat_list", openChat = "open_chat" }
+    public enum OpenKind: String, Sendable { case cold, foreground }
     public enum OnboardingStep: String, Sendable { case welcome, choose, install, scan }
     public enum OnboardingVia: String, Sendable { case paired, account, skipped }
     public enum SignInProvider: String, Sendable { case apple, google, github }
@@ -230,6 +234,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
     var name: String {
         switch self {
         case .appOpened: "app_opened"
+        case .openTiming: "open_timing"
         case .onboardingStepViewed: "onboarding_step_viewed"
         case .onboardingCompleted: "onboarding_completed"
         case .signInStarted: "sign_in_started"
@@ -280,6 +285,13 @@ public enum AnalyticsEvent: Equatable, Sendable {
             var p: [String: Analytics.Value] = [:]
             p["notifications"] = notifications.map { .string($0.rawValue) }
             p["widgets"] = widgets.map(Analytics.Value.int)
+            return p
+        case let .openTiming(phase, open, ms, computer, computers, chats, messages):
+            var p: [String: Analytics.Value] = ["phase": .string(phase.rawValue), "open": .string(open.rawValue),
+                                                "ms": .int(ms), "computer": .string(Analytics.computerTag(computer)),
+                                                "computers": .int(computers)]
+            p["chats"] = chats.map(Analytics.Value.int)
+            p["messages"] = messages.map(Analytics.Value.int)
             return p
         case let .onboardingStepViewed(step): return ["step": .string(step.rawValue)]
         case let .onboardingCompleted(via): return ["via": .string(via.rawValue)]

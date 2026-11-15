@@ -333,6 +333,12 @@ struct BotListView: View {
         withAnimation(Motion.reduced(Motion.layout, reduceMotion)) { sectionOrder.set(names, on: computer) }
     }
 
+    private func recordNewestShown(_ bot: Bot, store: BotStore) {
+        guard !app.launching, store.caughtUp, bot.lastMessage != nil,
+              store.roster.max(by: { $0.lastAt < $1.lastAt })?.id == bot.id else { return }
+        store.openTiming.record(.chatList, computer: store.computer.id)
+    }
+
     private func row(_ item: RosterItem, store: BotStore) -> some View {
         let bot = item.bot
         let line = RosterLine.bot(item, store)
@@ -346,6 +352,9 @@ struct BotListView: View {
                 .environment(store)
         }
         .buttonStyle(.plain)
+        .onAppear { recordNewestShown(bot, store: store) }
+        .onChange(of: store.catchUpsCompleted) { _, _ in recordNewestShown(bot, store: store) }
+        .onChange(of: app.launching) { _, _ in recordNewestShown(bot, store: store) }
         // Lifted, it's a rounded card with room around the avatar.
         .padding(.horizontal, 8)
         .background(lifted == line.id ? Palette.surface : .clear, in: card)

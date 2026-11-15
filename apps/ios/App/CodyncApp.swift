@@ -72,8 +72,12 @@ struct CodyncApp: App {
                 .onOpenURL { url in app.open(url) }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     switch phase {
-                    case .active: Analytics.shared.becameActive()
-                    case .background: BackgroundTime.run("Analytics") { await Analytics.shared.enteredBackground() }
+                    case .active:
+                        OpenTiming.shared.becameActive(computers: app.accounts.computers.count)
+                        Analytics.shared.becameActive()
+                    case .background:
+                        OpenTiming.shared.enteredBackground()
+                        BackgroundTime.run("Analytics") { await Analytics.shared.enteredBackground() }
                     default: break
                     }
                     // Only leaving for the background disconnects; `.inactive` (Control Center,
@@ -143,6 +147,7 @@ final class AppStore {
     let whatsNew = WhatsNew(usedBefore: UserDefaults.standard.bool(forKey: "onboardingCompleted"))
 
     private init() {
+        OpenTiming.shared.beginCold()
         let session = AccountSession()
         // Keep the selected context while Clerk restores: background intents have no scene observer yet.
         let storage = SharedStore.Context(accountID: session.isReady ? session.userID : SharedStore.activeAccountID)
@@ -162,6 +167,7 @@ final class AppStore {
         SharedStore.Context.splitPushSwitch(from: .standard,
                                             into: Set([nil, storage.accountID] + session.accounts.map(\.id)).map { SharedStore.Context(accountID: $0) })
         (accounts, cloud) = Self.makeAccounts(storage, session: session)
+        OpenTiming.shared.setComputerCount(accounts.computers.count)
         launching = !accounts.computers.isEmpty && (accounts.accountId != nil || !session.isConfigured)
         if rescan { accounts.lastError = Self.scanAgain }
     }

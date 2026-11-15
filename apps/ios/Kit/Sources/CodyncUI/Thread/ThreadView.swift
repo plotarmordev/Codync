@@ -448,6 +448,16 @@ extension ThreadView {
                 row(item)
                     .background(shown?.id == item.id ? Palette.attention.opacity(0.18) : .clear)
                     .accessibilityAddTraits(shown?.id == item.id ? .isSelected : [])
+                    .onAppear {
+                        if item.id == items.last?.id, model.caughtUp {
+                            model.openTiming.record(.openChat, computer: model.computer.id)
+                        }
+                    }
+                    .onChange(of: model.catchUpsCompleted) { _, _ in
+                        if item.id == items.last?.id, model.caughtUp {
+                            model.openTiming.record(.openChat, computer: model.computer.id)
+                        }
+                    }
             }
         }
         // Offline, "working" is only what the computer last said; don't show it as live.

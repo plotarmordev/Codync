@@ -397,4 +397,7 @@ private func silentWAV() -> Data {
     #expect(SharedAudio.preloads(online: true, expensive: true, bytes: small) == true)
     #expect(SharedAudio.preloads(online: true, expensive: false, bytes: big) == true)
     #expect(SharedAudio.preloads(online: false, expensive: false, bytes: small) == false)
+    // Before the network's first report, only a small note preloads; a big one waits for the path.
+    #expect(SharedAudio.preloads(online: true, expensive: nil, bytes: big) == false)
+    #expect(SharedAudio.preloads(online: true, expensive: nil, bytes: small) == true)
 }

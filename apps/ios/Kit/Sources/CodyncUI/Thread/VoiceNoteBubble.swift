@@ -94,5 +94,5 @@ struct VoiceNoteBubble<Below: View>: View {
 private struct Preload: Equatable {
     let known: Int64?
     let online: Bool
-    let expensive: Bool
+    let expensive: Bool?
 }

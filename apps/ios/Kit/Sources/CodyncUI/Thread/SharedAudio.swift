@@ -117,9 +117,10 @@ final class SharedAudio {
     }
 
     /// Whether the bubble preloads a sound as it shows: the computer online, and the fetch never costly — under
-    /// `preloadLimit` even on an expensive network (cellular, a hotspot).
-    static func preloads(online: Bool, expensive: Bool, bytes: Int64) -> Bool {
-        online && (!expensive || bytes < preloadLimit)
+    /// `preloadLimit` even on an expensive network (cellular, a hotspot). A network not yet known (`nil`, before the
+    /// path's first report) counts as expensive, so a big note never starts fetching on cellular in that moment.
+    static func preloads(online: Bool, expensive: Bool?, bytes: Int64) -> Bool {
+        online && (expensive == false || bytes < preloadLimit)
     }
 
     /// The sound size the bubble still preloads on an expensive network (2 MiB).

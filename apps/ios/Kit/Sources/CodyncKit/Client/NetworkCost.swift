@@ -9,8 +9,8 @@ import Observation
 public final class NetworkCost {
     public static let shared = NetworkCost()
 
-    /// True on an expensive path; false until the path first reports.
-    public private(set) var expensive = false
+    /// True on an expensive path; nil until the path first reports.
+    public private(set) var expensive: Bool?
 
     @ObservationIgnored private let monitor = NWPathMonitor()
 

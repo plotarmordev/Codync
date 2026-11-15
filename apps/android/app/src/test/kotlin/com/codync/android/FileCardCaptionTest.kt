@@ -2,26 +2,30 @@ package com.codync.android
 
 import com.codync.android.core.SharedFile
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** The caption under a shared file's name, and the size format every card shares. */
 class FileCardCaptionTest {
     private val file = SharedFile("f1", "note.m4a", 380_030, "0".repeat(64))
-    private class Speaker(override var position: Double = 0.0) : Sound {
+    private val card = CoroutineScope(Dispatchers.Unconfined)
+    private class Speaker(override var position: Double = 0.0, override val duration: Double = 48.0) : Sound {
         override var playing = false
-        override val duration = 48.0
         override fun start(): Boolean { playing = true; return true }
         override fun pause() { playing = false }
         override fun seek(seconds: Double) { position = seconds }
         override fun release() {}
     }
 
-    /** A card whose sound loaded and played `elapsed` seconds. */
-    private fun loaded(elapsed: Double): SharedAudio {
-        val speaker = Speaker()
-        val audio = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> speaker })
+    /** A card whose sound loaded (`duration` seconds long) and played `elapsed` seconds. */
+    private fun loaded(elapsed: Double, duration: Double = 48.0): SharedAudio {
+        val speaker = Speaker(duration = duration)
+        val audio = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> speaker }, scope = card)
         runBlocking { audio.toggle() }
         speaker.position = elapsed
         audio.syncElapsed()
@@ -29,15 +33,15 @@ class FileCardCaptionTest {
     }
 
     private fun failed(): SharedAudio {
-        val audio = SharedAudio(load = { throw java.io.IOException("gone") }, open = { _, _ -> Speaker() })
+        val audio = SharedAudio(load = { throw java.io.IOException("gone") }, open = { _, _ -> Speaker() }, scope = card)
         runBlocking { audio.toggle() }
         return audio
     }
 
     @Test fun `a stamped length shows the clock before the sound loads, an unknown one the bar alone`() {
-        val stamped = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() }, knownDuration = 9.0)
+        val stamped = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() }, scope = card, knownDuration = 9.0)
         assertEquals("0:00 / 0:09", voiceNoteDetail(null, stamped))
-        val unstamped = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() })
+        val unstamped = SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() }, scope = card)
         for (download in listOf(null, FileDownloadState.Saved, FileDownloadState.Downloading(1_000))) {
             assertEquals("", voiceNoteDetail(download, unstamped))
         }
@@ -64,6 +68,31 @@ class FileCardCaptionTest {
         assertEquals("380 KB", detail(file, null))
         assertEquals("1 KB of 380 KB", detail(file, FileDownloadState.Downloading(1_000)))
         assertEquals("380 KB · Downloaded", detail(file, FileDownloadState.Saved))
+    }
+
+    @Test fun `the clock pads its elapsed into its duration's shape`() {
+        assertEquals("0:03 / 0:10", voiceNoteDetail(null, loaded(3.0, duration = 10.0)))
+        assertEquals("00:59 / 12:00", voiceNoteDetail(null, loaded(59.0, duration = 720.0)))
+        assertEquals("00:05 / 12:00", voiceNoteDetail(null, loaded(5.0, duration = 720.0)))
+        assertEquals("12:30 / 12:00", voiceNoteDetail(null, loaded(750.0, duration = 720.0)))
+        assertEquals("0:00:05 / 1:02:00", voiceNoteDetail(null, loaded(5.0, duration = 3720.0)))
+        assertEquals("0:12:30 / 1:02:00", voiceNoteDetail(null, loaded(750.0, duration = 3720.0)))
+        assertEquals("1:00:00 / 1:02:00", voiceNoteDetail(null, loaded(3600.0, duration = 3720.0)))
+    }
+
+    @Test fun `the clock's room is its duration's shape, a minute's while unknown`() {
+        assertEquals("0:00 / 0:00", voiceNoteRoom(SharedAudio(load = { File("note.m4a") }, open = { _, _ -> Speaker() }, scope = card)))
+        assertEquals("0:00 / 0:00", voiceNoteRoom(loaded(0.0, duration = 9.0)))
+        assertEquals("00:00 / 00:00", voiceNoteRoom(loaded(0.0, duration = 720.0)))
+        assertEquals("0:00:00 / 0:00:00", voiceNoteRoom(loaded(0.0, duration = 3720.0)))
+    }
+
+    @Test fun `a note preloads only online and, on a metered network, when small`() {
+        assertFalse(voiceNotePreloads(online = true, metered = true, bytes = 3 * 1024 * 1024))
+        assertFalse(voiceNotePreloads(online = true, metered = true, bytes = 2 * 1024 * 1024))
+        assertTrue(voiceNotePreloads(online = true, metered = true, bytes = 1024 * 1024))
+        assertTrue(voiceNotePreloads(online = true, metered = false, bytes = 30 * 1024 * 1024))
+        assertFalse(voiceNotePreloads(online = false, metered = false, bytes = 1024))
     }
 
     @Test fun `an hour of sound shows hours`() {

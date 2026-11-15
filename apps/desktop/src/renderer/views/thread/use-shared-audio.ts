@@ -4,9 +4,9 @@ import { analytics } from '../../store/analytics'
 import { useStore } from '../../store/context'
 import { SharedAudio, type AudioSnapshot, type Sound, type SoundEvents } from './shared-audio'
 
-/** A voice note's player for its card: fetched once from the computer, stopped when the card goes. Its clock starts
- *  at the length the host read (or, from an older host, the card reads), so the bar and `0:00 / 0:09` show before
- *  the first play. */
+/** A voice note's player for its card: fetched once from the computer as the card shows (a tap then plays at once),
+ *  stopped when the card goes. Its clock starts at the length the host read (or, from an older host, the card reads
+ *  from those bytes), so the bar and `0:00 / 0:09` show before the first play. */
 export function useSharedAudio(file: SharedFile, entryId: string) {
   const store = useStore()
   const known = (file.durationMs ?? 0) / 1000
@@ -17,12 +17,12 @@ export function useSharedAudio(file: SharedFile, entryId: string) {
     length: headerLength,
   }, setSnapshot, known))
   useEffect(() => () => audio.dispose(), [audio])
-  // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load. A note
-  // with none is measured instead, again once the computer is online (a chat shown before it connects reads nothing).
+  // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load. The
+  // sound is fetched once the computer is online (a chat shown before it connects reads nothing).
   const online = store.connection.kind === 'online'
   useEffect(() => {
     audio.setKnownDuration(known)
-    if (online) void audio.measure()
+    if (online) void audio.preload()
   }, [audio, known, online])
   return { snapshot, toggle: () => void play(audio), seek: (seconds: number) => audio.seek(seconds) }
 }

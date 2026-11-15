@@ -106,15 +106,21 @@ start (once: marked done before it reads), and its message a new rev so clients 
 again. For either the
 client reads the whole file into memory through the same `readFile` chunks, checks size
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
-read leaves the placeholder. The player is one row: play/pause (a bare glyph in every state,
-no tile on hover; on desktop the glyph fades to its filled form over the app's hover time,
-`IconButtonBase`'s `hoverIcon`; a spinner while the sound loads), the progress bar, and the clock, elapsed / length,
-ending at the text's edge; never the file size. The length shows from the first frame when `durationMs` is known; a
-sound from an older host without it is fetched as its card shows and its length read from its headers alone (desktop
-`preload = 'metadata'`, iOS `AVAudioPlayer` never prepared, Android `MediaMetadataRetriever`): nothing is played, and a
-failure stays silent until a tap. The decoded length replaces it once the sound loads. The clock always keeps the room
-of the widest one, an hour's (`0:00:00 / 0:00:00`), so the bar ends in one place while the length is unknown, when it
-arrives and as the clock runs. Download is in the message's menu, not a button on the row. A sound sent on its own is that
+read leaves the placeholder. The player is one row: play/pause (the outline glyph in every state; hover on desktop
+lays a soft round chip behind it and brings it to the text color over the app's hover time, and press, on every client,
+deepens that chip; a spinner while the sound loads), the progress bar, and the clock, elapsed / length, ending at the
+text's edge; never the file size. The bar keeps the same gap to the play glyph and to the clock (10 px on desktop,
+12 pt/dp on the phones). The length shows from the first frame when `durationMs` is known. A voice note's sound is
+fetched into the attachment cache as its card shows while the computer is online, one fetch per card that a tap,
+the preload and a length read all share, so play starts at once; a tap during that fetch shows the spinner and plays
+when the bytes arrive, and a failed fetch stays silent until a tap, which fetches again. On a phone on mobile data
+(an expensive or metered network) only a note under 2 MiB preloads; a bigger one is fetched on the tap. A sound from
+an older host without `durationMs` has its length read from those same bytes' headers alone (desktop
+`preload = 'metadata'`, iOS `AVAudioPlayer` never prepared, Android `MediaMetadataRetriever`): nothing is played and
+nothing is fetched twice. The decoded length replaces it once the sound loads. The clock keeps the room of its note's
+own form, `0:00 / 0:00` or `0:00:00 / 0:00:00` from its length (a short note's while it is unknown), and writes its
+elapsed half in that form (`0:00:05 / 1:02:00`), so the clock is always as wide as its room and the bar's end never
+moves as it plays. Download is in the message's menu, not a button on the row. A sound sent on its own is that
 row in a bubble of its own with the file's name under it. Tapping or dragging the loaded bar
 (clicking on desktop) moves the sound there, playing or paused; its touch area runs past the
 4 pt bar without taking layout (on desktop only to the thumb's 12 px height, so a click

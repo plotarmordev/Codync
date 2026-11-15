@@ -22,6 +22,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Bot 說「晚點回來看」時會設定跟進，時間到了自己回到聊天告訴你結果；等待中的跟進列在例行任務上方，可以取消。
 - 例行任務會記住上次做到哪裡，下次接著做。
 - 重新連上電腦後只補上錯過的訊息。
+- Gemini 即時語音新增 Google 搜尋開關，可在通話中查詢網頁資訊，預設關閉。
 
 ### en-US
 - Bots do long work in the background, so the chat stays free and keeps answering. A capsule above the message box shows what it is doing; tap it for details, or stop it.
@@ -35,3 +36,4 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Bots can check back later; cancel one under Routines.
 - Routines resume where they stopped.
 - Reconnects fetch only missed messages.
+- Optional Google Search in Gemini realtime calls, off by default.

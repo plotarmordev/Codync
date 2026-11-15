@@ -38,8 +38,10 @@ export function VoiceNotePlayer({ entry, file, menu, named = false }: { entry: E
       <VStack gap={4} aria-hidden>
         <HStack gap={10}>
           <AudioIcon snapshot={snapshot} toggle={toggle} />
-          {stop.failed ? null : <AudioProgress snapshot={snapshot} seek={seek} />}
-          {stop.detail ? <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail" grow={stop.failed}>{stop.detail}</Text> : null}
+          {stop.failed ? <Text as="div" size="caption2" tone="danger" className="file-card-detail" grow>{stop.detail}</Text> : <>
+            <AudioProgress snapshot={snapshot} seek={seek} />
+            <Text as="div" size="caption2" tone="secondary" className="file-card-detail voice-note-clock">{stop.detail}</Text>
+          </>}
         </HStack>
         {named ? <Text as="div" size="subheadline" weight="semibold" truncate title={file.name}>{file.name}</Text> : null}
       </VStack>

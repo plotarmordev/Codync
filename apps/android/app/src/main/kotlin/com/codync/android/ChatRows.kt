@@ -281,7 +281,7 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
 @Composable private fun AudioBubble(entry: Entry, file: SharedFile, menu: MessageMenu, state: AppState, store: AppStore,
     focus: FocusManager, attachment: Boolean) {
     val context = LocalContext.current
-    val player = rememberSharedAudio(entry, file, store)
+    val player = rememberSharedAudio(entry, file, store, online = state.connection is LinkState.Ready)
     val busy = state.fileDownloads[file.id] is FileDownloadState.Downloading
     val downloadItem = MenuItem(if (busy) "Cancel download" else "Download", icon = if (busy) "xmark" else "arrow.down.to.line",
         action = { store.toggleFile(entry.id, entry.botId, file) })

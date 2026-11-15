@@ -5,7 +5,8 @@ import { useStore } from '../../store/context'
 import { SharedAudio, type AudioSnapshot, type Sound, type SoundEvents } from './shared-audio'
 
 /** A voice note's player for its card: fetched once from the computer, stopped when the card goes. Its clock starts
- *  at the length the host read, so the bar and `0:00 / 0:09` show before the first play. */
+ *  at the length the host read (or, from an older host, the card reads), so the bar and `0:00 / 0:09` show before
+ *  the first play. */
 export function useSharedAudio(file: SharedFile, entryId: string) {
   const store = useStore()
   const known = (file.durationMs ?? 0) / 1000
@@ -13,10 +14,16 @@ export function useSharedAudio(file: SharedFile, entryId: string) {
   const [audio] = useState(() => new SharedAudio({
     load: () => store.sharedFileData(file, entryId),
     open: (data, events) => audioElement(data, events),
+    length: headerLength,
   }, setSnapshot, known))
   useEffect(() => () => audio.dispose(), [audio])
-  // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load.
-  useEffect(() => audio.setKnownDuration(known), [audio, known])
+  // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load. A note
+  // with none is measured instead, again once the computer is online (a chat shown before it connects reads nothing).
+  const online = store.connection.kind === 'online'
+  useEffect(() => {
+    audio.setKnownDuration(known)
+    if (online) void audio.measure()
+  }, [audio, known, online])
   return { snapshot, toggle: () => void play(audio), seek: (seconds: number) => audio.seek(seconds) }
 }
 
@@ -43,4 +50,15 @@ function audioElement(data: Uint8Array, events: SoundEvents): Sound {
     seek: (seconds) => { player.currentTime = seconds },
     dispose: () => URL.revokeObjectURL(player.src),
   }
+}
+
+/** The sound's length from its headers: `preload = 'metadata'` reads only those, nothing plays. */
+function headerLength(data: Uint8Array): Promise<number> {
+  const player = new Audio()
+  player.preload = 'metadata'
+  return new Promise<number>((resolve) => {
+    player.onloadedmetadata = () => resolve(Number.isFinite(player.duration) ? player.duration : 0)
+    player.onerror = () => resolve(0)
+    player.src = URL.createObjectURL(new Blob([data as BlobPart]))
+  }).finally(() => URL.revokeObjectURL(player.src))
 }

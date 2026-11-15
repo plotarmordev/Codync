@@ -95,6 +95,37 @@ private func silentWAV() -> Data {
         }
     }
 
+    @Test func aNoteSharedWithNoLengthReadsItFromTheSoundAsTheBubbleShowsPlayingNothing() async {
+        await playing { audio, load, store, note in
+            let measuring = Task { await audio.measure(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(silentWAV())
+            await measuring.value
+            #expect(audio.duration == 1)
+            #expect(audio.state == .idle, "only the headers are read: nothing plays")
+            await audio.measure(note, entryId: "entry", model: store)
+            #expect(load.calls == 1, "a known length is never fetched again")
+        }
+        await playing { audio, load, store, note in
+            let measuring = Task { await audio.measure(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            load.answer(nil)
+            await measuring.value
+            #expect(audio.duration == nil && audio.state == .idle, "a failed fetch stays quiet until a tap")
+        }
+    }
+
+    @Test func aBubbleGoneWhileItsSoundLoadsForItsLengthMeasuresNothing() async {
+        await playing { audio, load, store, note in
+            let measuring = Task { await audio.measure(note, entryId: "entry", model: store) }
+            #expect(await load.asked())
+            audio.stop()
+            load.answer(silentWAV())
+            await measuring.value
+            #expect(audio.duration == nil)
+        }
+    }
+
     @Test func aVoiceNoteThatFailsToPlayShowsItsFailureAndTheNextTapLoadsAgain() async {
         await playing { audio, load, store, note in
             let first = Task { await audio.toggle(note, entryId: "entry", model: store) }

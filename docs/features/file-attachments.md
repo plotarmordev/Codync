@@ -112,9 +112,10 @@ deepens that chip; a spinner while the sound loads), the progress bar, and the c
 text's edge; never the file size. The bar keeps the same gap to the play glyph and to the clock (10 px on desktop,
 12 pt/dp on the phones). The length shows from the first frame when `durationMs` is known. A voice note's sound is
 fetched into the attachment cache as its card shows while the computer is online, one fetch per card that a tap,
-the preload and a length read all share, so play starts at once; a tap during that fetch shows the spinner and plays
-when the bytes arrive, and a failed fetch stays silent until a tap, which fetches again. On a phone on mobile data
-(an expensive or metered network) only a note under 2 MiB preloads; a bigger one is fetched on the tap. A sound from
+the preload and a length read all share (it runs in the card's own scope, so a preload restarting doesn't cancel it
+under a waiting tap), so play starts at once; a tap during that fetch shows the spinner and plays when the bytes
+arrive, and a failed fetch stays silent until a tap, which fetches again. On a phone on mobile data (an expensive or
+metered network, or one not yet known) only a note under 2 MiB preloads; a bigger one is fetched on the tap. A sound from
 an older host without `durationMs` has its length read from those same bytes' headers alone (desktop
 `preload = 'metadata'`, iOS `AVAudioPlayer` never prepared, Android `MediaMetadataRetriever`): nothing is played and
 nothing is fetched twice. The decoded length replaces it once the sound loads. The clock keeps the room of its note's

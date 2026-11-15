@@ -112,7 +112,8 @@ no tile on hover; on desktop the glyph fades to its filled form over the app's h
 length from the first frame when `durationMs` is known; a sound from an older host without it is fetched as its card
 shows and its length read from its headers alone (desktop `preload = 'metadata'`, iOS `AVAudioPlayer` never prepared,
 Android `MediaMetadataRetriever`), nothing played, a failure silent until a tap; the decoded length once loaded; the
-caption keeps its room while the length is unknown, so the row never moves when it arrives or when play starts;
+caption sits over the room of its widest form, `00:00 / 00:00` (`0:00:00 / 0:00:00` past an hour; `clockRoom`), so the
+bar ends in one place while the length is unknown, when it arrives and as the clock runs;
 never the file size), ending at the text's edge;
 download is in the message's menu, not a button on the row. A sound sent on its own is that
 row in a bubble of its own with the file's name under it. Tapping or dragging the loaded bar

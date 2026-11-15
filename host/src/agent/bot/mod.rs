@@ -99,6 +99,7 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         active_routine: None,
         routine_deadline: None,
         routine_timed_out: false,
+        reopen_retried: false,
         routine_completion: None,
         session_fresh: false,
         profile_resend: HashSet::new(),
@@ -274,6 +275,9 @@ struct Actor {
     active_routine: Option<String>,
     routine_deadline: Option<Instant>,
     routine_timed_out: bool,
+    /// A session reopen timed out and has had its one fresh-agent retry; the next timeout starts a
+    /// new session instead. Reset every turn (`ensure_turn_session`).
+    reopen_retried: bool,
     routine_completion: Option<RoutineCompletion>,
     /// True until the first prompt of a new ACP session has been sent.
     session_fresh: bool,
@@ -495,8 +499,12 @@ impl Actor {
 /// Told to a bot whose turn the previous host process cut off (Grok Bot's upgrade resume).
 const RESUME_PROMPT: &str = "[Codync restarted on this computer and interrupted you mid-task. You've been resumed with your full conversation intact. Continue exactly where you left off and finish what you were doing. If your previous step already completed an action, do NOT repeat it — just carry on from there.]";
 
-/// How long a cancelled turn may take to wind down before its agent process is stopped.
+/// How long a cancelled turn may take to wind down before its agent process is stopped. Tests stop
+/// one that ignores the cancel sooner.
+#[cfg(not(test))]
 const CANCEL_GRACE: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const CANCEL_GRACE: Duration = Duration::from_secs(2);
 
 async fn recv_incoming(conn: &mut Option<Conn>) -> Option<Incoming> {
     match conn {

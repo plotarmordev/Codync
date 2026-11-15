@@ -146,6 +146,7 @@ impl Actor {
     /// `ensure_session` for the turn: a routine run's setup must end by its time limit, and setup cut short
     /// mustn't leave the agent opening a session the host never learns of.
     pub(super) async fn ensure_turn_session(&mut self, slot: Option<&str>) -> Result<()> {
+        self.reopen_retried = false;
         let Some(deadline) = self.routine_deadline else { return self.ensure_session(slot).await };
         let setup = tokio::time::timeout_at(deadline.into(), self.ensure_session(slot)).await;
         if setup.is_err() {
@@ -241,7 +242,21 @@ impl Actor {
                 params["systemPrompt"] = system_prompt(&self.snapshot(&sid).await?.system);
             }
             let res = self.session_request(reopen, params).await;
-            let Some(conn) = self.conn.as_mut() else { return res.map(drop) };
+            let Some(conn) = self.conn.as_mut() else {
+                // The reopen timed out and `session_request` stopped the agent. A stop that couldn't end
+                // everything the agent started leaves its session busy, so one fresh agent tries the
+                // reopen again; a turn that still gets no answer runs on a new session of its own rather
+                // than never starting.
+                #[cfg(unix)]
+                log_session_holders(&self.cfg.id, &sid).await;
+                if !std::mem::replace(&mut self.reopen_retried, true) {
+                    tracing::warn!(bot = %self.cfg.id, session = %sid, "the session didn't reopen; trying once more with a new agent");
+                    return Box::pin(self.ensure_session(slot)).await;
+                }
+                tracing::warn!(bot = %self.cfg.id, session = %sid, "the session still doesn't reopen; starting a fresh one");
+                self.set_session(slot, None);
+                return Box::pin(self.ensure_session(slot)).await;
+            };
             drop_replay(conn).await;
             match res {
                 Ok(res) => {
@@ -392,6 +407,7 @@ impl Actor {
         if let Ok(result) = answered {
             return result;
         }
+        tracing::warn!(bot = %self.cfg.id, method, "the agent didn't answer a session request in time; stopping it");
         if let Some(c) = self.conn.take() {
             c.acp.kill().await;
         }
@@ -423,8 +439,33 @@ impl Actor {
     }
 }
 
-/// How long opening a session (`session/new`, `session/load`, `session/resume`) may take.
+/// Names processes that still have the timed-out session's owner lock or transcript open.
+#[cfg(unix)]
+async fn log_session_holders(bot: &str, session: &str) {
+    let mut command = tokio::process::Command::new("lsof");
+    command.arg("-nP").kill_on_drop(true);
+    match tokio::time::timeout(Duration::from_secs(5), command.output()).await {
+        Ok(Ok(output)) => {
+            let listed = String::from_utf8_lossy(&output.stdout);
+            let holders: Vec<_> = listed.lines().filter(|line| line.contains(session)).collect();
+            if holders.is_empty() {
+                tracing::warn!(bot, session, "no process was found holding the session open");
+            }
+            for holder in holders {
+                tracing::warn!(bot, session, holder, "a process still has the session open");
+            }
+        }
+        Ok(Err(error)) => tracing::warn!(bot, session, %error, "couldn't inspect processes holding the session"),
+        Err(_) => tracing::warn!(bot, session, "inspecting processes holding the session timed out"),
+    }
+}
+
+/// How long opening a session (`session/new`, `session/load`, `session/resume`) may take. Tests wait
+/// for a shorter answer, so a timeout is quick to reproduce.
+#[cfg(not(test))]
 const SESSION_TIMEOUT: Duration = Duration::from_mins(3);
+#[cfg(test)]
+const SESSION_TIMEOUT: Duration = Duration::from_secs(6);
 
 /// An agent replays a session's history as `session/update` before it answers a reopen or a fork: drops it, and
 /// refuses the requests in it.
@@ -433,5 +474,111 @@ async fn drop_replay(conn: &mut Conn) {
         if let Incoming::Request { id, .. } = inc {
             let _ = conn.acp.respond_error(id, -32601, "not supported").await;
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::agent::bot::Cmd;
+    use crate::api::devices::Caller;
+    use crate::hub::{BotStatus, Hub};
+    use crate::store::{BotConfig, Store};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    async fn until(what: &str, hub: &Hub, mut condition: impl FnMut() -> bool) {
+        let run = tokio::time::timeout(Duration::from_secs(60), async {
+            while !condition() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        });
+        if run.await.is_err() {
+            let state = hub.runtime("bot");
+            panic!(
+                "timed out waiting for {what}: status={:?} activity={:?} history={:?}",
+                state.status,
+                state.activity,
+                hub.store
+                    .history("bot", i64::MAX, 10)
+                    .expect("test")
+                    .iter()
+                    .map(|e| e.data["text"].clone())
+                    .collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    fn sessions(dir: &std::path::Path) -> Vec<Value> {
+        std::fs::read_to_string(dir.join("sessions.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("test"))
+            .collect()
+    }
+
+    /// A stopped turn leaves a child behind that keeps the session busy: the next message still gets
+    /// its answer, with the session load retried on a new agent.
+    #[tokio::test]
+    async fn a_stopped_turns_leftover_child_does_not_stop_the_next_answer() {
+        let dir = std::env::temp_dir().join(format!("codync-session-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("test");
+        let store = Store::open(&dir.join("test.db")).expect("test");
+        let agent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/session_hold_agent.py");
+        let cfg: BotConfig = serde_json::from_value(json!({
+            "id": "bot", "name": "bot", "backend": "fixture", "cwd": &dir,
+            "command": crate::shell::python(&agent), "notify": false,
+        }))
+        .expect("test");
+        store.save_bot(&cfg).expect("test");
+        let hub = Arc::new(Hub::new(
+            store,
+            "test-host".into(),
+            crate::remote::identity::Identity::load_or_create(&dir).expect("test"),
+            "test-token".into(),
+            19222,
+        ));
+        hub.start().expect("test");
+
+        // A turn that never answers, holding the session through a child in a session of its own.
+        crate::api::dispatch(&hub, &Caller::Local, "send", json!({"botId": "bot", "text": "HOLD"}))
+            .await
+            .expect("test");
+        until("the child to hold the session", &hub, || {
+            dir.join("locked").exists() && hub.runtime("bot").status == BotStatus::Working
+        })
+        .await;
+        hub.send_cmd("bot", Cmd::Stop).expect("test");
+        until("the turn to be stopped", &hub, || hub.runtime("bot").status == BotStatus::Idle).await;
+
+        // The child still holds the session here, so this load times out and is retried.
+        crate::api::dispatch(&hub, &Caller::Local, "send", json!({"botId": "bot", "text": "hello again"}))
+            .await
+            .expect("test");
+        until("the fresh agent to retry the load", &hub, || {
+            sessions(&dir).iter().filter(|r| r["method"] == "session/load").count() == 2
+        })
+        .await;
+        std::fs::write(dir.join("release"), "").expect("test");
+
+        let history = || hub.store.history("bot", i64::MAX, 50).expect("test");
+        until("an answer despite the busy session", &hub, || {
+            history().iter().any(|e| e.data["text"] == "answered") && hub.runtime("bot").status == BotStatus::Idle
+        })
+        .await;
+
+        let sessions = sessions(&dir);
+        let loads: Vec<_> = sessions.iter().filter(|r| r["method"] == "session/load").collect();
+        assert_eq!(loads.len(), 2, "the timed-out session load was retried once");
+        assert_ne!(loads[0]["pid"], loads[1]["pid"], "the retry used a fresh agent");
+        assert_eq!(sessions.iter().filter(|r| r["method"] == "session/new").count(), 1);
+        let sid = loads[0]["sessionId"].as_str().expect("test");
+        assert_eq!(hub.store.bot("bot").expect("test").expect("test").session_id.as_deref(), Some(sid));
+        assert!(
+            !history().iter().any(|e| e.data["text"].as_str().is_some_and(|t| t.contains("Couldn't start"))),
+            "the message never failed to start"
+        );
+        hub.shutdown().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

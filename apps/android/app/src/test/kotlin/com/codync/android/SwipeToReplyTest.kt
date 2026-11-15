@@ -21,6 +21,14 @@ class SwipeToReplyTest {
         assertEquals(0f, ReplySwipe.offset(0f, threshold))
     }
 
+    @Test fun `the bubble never moves past the open space beside it`() {
+        assertEquals(30f, ReplySwipe.shown(80f, 30f))
+        assertEquals(40f, ReplySwipe.shown(40f, 100f))
+        assertEquals(0f, ReplySwipe.shown(80f, 0f))
+        assertEquals(0f, ReplySwipe.shown(80f, -5f))
+        assertTrue(ReplySwipe.offset(threshold * 2f, threshold) >= threshold)
+    }
+
     @Test fun `the reply arrow is grown and opaque at the threshold`() {
         assertEquals(0f, ReplySwipe.progress(0f, threshold))
         assertEquals(0.5f, ReplySwipe.progress(threshold / 2f, threshold))

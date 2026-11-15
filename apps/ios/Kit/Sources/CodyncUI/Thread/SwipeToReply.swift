@@ -10,6 +10,8 @@ enum ReplySwipe {
     /// The way it moves, as the sign of x: the user's messages left, the bots' right.
     enum Direction: CGFloat {
         case left = -1, right = 1
+
+        var alignment: Alignment { self == .right ? .leading : .trailing }
     }
 
     /// Only a mostly sideways drag the message's way starts a swipe; anything else stays the list's scroll. Judged on
@@ -24,12 +26,18 @@ enum ReplySwipe {
         let moved = max(0, dx * direction.rawValue)
         return moved <= threshold ? moved : threshold + (moved - threshold) / 4
     }
+
+    /// The visible movement stays in the open space beside the message, including its outer margin; full travel decides the reply.
+    static func shown(_ travel: CGFloat, gap: CGFloat) -> CGFloat {
+        min(travel, max(0, gap))
+    }
 }
 
 extension View {
     /// Quotes the message in the composer when it's dragged sideways, as in Messages; nothing when it can't be quoted.
-    @ViewBuilder func swipeToReply(_ direction: ReplySwipe.Direction, reply: (() -> Void)?) -> some View {
-        if let reply { modifier(SwipeToReply(direction: direction, reply: reply)) } else { self }
+    @ViewBuilder func swipeToReply(_ direction: ReplySwipe.Direction, margin: CGFloat, reply: (() -> Void)?) -> some View {
+        if let reply { modifier(SwipeToReply(direction: direction, margin: margin, reply: reply)) }
+        else { frame(maxWidth: .infinity, alignment: direction.alignment) }
     }
 }
 
@@ -37,21 +45,29 @@ extension View {
 /// says that letting go replies. It always springs back.
 private struct SwipeToReply: ViewModifier {
     let direction: ReplySwipe.Direction
+    let margin: CGFloat
     let reply: () -> Void
     @State private var travel: CGFloat = 0
+    @State private var contentWidth: CGFloat = 0
+    @State private var columnWidth: CGFloat = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         let progress = min(travel / ReplySwipe.threshold, 1)
+        let shown = ReplySwipe.shown(travel, gap: columnWidth - contentWidth + margin)
         content
-            .offset(x: travel * direction.rawValue)
-            .background(alignment: direction == .right ? .leading : .trailing) {
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+            .offset(x: shown * direction.rawValue)
+            .frame(maxWidth: .infinity, alignment: direction.alignment)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
+            .background(alignment: direction.alignment) {
                 Image(systemName: "arrowshape.turn.up.left")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(Palette.secondary)
                     .scaleEffect(0.5 + progress / 2)
                     .opacity(progress)
-                    .frame(width: travel)
+                    .frame(width: shown)
+                    .clipped()
                     .accessibilityHidden(true)
             }
             .gesture(SidewaysPan(direction: direction, moved: { travel = $0 }, released: release))
@@ -63,6 +79,7 @@ private struct SwipeToReply: ViewModifier {
             Analytics.shared.capture(.replySwiped)
             reply()
         }
+        travel = ReplySwipe.shown(travel, gap: columnWidth - contentWidth + margin)
         withAnimation(Motion.reduced(Motion.layout, reduceMotion)) { travel = 0 }
     }
 }

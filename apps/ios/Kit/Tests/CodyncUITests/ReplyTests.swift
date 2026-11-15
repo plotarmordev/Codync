@@ -39,6 +39,10 @@ private func message(_ id: String, kind: String, final: Bool? = nil, text: Strin
     #expect(ReplySwipe.travel(-40, .left) == 40)
     #expect(ReplySwipe.travel(ReplySwipe.threshold + 40, .right) == ReplySwipe.threshold + 10)
     #expect(ReplySwipe.travel(-30, .right) == 0, "never the other way")
+    #expect(ReplySwipe.shown(80, gap: 30) == 30, "the bubble stops at its column's edge")
+    #expect(ReplySwipe.shown(40, gap: 100) == 40)
+    #expect(ReplySwipe.shown(80, gap: 0) == 0, "a full-width bubble stays put but its travel still replies")
+    #expect(ReplySwipe.shown(80, gap: -5) == 0)
     #expect(AnalyticsEvent.replySwiped.name == "reply_swiped")
     #expect(AnalyticsEvent.replySwiped.properties.isEmpty)
 }

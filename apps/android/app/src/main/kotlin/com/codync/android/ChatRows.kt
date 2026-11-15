@@ -126,15 +126,15 @@ internal fun findable(items: List<ChatItem>): List<Pair<String, String>> =
     openTrace: () -> Unit, reply: (() -> Unit)?, connect: ConnectionRequestActions, addFallback: (Bot) -> Unit, openArtifact: (OpenArtifact) -> Unit) {
     val group = chat?.kind == "group"
     when (entry.kind) {
-        "user" -> SwipeToReply(ReplyDirection.Left, reply) {
-            Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
+        "user" -> SwipeToReply(ReplyDirection.Left, 56.dp, reply) {
+            Column(Modifier.padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
                 horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 UserBubble(entry, state, store, reply)
                 ReactionsRow(entry, state, store)
             }
         }
-        "agent" -> SwipeToReply(ReplyDirection.Right, reply) {
-            Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
+        "agent" -> SwipeToReply(ReplyDirection.Right, 40.dp, reply) {
+            Column(Modifier.padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
                 verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (group && groupStart) AuthorLabel(entry.data.text("author"), state)
                 AgentBubble(entry, state, store, openTrace, reply, openArtifact)
@@ -182,7 +182,7 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
     val focus = LocalFocusManager.current
     val attachments = entry.data["attachments"]?.jsonArray?.map { WireJson.decodeFromJsonElement<Attachment>(it) }.orEmpty()
     val menu = MessageMenu.of(entry, store, reply, trace = null)
-    Column(Modifier.fillMaxWidth().padding(start = 56.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.padding(start = 56.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (attachments.isNotEmpty()) AttachmentList(attachments, entry.botId, menu, state, store)
         val quote = entry.replyTo
         if (entry.text.isNotEmpty() || quote != null) Box(Modifier.clip(RoundedRectangle(18.dp)).background(Palette.bubbleUser)
@@ -257,7 +257,7 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
     val voiceNote = entry.voiceNote
     val menu = MessageMenu.of(entry, store, reply, openTrace)
     val textMenu = { menu.items(listOf(textCopyItem(context, entry.text))) }
-    Column(Modifier.fillMaxWidth().padding(end = 40.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.padding(end = 40.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // An artifact card or a message with files is that: the text is only the computer's fallback. A voice note
         // instead plays inside its bubble, over the message it captions; a file that plays in chat gets the same
         // bubble with its name under the player.

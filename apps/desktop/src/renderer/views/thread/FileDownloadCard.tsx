@@ -9,7 +9,7 @@ import { Spinner } from '../../components/Controls'
 import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { AttachmentImage, AttachmentViewer, attachmentSymbol, type ImageSource } from './Attachments'
-import { cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, downloadAction, downloadDetail } from './file-card'
+import { cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clockRoom, downloadAction, downloadDetail } from './file-card'
 import { ImageContextMenu } from './ImageContextMenu'
 import { imageCopyItems, type MessageMenu } from './use-image-actions'
 import { analytics } from '../../store/analytics'
@@ -40,7 +40,7 @@ export function VoiceNotePlayer({ entry, file, menu, named = false }: { entry: E
           <AudioIcon snapshot={snapshot} toggle={toggle} />
           {stop.failed ? <Text as="div" size="caption2" tone="danger" className="file-card-detail" grow>{stop.detail}</Text> : <>
             <AudioProgress snapshot={snapshot} seek={seek} />
-            <Text as="div" size="caption2" tone="secondary" className="file-card-detail voice-note-clock">{stop.detail}</Text>
+            <Text as="div" size="caption2" tone="secondary" className="file-card-detail voice-note-clock" data-room={clockRoom(snapshot.duration)}>{stop.detail}</Text>
           </>}
         </HStack>
         {named ? <Text as="div" size="subheadline" weight="semibold" truncate title={file.name}>{file.name}</Text> : null}
@@ -154,14 +154,13 @@ function withDivider(items: MenuItem[]) {
   return items.map((item, i) => i === 0 ? { ...item, divider: true } : item)
 }
 
-/** The play/pause glyph, fading to its filled form while the pointer is on it, or the spinner while the sound comes
- *  over; no tile behind it in any state. */
+/** The outline play/pause glyph, on a soft round chip while the pointer is on it, or the spinner while the sound
+ *  comes over. */
 function AudioIcon({ snapshot, toggle }: { snapshot: AudioSnapshot; toggle: () => void }) {
-  const glyph = `${snapshot.phase === 'playing' ? 'pause' : 'play'}.circle`
   return <div className="voice-note-slot">
     {snapshot.phase === 'loading'
       ? <Spinner size={18} />
-      : <IconButtonBase title={snapshot.phase === 'playing' ? 'Pause' : 'Play'} icon={glyph} hoverIcon={`${glyph}.fill`} size={36} tabIndex={-1} className="voice-note-glyph" onClick={toggle} />}
+      : <IconButtonBase title={snapshot.phase === 'playing' ? 'Pause' : 'Play'} icon={`${snapshot.phase === 'playing' ? 'pause' : 'play'}.circle`} size={36} tabIndex={-1} className="voice-note-glyph" onClick={toggle} />}
   </div>
 }
 

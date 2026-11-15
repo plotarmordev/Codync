@@ -12,6 +12,9 @@ struct ChatRow: View {
     let openTrace: () -> Void
     /// Quotes this message in the composer; nil where it can't be.
     var reply: (() -> Void)?
+    /// Opens the message's text for selecting a part to reply to; offered with `reply`, on a message that has text.
+    /// Nil where the computer's host takes no part.
+    var selectText: (() -> Void)?
     /// A failure notice's "Add a fallback": the bot's details.
     var addFallback: (() -> Void)?
     /// An artifact card's artifact, full size.
@@ -27,7 +30,7 @@ struct ChatRow: View {
         switch entry.kind {
         case "user":
             VStack(alignment: .trailing, spacing: 4) {
-                UserBubble(entry: entry, reply: reply)
+                UserBubble(entry: entry, reply: reply, selectText: selectText)
                 ReactionsRow(entry: entry)
             }
             .swipeToReply(.left, margin: 56, reply: reply)
@@ -37,7 +40,8 @@ struct ChatRow: View {
         case "agent":
             VStack(alignment: .leading, spacing: 4) {
                 if chat?.isGroup == true, groupStart { AuthorLabel(botId: entry.data.author) }
-                AgentBubble(entry: entry, openTrace: openTrace, reply: reply, openArtifact: openArtifact, openFile: openFile)
+                AgentBubble(entry: entry, openTrace: openTrace, reply: reply, selectText: selectText, openArtifact: openArtifact,
+                            openFile: openFile)
                 ReactionsRow(entry: entry)
                     .padding(.leading, chat?.isGroup == true ? 34 : 0)
             }
@@ -128,6 +132,7 @@ struct QuoteLine: View {
 struct UserBubble: View {
     let entry: Entry
     var reply: (() -> Void)?
+    var selectText: (() -> Void)?
     @Environment(BotStore.self) private var model
 
     var body: some View {
@@ -154,12 +159,11 @@ struct UserBubble: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(Palette.bubbleUser, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contextActions(reactions: menu.reactions) { menu.items(copy: menu.textCopy) }
+                .contextActions(reactions: menu.reactions) { menu.textItems() }
     }
 
     private var menu: MessageMenu {
-        MessageMenu(entry: entry, reactions: model.reactionPick(entry),
-                    actions: reply.map { [MenuItem("Reply", icon: "arrowshape.turn.up.left", action: $0)] } ?? [])
+        MessageMenu.of(entry, reactions: model.reactionPick(entry), reply: reply, selectText: selectText)
     }
 
     @ViewBuilder private var status: some View {
@@ -198,6 +202,7 @@ struct AgentBubble: View {
     let entry: Entry
     let openTrace: () -> Void
     var reply: (() -> Void)?
+    var selectText: (() -> Void)?
     var openArtifact: ((ArtifactRef) -> Void)?
     var openFile: ((FileViewerTarget) -> Void)?
     @Environment(BotStore.self) private var model
@@ -235,10 +240,11 @@ struct AgentBubble: View {
                     }
                 }
                 .contextActions(reactions: menu.reactions) {
-                    // A voice note's Download follows Copy, as on desktop and Android.
-                    menu.items(copy: menu.textCopy + (entry.data.voiceNoteFile.map { [downloadItem($0)] } ?? []))
+                    // A voice note's Download follows Copy and Select Text, as on Android.
+                    menu.textItems(more: entry.data.voiceNoteFile.map { [downloadItem($0)] } ?? [])
                 }
             }
+            TaskLine(data: entry.data).padding(.leading, 4)
         }
         .padding(.trailing, 40)
     }
@@ -252,9 +258,8 @@ struct AgentBubble: View {
     }
 
     private var menu: MessageMenu {
-        var actions = [MenuItem("Show what it did", icon: "list.bullet", action: openTrace)]
-        if let reply { actions.insert(MenuItem("Reply", icon: "arrowshape.turn.up.left", action: reply), at: 0) }
-        return MessageMenu(entry: entry, reactions: model.reactionPick(entry), actions: actions)
+        MessageMenu.of(entry, reactions: model.reactionPick(entry), reply: reply, selectText: selectText,
+                       more: [MenuItem("Show what it did", icon: "list.bullet", action: openTrace)])
     }
 }
 

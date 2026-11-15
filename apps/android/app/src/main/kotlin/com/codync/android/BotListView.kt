@@ -130,6 +130,9 @@ private class ComputerRoster(private val context: Context, val key: String) {
     }
     val toggleSection = { name: String -> folded = if (name in folded) folded - name else folded + name; FoldedSections.save(context, folded) }
     val agentLogos by AppearancePreferences.agentLogos.collectAsStateWithLifecycle()
+    // Every bot's work in one sheet, from the header's button while any bot has some.
+    val work = allWork(ordered) { rosters[it.computer.id]?.order.orEmpty() }
+    var workOpen by remember { mutableStateOf(false) }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     GlassStage(Modifier.fillMaxSize().background(Palette.background), chrome = {
         ScrollEdge(Edge.Top, top + 64.dp)
@@ -140,6 +143,7 @@ private class ComputerRoster(private val context: Context, val key: String) {
                 ComputerFilterHeader(states, hidden, { hidden = it; RosterComputers.setHidden(context, it) },
                     { for (state in shown) accounts.store(state.computer.id)?.reconnect() }, manage)
             }
+            AllWorkButton(work.bots.isNotEmpty(), work.working) { workOpen = true }
             // A new bot starts on the first computer online (its dialog can move it); a group chat gathers one computer's bots.
             NewMenuButton(enabled = available.isNotEmpty(), groupEnabled = online.isNotEmpty(),
                 { (online.firstOrNull() ?: available.firstOrNull())?.let { newBot(it.computer.id) } },
@@ -186,6 +190,7 @@ private class ComputerRoster(private val context: Context, val key: String) {
             confirmDelete?.let { (id, bot) -> accounts.store(id)?.deleteBot(bot) {} }
         })
     }
+    AllWorkSheet(workOpen, work.bots, grouped, accounts) { workOpen = false }
     NameDialog(naming, "Section name", { naming = null }, ::limitSectionName, ::sectionName)
 }
 
@@ -370,20 +375,19 @@ private fun Bot.movesWith(other: Bot) = band == other.band && (pinned || section
     }
 }
 
-/** Live activity while working, otherwise the last message (Grok Bot row behavior). */
+/** What goes on, the most pressing first ([botLine]), otherwise the last message (Grok Bot row behavior). */
 @Composable private fun Preview(bot: Bot, state: AppState) {
+    val line = botLine(bot, translator())
     when {
-        bot.status == "needsInput" -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ThinkingOrb(ThinkingOrbState.Listening, 16.dp, Palette.warning)
-            Text(tr(bot.activity.ifEmpty { "Needs your approval" }), style = Type.subheadline, color = Palette.warning, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        line != null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            val color = if (line.kind == BotLineKind.NeedsYou) Palette.warning else Palette.secondary
+            when (line.kind) {
+                BotLineKind.NeedsYou -> ThinkingOrb(ThinkingOrbState.Listening, 16.dp, color)
+                BotLineKind.Working -> ThinkingOrb(size = 13.dp, color = color)
+                BotLineKind.Waiting -> Unit
+            }
+            Text(line.text, style = Type.subheadline, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        bot.status == "working" -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ThinkingOrb(size = 13.dp, color = Palette.secondary)
-            Text(tr(bot.activity.ifEmpty { "Working…" }), style = Type.subheadline, color = Palette.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        // Idle in its chat while it works away from it.
-        bot.status == "idle" && bot.tasks.isNotEmpty() -> Text(rosterTaskLine(bot.tasks, translator()),
-            style = Type.subheadline, color = Palette.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         bot.status == "error" -> Text(messagePreview(bot.lastMessage ?: "Something went wrong"), style = Type.subheadline, color = Palette.danger,
             maxLines = 1, overflow = TextOverflow.Ellipsis)
         else -> Text(messagePreview(bot.lastMessage ?: if (bot.kind == "group") "${bot.members.size} bots"

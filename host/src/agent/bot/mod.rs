@@ -19,6 +19,7 @@
 mod background_work;
 mod cmd;
 mod codex_names;
+mod commands;
 mod compaction;
 mod decisions;
 mod fallback;
@@ -38,6 +39,7 @@ mod updates;
 
 pub use cmd::Cmd;
 use cmd::{HostTurn, Queued};
+pub use commands::listed as agent_commands;
 pub(crate) use compaction::conversation;
 pub use compaction::{context_window, offers_threshold};
 use inflight::Inflight;
@@ -119,6 +121,7 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         steers_in_flight: HashMap::new(),
         held_done: None,
         active_request: None,
+        task_source: crate::chat::tasks::Source::Bot,
         reply_hops: None,
         host_turn: None,
         reports: Vec::new(),
@@ -310,6 +313,9 @@ struct Actor {
     /// How the running turn ended, while the agent still owes an answer to a steer (`turn_ended`).
     held_done: Option<Done>,
     active_request: Option<crate::chat::team::BotRequest>,
+    /// A task's running turn works an item that came from here (`chat::tasks`): a routine's run and another bot's
+    /// request keep the rules those turns have in a chat. Anything else: the bot's own.
+    task_source: crate::chat::tasks::Source,
     /// During a turn that takes bot replies: the hops of their chain (see `chat::team::BotReply`).
     reply_hops: Option<u8>,
     /// The running turn is one the host started, with no message of the user's (`Cmd::Prompt`, `Cmd::FollowUp`).
@@ -385,7 +391,7 @@ impl Actor {
         let failed = done.as_ref().is_err_and(acp::may_end_session);
         self.finish_turn(&done);
         match session {
-            // A task's session is spent like a run's until its bot tells it more.
+            // A task's session is spent like a run's; an item that follows reopens it.
             Some(sid) if routine || self.cfg.is_task() => self.release_spent(&sid).await,
             Some(sid) if failed => self.close_reopenable(&sid).await,
             _ => {}
@@ -446,6 +452,9 @@ impl Actor {
         if let Some(c) = self.conn.take() {
             c.acp.kill().await;
         }
+        if self.cfg.is_task() {
+            self.hub.forget_runtime(&self.cfg.id);
+        }
     }
 
     fn id(&self) -> String {
@@ -495,8 +504,12 @@ impl Actor {
 /// Told to a bot whose turn the previous host process cut off (Grok Bot's upgrade resume).
 const RESUME_PROMPT: &str = "[Codync restarted on this computer and interrupted you mid-task. You've been resumed with your full conversation intact. Continue exactly where you left off and finish what you were doing. If your previous step already completed an action, do NOT repeat it — just carry on from there.]";
 
-/// How long a cancelled turn may take to wind down before its agent process is stopped.
+/// How long a cancelled turn may take to wind down before its agent process is stopped. Tests stop
+/// one that ignores the cancel sooner.
+#[cfg(not(test))]
 const CANCEL_GRACE: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const CANCEL_GRACE: Duration = Duration::from_secs(2);
 
 async fn recv_incoming(conn: &mut Option<Conn>) -> Option<Incoming> {
     match conn {

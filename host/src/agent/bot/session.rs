@@ -117,9 +117,9 @@ impl Actor {
             composio.then_some("composio"),
         ];
         for name in builtin.into_iter().flatten() {
-            // A task's memory is its bot's; everything else of it is its own.
-            let bot = if name == "memory" { self.cfg.owner() } else { &self.cfg.id };
-            servers.push(crate::mcp::acp_server(name, &exe, &[name, "--bot", bot], port));
+            // A task's `memory` server is the task's too: it reads and writes its bot's memory (`memory::tool_call`),
+            // and what it writes is its own turn's.
+            servers.push(crate::mcp::acp_server(name, &exe, &[name, "--bot", &self.cfg.id], port));
         }
         Ok(Value::Array(servers))
     }
@@ -179,33 +179,7 @@ impl Actor {
             codex_names::Renamed::new()
         };
         if self.conn.is_none() {
-            let (hub, id) = (self.hub.clone(), self.cfg.id.clone());
-            let progress = move |msg: &str| {
-                let msg = msg.to_owned();
-                hub.set_runtime(&id, |r| r.activity = msg);
-            };
-            let candidates = launch_commands(&self.cfg)?;
-            // Keys saved from an "environment variable" sign-in, and what the harness needs to start.
-            let profile = self.cfg.login_profile.as_deref();
-            let on_profile = crate::agent::login_profiles::prepare(&self.hub.store, &self.cfg.backend, profile).await?;
-            let (mut env, grants) = crate::agent::auth::launch_env(&self.hub.store, &self.cfg.backend, profile)?;
-            if self.cfg.backend == "codex" && !env.iter().any(|(k, _)| k == "CODEX_CONFIG") {
-                // Codex's `/compact` takes no instructions: the keep-list is its config's `compact_prompt`.
-                let config = json!({"compact_prompt": codync_mem::compaction::KEEP});
-                env.push(("CODEX_CONFIG".into(), config.to_string()));
-            }
-            if pi {
-                env.extend(pi_tools::env(&servers).await?);
-            }
-            let mut conn = start_first(candidates, &env, |candidate, env, fallback_left| {
-                // A local CLI too old for ACP just hangs; don't make the user wait long before the fallback.
-                let budget = Duration::from_secs(if fallback_left { 20 } else { 180 });
-                self.start_candidate(candidate, env, budget, &progress)
-            })
-            .await?;
-            conn.acp.hold(grants);
-            conn.on_profile = on_profile;
-            self.conn = Some(conn);
+            self.start_conn(&servers).await?;
         }
         if self.conn.as_ref().is_some_and(|c| c.adapter == Adapter::Codex) {
             renamed = codex_names::avoid_clashes(&mut servers, &self.cfg.cwd, self.saved_env("CODEX_HOME")).await;
@@ -240,7 +214,17 @@ impl Actor {
             if instructions == Instructions::SystemPrompt {
                 params["systemPrompt"] = system_prompt(&self.snapshot(&sid).await?.system);
             }
-            let res = self.session_request(reopen, params).await;
+            let mut res = self.session_request(reopen, params.clone()).await;
+            if self.conn.is_none() {
+                // The reopen timed out and stopped the agent. A stop that couldn't end everything the agent started
+                // can leave its session busy for a while, so a fresh agent tries once more; a second timeout is the
+                // turn's error, which moves a bot with fallbacks on to its next agent.
+                #[cfg(unix)]
+                log_session_holders(&self.cfg.id, &sid).await;
+                tracing::warn!(bot = %self.cfg.id, session = %sid, "the session didn't reopen; trying once more with a new agent");
+                self.start_conn(&servers).await?;
+                res = self.session_request(reopen, params).await;
+            }
             let Some(conn) = self.conn.as_mut() else { return res.map(drop) };
             drop_replay(conn).await;
             match res {
@@ -282,22 +266,25 @@ impl Actor {
             }
         }
         // A task's first session: a fork of its bot's main one where the agent can, so it starts knowing the chat;
-        // otherwise a new session that is told the chat so far.
+        // otherwise a new session that is told the chat so far. A routine's run gets neither (no fork source, no
+        // chat): a new session with its own prompt, as a run in the chat has.
         if slot.is_none() && crate::chat::tasks::first_session(&self.hub.store, &self.cfg) {
             match self.fork_owner_session(&servers, &renamed, instructions).await {
                 Ok(true) => return Ok(()),
                 Ok(false) => {}
                 Err(error) => {
                     tracing::warn!(bot = %self.cfg.id, error = format!("{error:#}"), "couldn't fork the chat's session; starting from a brief");
-                    crate::chat::tasks::fork_failed(&self.hub.store, &self.cfg.id);
+                    crate::chat::tasks::fork_failed(&self.hub, &self.cfg);
                 }
             }
             // A fork that timed out stopped the agent: start over, on the brief's way.
             if self.conn.is_none() {
                 return Box::pin(self.ensure_session(slot)).await;
             }
-            self.handoff = crate::chat::tasks::chat_so_far(&self.hub.store, self.cfg.owner());
-            crate::chat::tasks::started(&self.hub, &self.cfg.id, crate::chat::tasks::Start::Brief);
+            if crate::chat::tasks::from_chat(&self.task_source) {
+                self.handoff = crate::chat::tasks::chat_so_far(&self.hub.store, self.cfg.owner());
+            }
+            crate::chat::tasks::started(&self.hub, &self.cfg, crate::chat::tasks::Start::Brief);
         }
         let (revision, system) = {
             let (hub, cfg) = (self.hub.clone(), self.cfg.as_owner());
@@ -314,6 +301,38 @@ impl Actor {
         if instructions == Instructions::ClaudeMeta {
             self.applied_system.insert(sid, system);
         }
+        Ok(())
+    }
+
+    /// Starts the bot's agent (the first of its launch commands that answers) as `self.conn`.
+    async fn start_conn(&mut self, servers: &Value) -> Result<()> {
+        let (hub, id) = (self.hub.clone(), self.cfg.id.clone());
+        let progress = move |msg: &str| {
+            let msg = msg.to_owned();
+            hub.set_runtime(&id, |r| r.activity = msg);
+        };
+        let candidates = launch_commands(&self.cfg)?;
+        // Keys saved from an "environment variable" sign-in, and what the harness needs to start.
+        let profile = self.cfg.login_profile.as_deref();
+        let on_profile = crate::agent::login_profiles::prepare(&self.hub.store, &self.cfg.backend, profile).await?;
+        let (mut env, grants) = crate::agent::auth::launch_env(&self.hub.store, &self.cfg.backend, profile)?;
+        if self.cfg.backend == "codex" && !env.iter().any(|(k, _)| k == "CODEX_CONFIG") {
+            // Codex's `/compact` takes no instructions: the keep-list is its config's `compact_prompt`.
+            let config = json!({"compact_prompt": codync_mem::compaction::KEEP});
+            env.push(("CODEX_CONFIG".into(), config.to_string()));
+        }
+        if self.cfg.backend == "pi" {
+            env.extend(pi_tools::env(servers).await?);
+        }
+        let mut conn = start_first(candidates, &env, |candidate, env, fallback_left| {
+            // A local CLI too old for ACP just hangs; don't make the user wait long before the fallback.
+            let budget = Duration::from_secs(if fallback_left { 20 } else { 180 });
+            self.start_candidate(candidate, env, budget, &progress)
+        })
+        .await?;
+        conn.acp.hold(grants);
+        conn.on_profile = on_profile;
+        self.conn = Some(conn);
         Ok(())
     }
 
@@ -350,7 +369,7 @@ impl Actor {
         renamed: &codex_names::Renamed,
         instructions: Instructions,
     ) -> Result<bool> {
-        let Some(source) = crate::chat::tasks::take_fork_source(&self.hub.store, &self.cfg.id) else {
+        let Some(source) = crate::chat::tasks::take_fork_source(&self.hub, &self.cfg) else {
             return Ok(false);
         };
         if !self.conn.as_ref().is_some_and(|c| c.sessions.fork) {
@@ -378,7 +397,7 @@ impl Actor {
         if instructions == Instructions::ClaudeMeta {
             self.applied_system.insert(sid, parent.system);
         }
-        crate::chat::tasks::started(&self.hub, &self.cfg.id, crate::chat::tasks::Start::Fork);
+        crate::chat::tasks::started(&self.hub, &self.cfg, crate::chat::tasks::Start::Fork);
         Ok(true)
     }
 
@@ -392,6 +411,7 @@ impl Actor {
         if let Ok(result) = answered {
             return result;
         }
+        tracing::warn!(bot = %self.cfg.id, method, "the agent didn't answer a session request in time; stopping it");
         if let Some(c) = self.conn.take() {
             c.acp.kill().await;
         }
@@ -423,8 +443,43 @@ impl Actor {
     }
 }
 
-/// How long opening a session (`session/new`, `session/load`, `session/resume`) may take.
+/// Reports which processes still have the timed-out session's owner lock or transcript open.
+#[cfg(unix)]
+async fn log_session_holders(bot: &str, session: &str) {
+    match session_holders(session).await {
+        Ok(holders) if holders.is_empty() => {
+            tracing::warn!(bot, session, "no process was found holding the session open");
+        }
+        Ok(holders) => {
+            for holder in holders {
+                tracing::warn!(bot, session, holder, "a process still has the session open");
+            }
+        }
+        Err(error) => {
+            tracing::warn!(bot, session, error = format!("{error:#}"), "couldn't list processes holding the session");
+        }
+    }
+}
+
+/// `lsof` lines of this user's open files whose path names `session`: the agent and anything it started run as the
+/// host's user. Even that list can take a second or more on a busy computer.
+#[cfg(unix)]
+async fn session_holders(session: &str) -> Result<Vec<String>> {
+    // SAFETY: getuid only reads the calling process's user id.
+    let uid = unsafe { libc::getuid() };
+    let mut command = tokio::process::Command::new("lsof");
+    command.args(["-nP", "-u", &uid.to_string()]).kill_on_drop(true);
+    let output = tokio::time::timeout(Duration::from_secs(30), command.output()).await.context("lsof timed out")??;
+    let listed = String::from_utf8_lossy(&output.stdout);
+    Ok(listed.lines().filter(|line| line.contains(session)).map(str::to_owned).collect())
+}
+
+/// How long opening a session (`session/new`, `session/load`, `session/resume`) may take. Tests wait
+/// for a shorter answer, so a timeout is quick to reproduce.
+#[cfg(not(test))]
 const SESSION_TIMEOUT: Duration = Duration::from_mins(3);
+#[cfg(test)]
+const SESSION_TIMEOUT: Duration = Duration::from_secs(6);
 
 /// An agent replays a session's history as `session/update` before it answers a reopen or a fork: drops it, and
 /// refuses the requests in it.
@@ -433,5 +488,140 @@ async fn drop_replay(conn: &mut Conn) {
         if let Incoming::Request { id, .. } = inc {
             let _ = conn.acp.respond_error(id, -32601, "not supported").await;
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::agent::bot::Cmd;
+    use crate::api::devices::Caller;
+    use crate::hub::{BotStatus, Hub};
+    use crate::store::{BotConfig, Store};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    async fn until(what: &str, hub: &Hub, mut condition: impl FnMut() -> bool) {
+        let run = tokio::time::timeout(Duration::from_secs(60), async {
+            while !condition() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        });
+        if run.await.is_err() {
+            let state = hub.runtime("bot");
+            panic!(
+                "timed out waiting for {what}: status={:?} activity={:?} history={:?}",
+                state.status,
+                state.activity,
+                hub.store
+                    .history("bot", i64::MAX, 10)
+                    .expect("test")
+                    .iter()
+                    .map(|e| e.data["text"].clone())
+                    .collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    fn sessions(dir: &std::path::Path) -> Vec<Value> {
+        std::fs::read_to_string(dir.join("sessions.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("test"))
+            .collect()
+    }
+
+    struct HeldSession {
+        dir: PathBuf,
+        hub: Arc<Hub>,
+        /// The id of the session the leftover child holds.
+        sid: String,
+    }
+
+    /// A bot whose turn left a child behind that keeps its session busy: the turn was stopped and the child, in a
+    /// process session of its own, still holds the session's lock. Then the next message is sent.
+    async fn send_after_held_session() -> HeldSession {
+        let dir = std::env::temp_dir().join(format!("codync-session-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("test");
+        let store = Store::open(&dir.join("test.db")).expect("test");
+        let agent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/session_hold_agent.py");
+        let cfg: BotConfig = serde_json::from_value(json!({
+            "id": "bot", "name": "bot", "backend": "fixture", "cwd": &dir,
+            "command": crate::shell::python(&agent), "notify": false,
+        }))
+        .expect("test");
+        store.save_bot(&cfg).expect("test");
+        let identity = crate::remote::identity::Identity::load_or_create(&dir).expect("test");
+        let hub = Hub::new(store, "test-host".into(), identity, "test-token".into(), 0);
+        hub.start().expect("test");
+
+        crate::api::dispatch(&hub, &Caller::Local, "send", json!({"botId": "bot", "text": "HOLD"}))
+            .await
+            .expect("test");
+        until("the child to hold the session", &hub, || {
+            dir.join("locked").exists() && hub.runtime("bot").status == BotStatus::Working
+        })
+        .await;
+        hub.send_cmd("bot", Cmd::Stop).expect("test");
+        until("the turn to be stopped", &hub, || hub.runtime("bot").status == BotStatus::Idle).await;
+
+        crate::api::dispatch(&hub, &Caller::Local, "send", json!({"botId": "bot", "text": "hello again"}))
+            .await
+            .expect("test");
+        let sid = hub.store.bot("bot").expect("test").expect("test").session_id.expect("the turn opened a session");
+        HeldSession { dir, hub, sid }
+    }
+
+    fn session_loads(dir: &std::path::Path) -> Vec<Value> {
+        sessions(dir).into_iter().filter(|r| r["method"] == "session/load").collect()
+    }
+
+    /// The session is busy only for a while: the timed-out load is retried on a new agent, and the next message is
+    /// answered in the chat's own session.
+    #[tokio::test]
+    async fn a_stopped_turns_leftover_child_does_not_stop_the_next_answer() {
+        let HeldSession { dir, hub, sid } = send_after_held_session().await;
+        until("the fresh agent to retry the load", &hub, || session_loads(&dir).len() == 2).await;
+        let holder = std::fs::read_to_string(dir.join("locked")).expect("test");
+        let holders = session_holders(&sid).await.expect("test");
+        assert!(
+            holders.iter().any(|line| line.split_whitespace().nth(1) == Some(holder.as_str())),
+            "the process holding the session's lock is named: {holders:?}"
+        );
+        std::fs::write(dir.join("release"), "").expect("test");
+
+        let history = || hub.store.history("bot", i64::MAX, 50).expect("test");
+        until("an answer despite the busy session", &hub, || {
+            history().iter().any(|e| e.data["text"] == "answered") && hub.runtime("bot").status == BotStatus::Idle
+        })
+        .await;
+
+        let loads = session_loads(&dir);
+        assert_eq!(loads.len(), 2, "the timed-out session load was retried once");
+        assert_ne!(loads[0]["pid"], loads[1]["pid"], "the retry used a fresh agent");
+        assert_eq!(sessions(&dir).iter().filter(|r| r["method"] == "session/new").count(), 1);
+        assert_eq!(hub.store.bot("bot").expect("test").expect("test").session_id, Some(sid));
+        assert!(
+            !history().iter().any(|e| e.data["text"].as_str().is_some_and(|t| t.contains("Couldn't start"))),
+            "the message never failed to start"
+        );
+        hub.shutdown().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A session that stays busy fails the turn after the one retry, and the chat keeps its session for later.
+    #[tokio::test]
+    async fn a_session_that_stays_busy_fails_the_turn_after_one_retry() {
+        let HeldSession { dir, hub, sid } = send_after_held_session().await;
+        let history = || hub.store.history("bot", i64::MAX, 50).expect("test");
+        until("the turn to fail", &hub, || hub.runtime("bot").status == BotStatus::Error).await;
+        assert!(history().iter().any(|e| e.data["text"].as_str().is_some_and(|t| t.contains("Couldn't start"))));
+        std::fs::write(dir.join("release"), "").expect("test");
+
+        assert_eq!(session_loads(&dir).len(), 2, "the timed-out session load was retried once");
+        assert_eq!(sessions(&dir).iter().filter(|r| r["method"] == "session/new").count(), 1);
+        assert_eq!(hub.store.bot("bot").expect("test").expect("test").session_id, Some(sid));
+        hub.shutdown().await;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

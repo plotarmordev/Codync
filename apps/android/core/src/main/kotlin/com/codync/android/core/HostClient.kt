@@ -85,11 +85,23 @@ data class Bot(
     val agentStep: AgentStep? = null,
     /** Agents of its chain resting now. */
     val resting: List<Resting> = emptyList(),
+    /** The `/` commands of the agent it runs on now. Empty from an older host, and for a group. */
+    val agentCommands: List<AgentCommand> = emptyList(),
     /** What it keeps running on the computer. Empty from an older host, and for a group. */
     val devServers: List<DevServer> = emptyList(),
-    /** Its background tasks still going ([BotTask]). Empty from a host before tasks, and for a group. */
-    @Serializable(with = BotTasksSerializer::class)
-    val tasks: List<BotTask> = emptyList(),
+    /** Its box ([WorkItem]): every live or waiting item in dispatch order, then the ones ended in the last day. Empty from a host before the box, and for a group. */
+    @Serializable(with = WorkSerializer::class)
+    val work: List<WorkItem> = emptyList(),
+    /** The most agents it runs at once; null from a host before the box. */
+    @Serializable(with = MaxAgentsSerializer::class)
+    val maxAgents: Int? = null,
+    /** A task that starts while another of its tasks works in the same repository gets a git worktree of its own; null from an older host. */
+    val taskWorktrees: Boolean? = null,
+    /** Its folder is in a git repository: where [taskWorktrees] matters. */
+    val gitRepo: Boolean = false,
+    /** How it stands outside its chat ([Outside]); null from an older host. */
+    @Serializable(with = OutsideSerializer::class)
+    val outside: Outside? = null,
     val customIcon: CustomIcon? = null,
 ) {
     /** Its band in the roster: pinned bots, then the rest. Reordering stays inside a band. */
@@ -104,6 +116,11 @@ data class Bot(
 
     /** A group's bots, in member order, from [bots]. */
     fun memberBots(bots: List<Bot>): List<Bot> = members.mapNotNull { id -> bots.firstOrNull { it.id == id } }
+
+    /** Its status outside its chat: the chat's own from a host that names none. */
+    val outsideStatus: String get() = outside?.status ?: status
+    /** When what it does outside its chat started. */
+    val outsideStartedAt: Long? get() = if (outside != null) outside.startedAt else startedAt
 
     /** Working anywhere: its own chat, a room or a routine. */
     val isWorking: Boolean get() = status in listOf("working", "needsInput")

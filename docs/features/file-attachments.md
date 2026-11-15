@@ -108,14 +108,13 @@ client reads the whole file into memory through the same `readFile` chunks, chec
 and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
 read leaves the placeholder. The player is one row: play/pause (a bare glyph in every state,
 no tile on hover; on desktop the glyph fades to its filled form over the app's hover time,
-`IconButtonBase`'s `hoverIcon`; a spinner while the sound loads), the progress bar, the caption (elapsed /
-length from the first frame when `durationMs` is known; a sound from an older host without it is fetched as its card
-shows and its length read from its headers alone (desktop `preload = 'metadata'`, iOS `AVAudioPlayer` never prepared,
-Android `MediaMetadataRetriever`), nothing played, a failure silent until a tap; the decoded length once loaded; the
-caption sits over the room of its widest form, `00:00 / 00:00` (`0:00:00 / 0:00:00` past an hour; `clockRoom`), so the
-bar ends in one place while the length is unknown, when it arrives and as the clock runs;
-never the file size), ending at the text's edge;
-download is in the message's menu, not a button on the row. A sound sent on its own is that
+`IconButtonBase`'s `hoverIcon`; a spinner while the sound loads), the progress bar, and the clock, elapsed / length,
+ending at the text's edge; never the file size. The length shows from the first frame when `durationMs` is known; a
+sound from an older host without it is fetched as its card shows and its length read from its headers alone (desktop
+`preload = 'metadata'`, iOS `AVAudioPlayer` never prepared, Android `MediaMetadataRetriever`): nothing is played, and a
+failure stays silent until a tap. The decoded length replaces it once the sound loads. The clock always keeps the room
+of the widest one, an hour's (`0:00:00 / 0:00:00`), so the bar ends in one place while the length is unknown, when it
+arrives and as the clock runs. Download is in the message's menu, not a button on the row. A sound sent on its own is that
 row in a bubble of its own with the file's name under it. Tapping or dragging the loaded bar
 (clicking on desktop) moves the sound there, playing or paused; its touch area runs past the
 4 pt bar without taking layout (on desktop only to the thumb's 12 px height, so a click

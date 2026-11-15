@@ -4,12 +4,15 @@ import Testing
 @testable import CodyncKit
 @testable import CodyncUI
 
-/// A sound's fetches from the computer that the test answers when it chooses, newest first.
+/// A sound's fetches from the computer that the test answers when it chooses, newest first. Like the store, it keeps
+/// the bytes it answered and hands them out again without a fetch; `calls` counts only real fetches.
 @MainActor private final class HeldLoad {
     private var waiting: [CheckedContinuation<Data?, Never>] = []
+    private var cached: Data?
     private(set) var calls = 0
 
     func call() async -> Data? {
+        if let cached { return cached }
         calls += 1
         return await withCheckedContinuation { waiting.append($0) }
     }
@@ -17,6 +20,7 @@ import Testing
     func asked() async -> Bool { await until { !self.waiting.isEmpty } }
 
     func answer(_ data: Data?) {
+        cached = data
         waiting.popLast()?.resume(returning: data)
     }
 }

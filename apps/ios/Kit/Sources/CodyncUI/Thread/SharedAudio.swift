@@ -26,8 +26,9 @@ final class SharedAudio {
     @ObservationIgnored private var ownsSession = false
     /// Bumped by `stop()`: a load still running when the card went doesn't start playing.
     @ObservationIgnored private var generation = 0
-    /// One fetch of the sound's bytes shares every asker: the bubble's preload, its length read and a tap all wait
-    /// on it; a failed one is dropped, so the next ask fetches again.
+    /// The fetch of the sound's bytes now running, shared by every asker: the bubble's preload, its length read and
+    /// a tap all wait on it. Dropped once it answers, so a bubble holds no bytes it isn't playing; the store keeps
+    /// them on disk for the next ask.
     @ObservationIgnored private var fetched: Task<Data?, Never>?
     /// Ticks `elapsed` while the sound plays.
     @ObservationIgnored private var clock: Timer?
@@ -126,15 +127,13 @@ final class SharedAudio {
     /// The sound size the bubble still preloads on an expensive network (2 MiB).
     static let preloadLimit: Int64 = 2 * 1024 * 1024
 
-    /// The sound's bytes, shared by every asker and kept for the next tap: the store caches them to disk. A fetch
-    /// that answers nothing is forgotten so the next ask tries again.
+    /// The sound's bytes: the fetch running now if there is one, so askers share a single download; once it answers
+    /// it is forgotten, and the next ask reads them from the store's disk cache (or fetches again after a failure).
     private func bytes(_ file: SharedFile, entryId: String, model: BotStore) async -> Data? {
         let task = fetched ?? Task { await load(model, file, entryId) }
         fetched = task
-        guard let data = await task.value else {
-            if fetched == task { fetched = nil }
-            return nil
-        }
+        let data = await task.value
+        if fetched == task { fetched = nil }
         return data
     }
 

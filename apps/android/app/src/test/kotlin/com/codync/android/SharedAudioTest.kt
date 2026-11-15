@@ -211,29 +211,70 @@ class SharedAudioTest {
         assertEquals(9.0, audio.duration, 0.0)
     }
 
-    @Test fun `a note shared with no length reads it from the sound as the card shows, playing nothing`() = runBlocking {
+    @Test fun `a preload has the next tap play the bytes it already fetched`() = runBlocking {
+        val preloading = launch { audio.preload() }
+        yield()
+        fetch.complete(File("note.m4a"))
+        preloading.join()
+        audio.toggle()
+        assertEquals(AudioPhase.Playing, audio.phase)
+        assertEquals(listOf("open", "start"), speaker.log)
+        assertEquals(1, loads)
+    }
+
+    @Test fun `a tap during a preload plays the same fetch when it lands`() = runBlocking {
+        val preloading = launch { audio.preload() }
+        yield()
+        val tap = launch { audio.toggle() }
+        yield()
+        assertEquals(AudioPhase.Loading, audio.phase)
+        fetch.complete(File("note.m4a"))
+        preloading.join()
+        tap.join()
+        assertEquals(AudioPhase.Playing, audio.phase)
+        assertEquals(listOf("open", "start"), speaker.log)
+        assertEquals(1, loads)
+    }
+
+    @Test fun `a preload reads an unknown length off the sound it fetched, once`() = runBlocking {
         val measured = SharedAudio(load = { loads++; File("note.m4a") }, open = { _, _ -> speaker.log += "open"; speaker },
             length = { 9.4 })
-        measured.measure()
+        measured.preload()
         assertEquals(9.4, measured.duration, 0.0)
         assertEquals(AudioPhase.Idle, measured.phase)
         assertEquals("only the headers are read: no player opens", emptyList<String>(), speaker.log)
-        // Stamped or measured once, it's never fetched again for its length.
-        measured.measure()
+        // Measured or stamped, it's never fetched again for its length or a play.
+        measured.preload()
         assertEquals(1, loads)
-        val unreadable = SharedAudio(load = { throw java.io.IOException("gone") }, open = { _, _ -> speaker })
-        unreadable.measure()
-        assertEquals("a failed fetch stays quiet until a tap", AudioPhase.Idle, unreadable.phase)
-        assertEquals(0.0, unreadable.duration, 0.0)
+        measured.toggle()
+        assertEquals(AudioPhase.Playing, measured.phase)
+        assertEquals(1, loads)
     }
 
-    @Test fun `a card released while its sound loads for its length measures nothing`() = runBlocking {
-        val measured = SharedAudio(load = { fetch.await() }, open = { _, _ -> speaker }, length = { 9.4 })
-        val measuring = launch { measured.measure() }
+    @Test fun `a failed preload leaves the tap to fetch and report`() = runBlocking {
+        val preloading = launch { audio.preload() }
         yield()
-        measured.release()
+        fetch.completeExceptionally(java.io.IOException("gone"))
+        preloading.join()
+        assertEquals(AudioPhase.Idle, audio.phase)
+        assertEquals(1, loads)
+
+        fetch = CompletableDeferred()
+        val tap = launch { audio.toggle() }
+        yield()
+        assertEquals(2, loads)
         fetch.complete(File("note.m4a"))
-        measuring.join()
-        assertEquals(0.0, measured.duration, 0.0)
+        tap.join()
+        assertEquals(AudioPhase.Playing, audio.phase)
+    }
+
+    @Test fun `a card released while its sound preloads plays nothing`() = runBlocking {
+        val preloading = launch { audio.preload() }
+        yield()
+        audio.release()
+        fetch.complete(File("note.m4a"))
+        preloading.join()
+        assertEquals(emptyList<String>(), speaker.log)
+        assertEquals(AudioPhase.Idle, audio.phase)
     }
 }

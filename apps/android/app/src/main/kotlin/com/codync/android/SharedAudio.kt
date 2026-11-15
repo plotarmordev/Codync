@@ -5,9 +5,14 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.net.ConnectivityManager
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -16,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -33,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -51,6 +58,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.sign
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -82,7 +91,8 @@ internal interface Sound {
  * Plays a sound a bot shared (a voice note), fetched once from the computer by [load] (iOS `SharedAudio`); one card's
  * player. [open] prepares the player and calls back when it stops on its own.
  * [knownDuration] is the length the computer stamped at share time (seconds), so the bar and clock are right from
- * the first frame; 0.0 (an older computer, an unreadable header) means unknown, until [measure] reads it with [length].
+ * the first frame; 0.0 (an older computer, an unreadable header) means unknown, until [preload] reads it with [length]
+ * off the fetched bytes.
  */
 internal class SharedAudio(
     private val load: suspend () -> File,
@@ -104,6 +114,8 @@ internal class SharedAudio(
         private set
     /** The card went: a load still running then starts nothing. */
     private var released = false
+    /** The one fetch of the sound's bytes preload, length reading and a play tap share; a failed one is forgotten. */
+    private var fetching: Deferred<File>? = null
 
     suspend fun toggle() {
         val current = sound
@@ -119,7 +131,7 @@ internal class SharedAudio(
         phase = AudioPhase.Loading
         failure = VoiceNoteFailure.Load
         try {
-            val ready = current ?: load().let { file ->
+            val ready = current ?: bytes().let { file ->
                 if (released) return
                 open(file) { stop ->
                     when (stop) {
@@ -151,12 +163,31 @@ internal class SharedAudio(
         duration = seconds
     }
 
-    /** A note shared with no length (an older computer): read it from the sound's headers as the card shows, so the
-     *  clock is there before the first play. A fetch or read that fails stays quiet: the tap retries and reports it. */
-    suspend fun measure() {
+    /** Ready the sound before a tap asks for it: fetches its bytes (the fetch [toggle] would share), and while the
+     *  length is unknown reads it off them, so the clock is there before the first play. A fetch that fails stays
+     *  quiet: it is forgotten and the tap retries and reports it. */
+    suspend fun preload() {
+        val file = try { bytes() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { return }
         if (duration > 0.0 || released) return
-        val seconds = try { length(load()) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { return }
+        val seconds = try { length(file) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { return }
         if (!released) setKnownDuration(seconds)
+    }
+
+    /** The sound's bytes from the computer, one fetch for everyone asking: the first caller fetches while later
+     *  ones wait on it, one after it landed reuses it, and a failed one is dropped so the next ask fetches again. */
+    private suspend fun bytes(): File {
+        fetching?.let { return it.await() }
+        val running = CompletableDeferred<File>()
+        fetching = running
+        try {
+            val file = load()
+            running.complete(file)
+            return file
+        } catch (error: Exception) {
+            fetching = null
+            running.completeExceptionally(error)
+            throw error
+        }
     }
 
     /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */
@@ -193,6 +224,7 @@ internal class SharedAudio(
     private fun drop() {
         sound?.release()
         sound = null
+        fetching = null
         duration = knownDuration
         elapsed = 0.0
     }
@@ -273,28 +305,45 @@ private class MediaSound(private val manager: AudioManager, private val player: 
 }
 
 /** One card's player, remembered by the file and released with it; [SharedFile.durationMs] is its known length.
- *  [online]: the computer is connected, so a note with no length can be fetched to measure it. */
+ *  [online]: the computer is connected, so the note's sound can be fetched ahead of a tap. */
 @Composable internal fun rememberSharedAudio(entry: Entry, file: SharedFile, store: AppStore, online: Boolean): SharedAudio {
-    val manager = LocalContext.current.getSystemService(AudioManager::class.java)
+    val context = LocalContext.current
+    val manager = context.getSystemService(AudioManager::class.java)
     val audio = remember(file.id) {
         SharedAudio(load = { store.sharedFile(entry.id, file) },
             open = { path, stopped -> MediaSound.open(manager, path, stopped) },
             knownDuration = (file.durationMs ?: 0L) / 1000.0)
     }
     DisposableEffect(audio) { onDispose { audio.release() } }
-    // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load. A note
-    // with none is measured instead, again once the computer is online (a chat shown before it connects reads nothing).
+    // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load. The
+    // sound itself preloads so a tap plays at once — unless this network is metered and the note is a big one, and
+    // never while the computer is away (a chat shown before it connects fetches nothing).
     LaunchedEffect(audio, file.durationMs, online) {
         audio.setKnownDuration((file.durationMs ?: 0L) / 1000.0)
-        if (online) audio.measure()
+        val metered = context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered ?: true
+        if (voiceNotePreloads(online, metered, file.size)) audio.preload()
     }
     return audio
 }
 
-/** A voice note's play/pause/loading, a plain glyph (no tile, pressed or not): a 48 dp target over a 24 dp glyph. */
+/** The sound's bytes big enough to skip on a network that charges for them (2 MiB; iOS `preloadLimit`). */
+private const val PRELOAD_LIMIT = 2 * 1024 * 1024L
+
+/** Whether the bubble preloads a sound as it shows: the computer online, and the fetch never costly — under
+ *  [PRELOAD_LIMIT] even on a metered network (cellular, a hotspot; iOS `preloads`). */
+internal fun voiceNotePreloads(online: Boolean, metered: Boolean, bytes: Long): Boolean =
+    online && (!metered || bytes < PRELOAD_LIMIT)
+
+/** A voice note's play/pause/loading, a plain glyph over a soft chip that fades in while pressed
+ *  (a phone has no hover): a 48 dp target over a 24 dp glyph. */
 @Composable internal fun SharedAudioButton(audio: SharedAudio, tapped: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val chip by animateFloatAsState(if (pressed) 0.14f else 0f, Motion.press(), label = "Play pressed")
     Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-        Box(Modifier.requiredSize(48.dp).plainButton(action = tapped), contentAlignment = Alignment.Center) {
+        Box(Modifier.requiredSize(48.dp).clickable(source, null, role = Role.Button, onClick = tapped),
+            contentAlignment = Alignment.Center) {
+            Box(Modifier.size(36.dp).clip(CircleShape).background(Palette.text.copy(alpha = chip)))
             when (audio.phase) {
                 AudioPhase.Loading -> Spinner(24.dp, color = Palette.text)
                 AudioPhase.Playing -> Symbol("pause.circle", size = 24.dp, tint = Palette.text)
@@ -329,10 +378,10 @@ private class MediaSound(private val manager: AudioManager, private val player: 
             Text(caption, Modifier.weight(1f), style = Type.caption2, color = Palette.danger)
         } else {
             AudioProgress(audio, Modifier.weight(1f))
-            // The clock keeps the room of the widest one, an hour's, with steady digits, whether its length is known yet
-            // or not: the bar ends in one place from the first frame, when the length arrives, and as the clock runs.
+            // The clock keeps the room of its duration's shape, with steady digits, so the bar ends in one place
+            // from the first frame, when the length arrives, and as the clock runs.
             Box(contentAlignment = Alignment.CenterEnd) {
-                Text("0:00:00 / 0:00:00", Modifier.alpha(0f), style = Type.caption2.monospacedDigit)
+                Text(voiceNoteRoom(audio), Modifier.alpha(0f), style = Type.caption2.monospacedDigit)
                 Text(caption, style = Type.caption2.monospacedDigit, color = Palette.secondary)
             }
         }

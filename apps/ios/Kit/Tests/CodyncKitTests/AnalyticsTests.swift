@@ -62,6 +62,12 @@ import Testing
     // Booleans and counts go out as JSON booleans and numbers, not strings.
     #expect(try json(.appOpened(notifications: .notAsked, widgets: 2)) == #"{"notifications":"not_asked","widgets":2}"#)
     #expect(try json(.appOpened()) == "{}")
+    #expect(try json(.openTiming(.catchUp, open: .foreground, ms: 1250,
+                                 computer: "AAECAwQFBgcICQoLDA0ODw", computers: 2, chats: 8, messages: 31))
+        == #"{"chats":8,"computer":"2d6878bee20aba04","computers":2,"messages":31,"ms":1250,"open":"foreground","phase":"catch_up"}"#)
+    #expect(try json(.openTiming(.linkReady, open: .cold, ms: 20,
+                                 computer: "AAECAwQFBgcICQoLDA0ODw", computers: 2))
+        == #"{"computer":"2d6878bee20aba04","computers":2,"ms":20,"open":"cold","phase":"link_ready"}"#)
     #expect(try json(.notificationsAnswered(granted: false, source: .widgets)) == #"{"granted":false,"source":"widgets"}"#)
     #expect(try json(.settingChanged(.liveActivities, on: true)) == #"{"on":true,"setting":"live_activities"}"#)
     // Multi-word values are snake_case, as in the catalog.

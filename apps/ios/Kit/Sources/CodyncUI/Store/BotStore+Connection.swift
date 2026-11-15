@@ -135,6 +135,7 @@ extension BotStore {
             guard !Task.isCancelled, !retired else { return }
             switch state {
             case let .ready(route):
+                openTiming.record(.linkReady, computer: computer.id)
                 setHostRoute(route)
                 if eventsTask == nil {
                     if connection != .online { setConnection(.connecting) }

@@ -8,6 +8,8 @@ extension BotStore {
     /// Events (catch-up since `rev`, then live) for as long as the link stays ready.
     func runEvents(_ client: HostClient) async {
         var backoff: Double = 1
+        var messagesFetched = 0
+        var chatsCaughtUp: Set<String> = []
         while !Task.isCancelled {
             do {
                 try await refreshHello(client)
@@ -29,6 +31,10 @@ extension BotStore {
                     setConnection(.online)
                     backoff = 1
                     apply(event)
+                    if case let .entry(entry) = event {
+                        messagesFetched += 1
+                        chatsCaughtUp.insert(entry.botId)
+                    }
                     // An event that restarted the stream leaves the refetch to the new one.
                     guard !Task.isCancelled else { return }
                     if case let .hello(_, _, _, _, _, catchUp) = event {
@@ -39,7 +45,11 @@ extension BotStore {
                     } else {
                         continue
                     }
-                    if catchUpLeft == 0 { finishRefetch() }
+                    if catchUpLeft == 0 {
+                        finishRefetch()
+                        catchUpsCompleted += 1
+                        openTiming.record(.catchUp, computer: computer.id, chats: chatsCaughtUp.count, messages: messagesFetched)
+                    }
                 }
             } catch is CancellationError {
                 return
@@ -78,6 +88,7 @@ extension BotStore {
         guard epoch == iconsEpoch else { return }
         iconsRevision = -1
         hello = h
+        openTiming.record(.hello, computer: computer.id)
         applyIcons(h.icons ?? [:], revision: h.iconsRevision ?? 0)
         noteSyncStamp(Self.syncStamp(h))
         noteHostVersion(HostVersion(version: h.version, minApp: h.minApp))

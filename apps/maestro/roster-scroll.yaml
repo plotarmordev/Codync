@@ -1,0 +1,41 @@
+# Scrolls a 60-bot roster to its oldest row and back to its newest row. Run with the same paired-host
+# HOST_PORT, HOST_TOKEN and HISTORY_AGENT environment as history.yaml.
+appId: com.pokai.Codync.ios.dev
+tags:
+  - bots
+onFlowComplete:
+  - runScript:
+      file: roster-scroll.js
+      env:
+        CLEANUP: "true"
+---
+- runScript: roster-scroll.js
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          appId: com.pokai.Codync.ios.dev
+          arguments:
+            "-reviewInvitationOff": true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - launchApp:
+          appId: com.pokai.Codync.android.dev
+- extendedWaitUntil:
+    visible: Roster load 60
+    timeout: 20000
+- scrollUntilVisible:
+    element: Roster load 1
+    direction: DOWN
+    visibilityPercentage: 50
+    timeout: 120000
+- takeScreenshot: roster-oldest
+- scrollUntilVisible:
+    element: Roster load 60
+    direction: UP
+    visibilityPercentage: 50
+    timeout: 120000
+- takeScreenshot: roster-newest

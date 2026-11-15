@@ -146,7 +146,6 @@ impl Actor {
     /// `ensure_session` for the turn: a routine run's setup must end by its time limit, and setup cut short
     /// mustn't leave the agent opening a session the host never learns of.
     pub(super) async fn ensure_turn_session(&mut self, slot: Option<&str>) -> Result<()> {
-        self.reopen_retried = false;
         let Some(deadline) = self.routine_deadline else { return self.ensure_session(slot).await };
         let setup = tokio::time::timeout_at(deadline.into(), self.ensure_session(slot)).await;
         if setup.is_err() {
@@ -180,33 +179,7 @@ impl Actor {
             codex_names::Renamed::new()
         };
         if self.conn.is_none() {
-            let (hub, id) = (self.hub.clone(), self.cfg.id.clone());
-            let progress = move |msg: &str| {
-                let msg = msg.to_owned();
-                hub.set_runtime(&id, |r| r.activity = msg);
-            };
-            let candidates = launch_commands(&self.cfg)?;
-            // Keys saved from an "environment variable" sign-in, and what the harness needs to start.
-            let profile = self.cfg.login_profile.as_deref();
-            let on_profile = crate::agent::login_profiles::prepare(&self.hub.store, &self.cfg.backend, profile).await?;
-            let (mut env, grants) = crate::agent::auth::launch_env(&self.hub.store, &self.cfg.backend, profile)?;
-            if self.cfg.backend == "codex" && !env.iter().any(|(k, _)| k == "CODEX_CONFIG") {
-                // Codex's `/compact` takes no instructions: the keep-list is its config's `compact_prompt`.
-                let config = json!({"compact_prompt": codync_mem::compaction::KEEP});
-                env.push(("CODEX_CONFIG".into(), config.to_string()));
-            }
-            if pi {
-                env.extend(pi_tools::env(&servers).await?);
-            }
-            let mut conn = start_first(candidates, &env, |candidate, env, fallback_left| {
-                // A local CLI too old for ACP just hangs; don't make the user wait long before the fallback.
-                let budget = Duration::from_secs(if fallback_left { 20 } else { 180 });
-                self.start_candidate(candidate, env, budget, &progress)
-            })
-            .await?;
-            conn.acp.hold(grants);
-            conn.on_profile = on_profile;
-            self.conn = Some(conn);
+            self.start_conn(&servers).await?;
         }
         if self.conn.as_ref().is_some_and(|c| c.adapter == Adapter::Codex) {
             renamed = codex_names::avoid_clashes(&mut servers, &self.cfg.cwd, self.saved_env("CODEX_HOME")).await;
@@ -241,22 +214,18 @@ impl Actor {
             if instructions == Instructions::SystemPrompt {
                 params["systemPrompt"] = system_prompt(&self.snapshot(&sid).await?.system);
             }
-            let res = self.session_request(reopen, params).await;
-            let Some(conn) = self.conn.as_mut() else {
-                // The reopen timed out and `session_request` stopped the agent. A stop that couldn't end
-                // everything the agent started leaves its session busy, so one fresh agent tries the
-                // reopen again; a turn that still gets no answer runs on a new session of its own rather
-                // than never starting.
+            let mut res = self.session_request(reopen, params.clone()).await;
+            if self.conn.is_none() {
+                // The reopen timed out and stopped the agent. A stop that couldn't end everything the agent started
+                // can leave its session busy for a while, so a fresh agent tries once more; a second timeout is the
+                // turn's error, which moves a bot with fallbacks on to its next agent.
                 #[cfg(unix)]
                 log_session_holders(&self.cfg.id, &sid).await;
-                if !std::mem::replace(&mut self.reopen_retried, true) {
-                    tracing::warn!(bot = %self.cfg.id, session = %sid, "the session didn't reopen; trying once more with a new agent");
-                    return Box::pin(self.ensure_session(slot)).await;
-                }
-                tracing::warn!(bot = %self.cfg.id, session = %sid, "the session still doesn't reopen; starting a fresh one");
-                self.set_session(slot, None);
-                return Box::pin(self.ensure_session(slot)).await;
-            };
+                tracing::warn!(bot = %self.cfg.id, session = %sid, "the session didn't reopen; trying once more with a new agent");
+                self.start_conn(&servers).await?;
+                res = self.session_request(reopen, params).await;
+            }
+            let Some(conn) = self.conn.as_mut() else { return res.map(drop) };
             drop_replay(conn).await;
             match res {
                 Ok(res) => {
@@ -329,6 +298,38 @@ impl Actor {
         if instructions == Instructions::ClaudeMeta {
             self.applied_system.insert(sid, system);
         }
+        Ok(())
+    }
+
+    /// Starts the bot's agent (the first of its launch commands that answers) as `self.conn`.
+    async fn start_conn(&mut self, servers: &Value) -> Result<()> {
+        let (hub, id) = (self.hub.clone(), self.cfg.id.clone());
+        let progress = move |msg: &str| {
+            let msg = msg.to_owned();
+            hub.set_runtime(&id, |r| r.activity = msg);
+        };
+        let candidates = launch_commands(&self.cfg)?;
+        // Keys saved from an "environment variable" sign-in, and what the harness needs to start.
+        let profile = self.cfg.login_profile.as_deref();
+        let on_profile = crate::agent::login_profiles::prepare(&self.hub.store, &self.cfg.backend, profile).await?;
+        let (mut env, grants) = crate::agent::auth::launch_env(&self.hub.store, &self.cfg.backend, profile)?;
+        if self.cfg.backend == "codex" && !env.iter().any(|(k, _)| k == "CODEX_CONFIG") {
+            // Codex's `/compact` takes no instructions: the keep-list is its config's `compact_prompt`.
+            let config = json!({"compact_prompt": codync_mem::compaction::KEEP});
+            env.push(("CODEX_CONFIG".into(), config.to_string()));
+        }
+        if self.cfg.backend == "pi" {
+            env.extend(pi_tools::env(servers).await?);
+        }
+        let mut conn = start_first(candidates, &env, |candidate, env, fallback_left| {
+            // A local CLI too old for ACP just hangs; don't make the user wait long before the fallback.
+            let budget = Duration::from_secs(if fallback_left { 20 } else { 180 });
+            self.start_candidate(candidate, env, budget, &progress)
+        })
+        .await?;
+        conn.acp.hold(grants);
+        conn.on_profile = on_profile;
+        self.conn = Some(conn);
         Ok(())
     }
 
@@ -439,25 +440,35 @@ impl Actor {
     }
 }
 
-/// Names processes that still have the timed-out session's owner lock or transcript open.
+/// Reports which processes still have the timed-out session's owner lock or transcript open.
 #[cfg(unix)]
 async fn log_session_holders(bot: &str, session: &str) {
-    let mut command = tokio::process::Command::new("lsof");
-    command.arg("-nP").kill_on_drop(true);
-    match tokio::time::timeout(Duration::from_secs(5), command.output()).await {
-        Ok(Ok(output)) => {
-            let listed = String::from_utf8_lossy(&output.stdout);
-            let holders: Vec<_> = listed.lines().filter(|line| line.contains(session)).collect();
-            if holders.is_empty() {
-                tracing::warn!(bot, session, "no process was found holding the session open");
-            }
+    match session_holders(session).await {
+        Ok(holders) if holders.is_empty() => {
+            tracing::warn!(bot, session, "no process was found holding the session open");
+        }
+        Ok(holders) => {
             for holder in holders {
                 tracing::warn!(bot, session, holder, "a process still has the session open");
             }
         }
-        Ok(Err(error)) => tracing::warn!(bot, session, %error, "couldn't inspect processes holding the session"),
-        Err(_) => tracing::warn!(bot, session, "inspecting processes holding the session timed out"),
+        Err(error) => {
+            tracing::warn!(bot, session, error = format!("{error:#}"), "couldn't list processes holding the session");
+        }
     }
+}
+
+/// `lsof` lines of this user's open files whose path names `session`: the agent and anything it started run as the
+/// host's user. Even that list can take a second or more on a busy computer.
+#[cfg(unix)]
+async fn session_holders(session: &str) -> Result<Vec<String>> {
+    // SAFETY: getuid only reads the calling process's user id.
+    let uid = unsafe { libc::getuid() };
+    let mut command = tokio::process::Command::new("lsof");
+    command.args(["-nP", "-u", &uid.to_string()]).kill_on_drop(true);
+    let output = tokio::time::timeout(Duration::from_secs(30), command.output()).await.context("lsof timed out")??;
+    let listed = String::from_utf8_lossy(&output.stdout);
+    Ok(listed.lines().filter(|line| line.contains(session)).map(str::to_owned).collect())
 }
 
 /// How long opening a session (`session/new`, `session/load`, `session/resume`) may take. Tests wait
@@ -517,10 +528,16 @@ mod tests {
             .collect()
     }
 
-    /// A stopped turn leaves a child behind that keeps the session busy: the next message still gets
-    /// its answer, with the session load retried on a new agent.
-    #[tokio::test]
-    async fn a_stopped_turns_leftover_child_does_not_stop_the_next_answer() {
+    struct HeldSession {
+        dir: PathBuf,
+        hub: Arc<Hub>,
+        /// The id of the session the leftover child holds.
+        sid: String,
+    }
+
+    /// A bot whose turn left a child behind that keeps its session busy: the turn was stopped and the child, in a
+    /// process session of its own, still holds the session's lock. Then the next message is sent.
+    async fn send_after_held_session() -> HeldSession {
         let dir = std::env::temp_dir().join(format!("codync-session-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("test");
         let store = Store::open(&dir.join("test.db")).expect("test");
@@ -531,16 +548,10 @@ mod tests {
         }))
         .expect("test");
         store.save_bot(&cfg).expect("test");
-        let hub = Arc::new(Hub::new(
-            store,
-            "test-host".into(),
-            crate::remote::identity::Identity::load_or_create(&dir).expect("test"),
-            "test-token".into(),
-            19222,
-        ));
+        let identity = crate::remote::identity::Identity::load_or_create(&dir).expect("test");
+        let hub = Hub::new(store, "test-host".into(), identity, "test-token".into(), 0);
         hub.start().expect("test");
 
-        // A turn that never answers, holding the session through a child in a session of its own.
         crate::api::dispatch(&hub, &Caller::Local, "send", json!({"botId": "bot", "text": "HOLD"}))
             .await
             .expect("test");
@@ -551,14 +562,29 @@ mod tests {
         hub.send_cmd("bot", Cmd::Stop).expect("test");
         until("the turn to be stopped", &hub, || hub.runtime("bot").status == BotStatus::Idle).await;
 
-        // The child still holds the session here, so this load times out and is retried.
         crate::api::dispatch(&hub, &Caller::Local, "send", json!({"botId": "bot", "text": "hello again"}))
             .await
             .expect("test");
-        until("the fresh agent to retry the load", &hub, || {
-            sessions(&dir).iter().filter(|r| r["method"] == "session/load").count() == 2
-        })
-        .await;
+        let sid = hub.store.bot("bot").expect("test").expect("test").session_id.expect("the turn opened a session");
+        HeldSession { dir, hub, sid }
+    }
+
+    fn session_loads(dir: &std::path::Path) -> Vec<Value> {
+        sessions(dir).into_iter().filter(|r| r["method"] == "session/load").collect()
+    }
+
+    /// The session is busy only for a while: the timed-out load is retried on a new agent, and the next message is
+    /// answered in the chat's own session.
+    #[tokio::test]
+    async fn a_stopped_turns_leftover_child_does_not_stop_the_next_answer() {
+        let HeldSession { dir, hub, sid } = send_after_held_session().await;
+        until("the fresh agent to retry the load", &hub, || session_loads(&dir).len() == 2).await;
+        let holder = std::fs::read_to_string(dir.join("locked")).expect("test");
+        let holders = session_holders(&sid).await.expect("test");
+        assert!(
+            holders.iter().any(|line| line.split_whitespace().nth(1) == Some(holder.as_str())),
+            "the process holding the session's lock is named: {holders:?}"
+        );
         std::fs::write(dir.join("release"), "").expect("test");
 
         let history = || hub.store.history("bot", i64::MAX, 50).expect("test");
@@ -567,17 +593,31 @@ mod tests {
         })
         .await;
 
-        let sessions = sessions(&dir);
-        let loads: Vec<_> = sessions.iter().filter(|r| r["method"] == "session/load").collect();
+        let loads = session_loads(&dir);
         assert_eq!(loads.len(), 2, "the timed-out session load was retried once");
         assert_ne!(loads[0]["pid"], loads[1]["pid"], "the retry used a fresh agent");
-        assert_eq!(sessions.iter().filter(|r| r["method"] == "session/new").count(), 1);
-        let sid = loads[0]["sessionId"].as_str().expect("test");
-        assert_eq!(hub.store.bot("bot").expect("test").expect("test").session_id.as_deref(), Some(sid));
+        assert_eq!(sessions(&dir).iter().filter(|r| r["method"] == "session/new").count(), 1);
+        assert_eq!(hub.store.bot("bot").expect("test").expect("test").session_id, Some(sid));
         assert!(
             !history().iter().any(|e| e.data["text"].as_str().is_some_and(|t| t.contains("Couldn't start"))),
             "the message never failed to start"
         );
+        hub.shutdown().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A session that stays busy fails the turn after the one retry, and the chat keeps its session for later.
+    #[tokio::test]
+    async fn a_session_that_stays_busy_fails_the_turn_after_one_retry() {
+        let HeldSession { dir, hub, sid } = send_after_held_session().await;
+        let history = || hub.store.history("bot", i64::MAX, 50).expect("test");
+        until("the turn to fail", &hub, || hub.runtime("bot").status == BotStatus::Error).await;
+        assert!(history().iter().any(|e| e.data["text"].as_str().is_some_and(|t| t.contains("Couldn't start"))));
+        std::fs::write(dir.join("release"), "").expect("test");
+
+        assert_eq!(session_loads(&dir).len(), 2, "the timed-out session load was retried once");
+        assert_eq!(sessions(&dir).iter().filter(|r| r["method"] == "session/new").count(), 1);
+        assert_eq!(hub.store.bot("bot").expect("test").expect("test").session_id, Some(sid));
         hub.shutdown().await;
         let _ = std::fs::remove_dir_all(&dir);
     }

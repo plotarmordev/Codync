@@ -99,7 +99,6 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         active_routine: None,
         routine_deadline: None,
         routine_timed_out: false,
-        reopen_retried: false,
         routine_completion: None,
         session_fresh: false,
         profile_resend: HashSet::new(),
@@ -275,9 +274,6 @@ struct Actor {
     active_routine: Option<String>,
     routine_deadline: Option<Instant>,
     routine_timed_out: bool,
-    /// A session reopen timed out and has had its one fresh-agent retry; the next timeout starts a
-    /// new session instead. Reset every turn (`ensure_turn_session`).
-    reopen_retried: bool,
     routine_completion: Option<RoutineCompletion>,
     /// True until the first prompt of a new ACP session has been sent.
     session_fresh: bool,

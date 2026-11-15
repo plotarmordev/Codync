@@ -19,7 +19,7 @@ def send(value):
 if len(sys.argv) > 1 and sys.argv[1] == "--hold":
     with open(sys.argv[2], "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        (here / "locked").write_text("")
+        (here / "locked").write_text(str(os.getpid()))
         deadline = time.monotonic() + 60
         while not (here / "release").exists() and time.monotonic() < deadline:
             time.sleep(0.05)

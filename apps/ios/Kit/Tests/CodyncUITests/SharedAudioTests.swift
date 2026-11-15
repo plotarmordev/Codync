@@ -333,6 +333,13 @@ private func silentWAV() -> Data {
     }
 }
 
+@MainActor @Test func aVoiceNotesClockKeepsTheRoomOfItsWidestFormSoTheBarNeverMoves() {
+    #expect(SharedAudio.clockRoom(nil) == "00:00 / 00:00", "an unknown length")
+    #expect(SharedAudio.clockRoom(9) == "00:00 / 00:00")
+    #expect(SharedAudio.clockRoom(600) == "00:00 / 00:00")
+    #expect(SharedAudio.clockRoom(3725) == "0:00:00 / 0:00:00", "past an hour")
+}
+
 @MainActor @Test func aFileCardCaptionIsItsDownload() {
     let size: Int64 = 1_250_000
     #expect(FileDownloadCard.detail(nil, size: size) == "1.3 MB")

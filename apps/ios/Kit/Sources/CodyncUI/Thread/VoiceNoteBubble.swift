@@ -54,10 +54,13 @@ struct VoiceNoteBubble<Below: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
-                // Steady digits, so the bar's end doesn't move as the clock runs; an unknown length keeps the clock's
-                // room, so the bar doesn't shrink when the length arrives.
-                Text(verbatim: caption.isEmpty ? "0:00 / 0:00" : caption).font(.caption2.monospacedDigit())
-                    .foregroundStyle(Palette.secondary).opacity(caption.isEmpty ? 0 : 1)
+                // The clock over its widest form (hidden), with steady digits: the bar's end never moves, while the
+                // length is unknown or as the clock runs.
+                ZStack(alignment: .trailing) {
+                    Text(verbatim: SharedAudio.clockRoom(audio.duration)).hidden()
+                    Text(verbatim: caption).foregroundStyle(Palette.secondary)
+                }
+                .font(.caption2.monospacedDigit())
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

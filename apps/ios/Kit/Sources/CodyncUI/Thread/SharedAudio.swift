@@ -193,12 +193,4 @@ final class SharedAudio {
         let h = total / 3600
         return h > 0 ? "\(h):" + String(format: "%02d:%02d", m, s) : "\(m):" + String(format: "%02d", s)
     }
-
-    /// The widest clock a sound of this length shows, digits zeroed (`00:00 / 00:00`, hours past an hour): the room a
-    /// player keeps for its clock, so the bar ends in one place from the first frame, while the length is unknown and
-    /// as the clock runs.
-    static func clockRoom(_ duration: TimeInterval?) -> String {
-        let widest = String(timeText(max(duration ?? 0, 600)).map { $0.isNumber ? "0" : $0 })
-        return "\(widest) / \(widest)"
-    }
 }

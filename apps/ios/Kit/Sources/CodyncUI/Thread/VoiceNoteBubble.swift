@@ -54,10 +54,11 @@ struct VoiceNoteBubble<Below: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
-                // The clock over its widest form (hidden), with steady digits: the bar's end never moves, while the
-                // length is unknown or as the clock runs.
+                // The clock keeps the room of the widest one, an hour's, with steady digits, whether its length is
+                // known yet or not: the bar ends in one place from the first frame, when the length arrives, and as
+                // the clock runs.
                 ZStack(alignment: .trailing) {
-                    Text(verbatim: SharedAudio.clockRoom(audio.duration)).hidden()
+                    Text(verbatim: "0:00:00 / 0:00:00").hidden()
                     Text(verbatim: caption).foregroundStyle(Palette.secondary)
                 }
                 .font(.caption2.monospacedDigit())

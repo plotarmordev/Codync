@@ -21,6 +21,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 語音訊息一出現就顯示播放鍵、進度條和長度，進度條兩側間距相同，聲音先在背景載入，按下就播放（行動數據時只預先載入 2 MB 以下）；下載移到訊息的選單裡；載入時離開聊天，它不會在離開後才開始播放。
 - 重新連上電腦後只補上錯過的訊息。
 - 訊息裡的表格放不進泡泡時，過長的文字會在格子裡換行，不再被截斷。
+- 在訊息上往旁邊滑就能回覆：你的訊息往左滑，Bot 的訊息往右滑，放開時就會開始回覆。
 
 ### en-US
 - Bots do long work in the background and keep answering.
@@ -34,3 +35,4 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Voice notes show a player at once, load ahead so they play on tap (under 2 MB on mobile data), and stop when you leave.
 - Reconnects fetch only missed messages.
 - A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.
+- Swipe a message sideways to reply: yours to the left, the bot's to the right.

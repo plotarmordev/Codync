@@ -33,6 +33,7 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - 例行任務會記住上次做到哪裡，分批進行的工作下次會接著做。
 - 訊息裡的表格放不進泡泡時，過長的文字會在格子裡換行，不再被截斷。
 - Gemini 即時語音新增 Google 搜尋開關，可在通話中查詢網頁資訊，預設關閉。
+- 在訊息上往旁邊滑就能回覆，就像「訊息」App：你的訊息往左滑，Bot 的訊息往右滑，放開時就會開始回覆。
 - 語音通話設定的 OpenAI 區塊會顯示電腦目前使用的「伺服器」：OpenAI，或你在電腦上設定的自有語音伺服器。使用自有伺服器時，模式固定為語音識別。
 - 可以只回覆訊息的其中一段：長按訊息選「選取文字」，選好文字後在選單點「回覆」，Bot 會知道你問的是哪一段。
 - Bot 設定的「技能」只列出名稱，點旁邊的資訊按鈕可以看完整說明。
@@ -62,6 +63,7 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - A routine remembers where its last run stopped, so work done in parts carries on from there.
 - A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.
 - Optional Google Search in Gemini realtime calls, off by default.
+- Swipe a message sideways to reply, as in Messages: yours to the left, the bot's to the right, and let go.
 - Voice chat settings show which Server the computer's OpenAI engine uses: OpenAI, or a speech server of your own set on the computer. With your own server, Mode stays on Speech.
 - Reply to one part of a message: touch and hold it, choose Select Text, select the words, then Reply. The bot is told which part you mean.
 - A bot's Skills settings list only each skill's name; the info button beside one shows its description.

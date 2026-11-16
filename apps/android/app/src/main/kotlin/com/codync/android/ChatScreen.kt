@@ -69,12 +69,12 @@ import kotlinx.coroutines.delay
  * One endless conversation with a bot or a group, as iOS `ThreadView`: only deliberate messages
  * show; tool calls and thinking live in "Full conversation". `editGroup` opens a group's editor (its details).
  */
-@Composable fun ChatScreen(state: AppState, store: AppStore, editGroup: (Bot) -> Unit) {
+@Composable fun ChatScreen(state: AppState, store: AppStore, editGroup: (Bot) -> Unit, launching: Boolean = false) {
     val bot = state.bots.firstOrNull { it.id == state.selectedBot } ?: return
-    key(state.contextId, state.generation, bot.id) { ThreadView(bot, state, store, editGroup) }
+    key(state.contextId, state.generation, bot.id) { ThreadView(bot, state, store, launching, editGroup) }
 }
 
-@Composable private fun ThreadView(bot: Bot, state: AppState, store: AppStore, editGroup: (Bot) -> Unit) {
+@Composable private fun ThreadView(bot: Bot, state: AppState, store: AppStore, launching: Boolean, editGroup: (Bot) -> Unit) {
     AnalyticsOnAppear(AnalyticsEvent.ScreenViewed(AnalyticsScreen.Chat))
     val context = LocalContext.current
     // The bot's details sheet and the page it opens on.
@@ -173,7 +173,7 @@ import kotlinx.coroutines.delay
                 queued = queuedMessages(state.chatEntries(bot), bot.isWorking))
         }
     }) {
-        Transcript(bot, chatState, store, connect, PaddingValues(start = 16.dp, end = 16.dp, top = top + 60.dp,
+        Transcript(bot, chatState, store, launching, connect, PaddingValues(start = 16.dp, end = 16.dp, top = top + 60.dp,
             bottom = with(density) { composerHeight.toDp() } + 8.dp), indicatorTop = top + 50.dp, openRoutine = openRoutine, reply = { reply(it, null) }, selectText = { selecting = it },
             addFallback = { details = DetailsRequest.fallbacks(it.id) }, openArtifact = { viewing = it }, openCall = { callLine = it },
             found = shown?.id, revealed = revealed, findStep = findStep, openQuote = { reveal(it) }) { peer = it }
@@ -301,9 +301,15 @@ private fun AppState.chatItems(bot: Bot) =
     chatItems(chatEntries(bot), pending.filter { it.botId == bot.id && (it.call == null || it.status == SendStatus.Failed) }, busy = bot.isWorking)
 
 /** The messages: all this phone has, earlier ones from the computer near the top, following the newest. */
+<<<<<<< HEAD
 @Composable private fun Transcript(bot: Bot, state: AppState, store: AppStore, connect: ConnectionRequestActions, padding: PaddingValues,
     indicatorTop: Dp, openRoutine: (String) -> Unit, reply: (Entry) -> Unit, selectText: (Entry) -> Unit, addFallback: (Bot) -> Unit, openArtifact: (OpenArtifact) -> Unit,
     openCall: (String) -> Unit, found: String?, revealed: String?, findStep: Int, openQuote: (String) -> Unit, openPeer: (String) -> Unit) {
+=======
+@Composable private fun Transcript(bot: Bot, state: AppState, store: AppStore, launching: Boolean, connect: ConnectionRequestActions, padding: PaddingValues,
+    indicatorTop: Dp, openRoutine: (String) -> Unit, reply: (Entry) -> Unit, addFallback: (Bot) -> Unit, openArtifact: (OpenArtifact) -> Unit,
+    openCall: (String) -> Unit, found: String?, findStep: Int, openPeer: (String) -> Unit) {
+>>>>>>> 4c00961f (fix(ios,android): time an open chat only once the launch splash lifts)
     val entries = state.chatEntries(bot)
     val items = state.chatItems(bot)
     val working = bot.isWorking(bot.id) && state.connection is LinkState.Ready
@@ -341,8 +347,8 @@ private fun AppState.chatItems(bot: Bot) =
             // `open_chat` when this open's newest row is on screen (iOS ThreadView's last row). A chat opened while
             // its catch-up runs waits for that catch-up; scrolling away leaves this open without the milestone.
             if (item.id == lastItem) {
-                LaunchedEffect(lastItem, state.opensSeen, state.catchUpsCompleted, bot.id) {
-                    if (store.openTiming.hasRecorded(OpenPhase.CatchUp, state.computer.id))
+                LaunchedEffect(lastItem, state.opensSeen, state.catchUpsCompleted, bot.id, launching) {
+                    if (!launching && store.openTiming.hasRecorded(OpenPhase.CatchUp, state.computer.id))
                         store.openTiming.record(OpenPhase.OpenChat, state.computer.id)
                 }
             }

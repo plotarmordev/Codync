@@ -29,6 +29,7 @@ struct CodyncApp: App {
                 .environment(app)
                 .environment(app.accounts)
                 .environment(app.account)
+                .environment(\.launchCovered, app.launching)
                 .environment(\.customIconAccount, CustomIconAccount(
                     signedIn: app.account.isSignedIn, loading: app.account.isBusy || !app.account.isReady,
                     error: app.account.errorMessage,

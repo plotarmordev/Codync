@@ -76,7 +76,8 @@ private fun AppStore.noteOpen(retainedLink: Boolean = false) {
         // Ready: a catch-up still running reports its own, an open chat's rows wait for it.
         openTiming.record(OpenPhase.LinkReady, id)
         openTiming.record(OpenPhase.Hello, id)
-        if (state.value.catchUpsCompleted > 0) noteCatchUp(chats = state.value.bots.size, messages = 0)
+        if (caughtUpSubscription == eventSubscription && eventSubscription > 0)
+            noteCatchUp(chats = state.value.bots.size, messages = 0)
     }
 }
 
@@ -188,6 +189,8 @@ private suspend fun AppStore.adoptHello(active: EncryptedChannel, hello: JsonObj
 
 /** Drain available catch-up in bounded transactions, without delaying a lone live event. */
 private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Long): Unit = coroutineScope {
+    eventSubscription += 1
+    val subscription = eventSubscription
     val source = active.events(cursor).produceIn(this)
     // One completed subscription's counts (iOS `runEvents`): a stream restarted before its catch-up ends starts them
     // over, so retries never overcount. A catch-up's chats and the messages they fetched count whether or not the
@@ -200,7 +203,10 @@ private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Lon
     fun noteCatchUpEvent(raw: JsonObject, event: MirrorEvent?) {
         // As iOS: messages are the entries fetched; a bot event's chat counts even with no new entries.
         if (!catchUpDone) when (event) {
-            is MirrorEvent.EntryChanged -> messagesFetched += 1
+            is MirrorEvent.EntryChanged -> {
+                messagesFetched += 1
+                chatsCaughtUp += event.entry.botId
+            }
             is MirrorEvent.BotChanged -> chatsCaughtUp += event.bot.id
             else -> {}
         }
@@ -212,10 +218,7 @@ private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Lon
         } else {
             return
         }
-        if (catchUpLeft == 0L && helloSeen && !catchUpDone) {
-            catchUpDone = true
-            noteCatchUp(chatsCaughtUp.size, messagesFetched)
-        }
+        if (catchUpLeft == 0L && helloSeen && !catchUpDone) catchUpDone = true
     }
     try {
         while (isActive) {
@@ -234,6 +237,10 @@ private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Lon
             }
             withContext(Dispatchers.IO) { requireNotNull(database).apply(batch) }
             refresh()
+            if (catchUpDone && caughtUpSubscription != subscription) {
+                caughtUpSubscription = subscription
+                noteCatchUp(chatsCaughtUp.size, messagesFetched)
+            }
             receiveArtifacts(batch)
             receiveNetwork(batch)
             receiveTasks(batch)

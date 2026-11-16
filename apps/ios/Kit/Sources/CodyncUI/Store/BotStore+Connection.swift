@@ -46,7 +46,7 @@ extension BotStore {
         guard hostRoute != nil else { return }
         openTiming.record(.linkReady, computer: computer.id)
         if hello != nil { openTiming.record(.hello, computer: computer.id) }
-        if caughtUp {
+        if caughtUpSubscription == eventSubscription && eventSubscription > 0 {
             openTiming.record(.catchUp, computer: computer.id, chats: roster.count, messages: 0)
         }
     }

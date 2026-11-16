@@ -157,6 +157,65 @@ import Testing
     #expect(events.count == 3)
 }
 
+@MainActor @Test func catchUpCountsAChatRepresentedOnlyByAnEntry() async throws {
+    let (storage, suite) = context()
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    var events: [AnalyticsEvent] = []
+    let timing = OpenTiming(capture: { events.append($0) })
+    timing.beginCold()
+    timing.becameActive(computers: 1)
+    let computer = randomComputer("Mac")
+    let remote = FakeRemote(.ready(.direct))
+    let store = BotStore(computer: computer, storage: storage) { _ in remote }
+    store.openTiming = timing
+    store.setActive(true)
+    defer { store.retire() }
+    #expect(await until { await remote.subscribed })
+    await remote.emit(#"{"type":"hello","hostId":"h1","rev":1,"catchUp":1}"#)
+    await remote.emit(#"{"type":"entry","entry":{"id":"e1","seq":1,"botId":"entry-only","rev":1,"kind":"agent","turn":1,"data":{"text":"new"},"createdAt":1,"updatedAt":1}}"#)
+
+    #expect(await until { events.count == 3 })
+    guard case let .openTiming(_, _, _, _, _, chats, messages) = events[2] else { return }
+    #expect(chats == 1)
+    #expect(messages == 1)
+}
+
+@MainActor @Test func foregroundReturnDuringCatchUpWaitsForTheCurrentSubscription() async throws {
+    let (storage, suite) = context()
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    var events: [AnalyticsEvent] = []
+    let timing = OpenTiming(capture: { events.append($0) })
+    timing.beginCold()
+    timing.becameActive(computers: 1)
+    let remote = FakeRemote(.ready(.direct))
+    let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in remote }
+    store.openTiming = timing
+    store.setActive(true)
+    defer { store.retire() }
+    #expect(await until { await remote.subscribed })
+    await remote.emit(#"{"type":"hello","hostId":"h1","rev":1,"catchUp":1}"#)
+    await remote.emit(botEvent("b1", name: "Bot", rev: 1))
+    #expect(await until { events.count == 3 })
+
+    store.beginVoiceCall(UUID(), hear: { _ in }, end: {})
+    store.setActive(false)
+    await remote.failEvents()
+    #expect(await until { await remote.eventSinces.count == 2 })
+    await remote.emit(#"{"type":"hello","hostId":"h1","rev":2,"catchUp":1}"#)
+    timing.enteredBackground()
+    timing.becameActive(computers: 1)
+    store.setActive(true)
+    #expect(events.count == 5)
+
+    await remote.emit(botEvent("b1", name: "Bot", rev: 2))
+    #expect(await until { events.count == 6 })
+    guard case let .openTiming(phase, open, _, _, _, chats, messages) = events[5] else { return }
+    #expect(phase == .catchUp)
+    #expect(open == .foreground)
+    #expect(chats == 1)
+    #expect(messages == 0)
+}
+
 @MainActor @Test func catchUpCountsExcludeARetryAndIncludeChatsWithoutEntries() async throws {
     let (storage, suite) = context()
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }

@@ -1,0 +1,89 @@
+package com.codync.android
+
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.platform.app.InstrumentationRegistry
+import com.codync.android.core.Entry
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Rule
+import org.junit.Test
+
+/** A real host and the app's real screens, from a fresh connection through both rendering milestones. */
+class OpenTimingFlowTest {
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test fun productionClockMeasuresARealDelay() {
+        val events = mutableListOf<AnalyticsEvent.OpenTiming>()
+        val timing = OpenTiming { (it as? AnalyticsEvent.OpenTiming)?.let(events::add) }
+        timing.beginCold()
+        timing.record(OpenPhase.LinkReady, "computer")
+        Thread.sleep(20)
+        timing.record(OpenPhase.Hello, "computer")
+
+        assertEquals(2, events.size)
+        assertTrue(events[1].ms > events[0].ms)
+    }
+
+    @Test fun coldAndForegroundOpensRecordAfterTheActualScreensRender() {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("liveHost") == "true")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        requireFixtureHost(LocalStore(context).computers().single().id)
+        val store = compose.computerStore()
+        compose.waitUntil(30_000) {
+            val state = store.state.value
+            !state.loading && state.rosterLoaded && state.bots.any { !it.deleted }
+        }
+        val bot = store.state.value.bots.first { !it.deleted }
+        val events = mutableListOf<AnalyticsEvent.OpenTiming>()
+        val entriesAtCatchUp = mutableListOf<List<Entry>>()
+        val timing = OpenTiming(capture = {
+            val event = it as? AnalyticsEvent.OpenTiming ?: return@OpenTiming
+            if (event.computerId == store.id) events += event
+            if (event.phase == OpenPhase.CatchUp) entriesAtCatchUp += store.state.value.entries
+        })
+        compose.runOnUiThread {
+            store.setForeground(false)
+            store.openTiming = timing
+        }
+        compose.waitUntil(10_000) { store.channel == null }
+
+        compose.runOnUiThread {
+            timing.beginCold()
+            timing.setComputerCount(1)
+            store.setForeground(true)
+        }
+        compose.waitUntil(30_000) { events.map { it.phase }.containsAll(listOf(OpenPhase.CatchUp, OpenPhase.ChatList)) }
+        compose.onNodeWithText(bot.name).performClick()
+        compose.waitUntil(30_000) { OpenPhase.OpenChat in events.map { it.phase } }
+        assertEquals(listOf(OpenPhase.LinkReady, OpenPhase.Hello, OpenPhase.CatchUp, OpenPhase.ChatList, OpenPhase.OpenChat),
+            events.map { it.phase })
+        assertEquals(store.state.value.entries, entriesAtCatchUp.single())
+
+        compose.runOnUiThread {
+            store.openBot(null)
+            timing.enteredBackground()
+            store.setForeground(false)
+        }
+        compose.waitUntil(10_000) { store.channel == null }
+        compose.runOnUiThread {
+            timing.becameActive(computers = 1)
+            store.setForeground(true)
+        }
+        compose.waitUntil(30_000) { events.size == 9 }
+        compose.onNodeWithText(bot.name).performClick()
+        compose.waitUntil(30_000) { events.size == 10 }
+
+        assertEquals(events.take(5).map { it.phase }, events.drop(5).map { it.phase })
+        assertEquals(listOf(OpenKind.Cold, OpenKind.Foreground), events.chunked(5).map { it.first().open })
+        for (open in events.chunked(5)) {
+            assertEquals(5, open.map { it.phase }.distinct().size)
+            assertTrue(open.zipWithNext().all { it.first.ms <= it.second.ms })
+            val catchUp = open.single { it.phase == OpenPhase.CatchUp }
+            assertTrue((catchUp.chats ?: 0) >= 1)
+            assertTrue((catchUp.messages ?: 0) >= 0)
+        }
+    }
+}

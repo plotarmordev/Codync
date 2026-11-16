@@ -10,8 +10,6 @@ extension BotStore {
         var backoff: Double = 1
         while !Task.isCancelled {
             do {
-                var messagesFetched = 0
-                var chatsCaughtUp: Set<String> = []
                 try await refreshHello(client)
                 guard !Task.isCancelled, !retired else { return }
                 if mismatch != nil {
@@ -21,6 +19,10 @@ extension BotStore {
                     try await Task.sleep(for: hostUpdateOffer() == .updating ? Self.updatingRecheck : Self.mismatchRecheck)
                     continue
                 }
+                eventSubscription += 1
+                let subscription = eventSubscription
+                var messagesFetched = 0
+                var chatsCaughtUp: Set<String> = []
                 // A refetch the link cut short starts over: only one whole catch-up says what the computer still has.
                 if refetched != nil { refetchAll() }
                 requestedSince = rev
@@ -32,7 +34,9 @@ extension BotStore {
                     backoff = 1
                     apply(event)
                     switch event {
-                    case .entry: messagesFetched += 1
+                    case let .entry(entry):
+                        messagesFetched += 1
+                        chatsCaughtUp.insert(entry.botId)
                     case let .bot(bot): chatsCaughtUp.insert(bot.id)
                     default: break
                     }
@@ -48,6 +52,7 @@ extension BotStore {
                     }
                     if catchUpLeft == 0 {
                         finishRefetch()
+                        caughtUpSubscription = subscription
                         catchUpsCompleted += 1
                         openTiming.record(.catchUp, computer: computer.id, chats: chatsCaughtUp.count, messages: messagesFetched)
                     }

@@ -211,7 +211,6 @@ targets:
     sources:
       - ios/AppTests
       - ios/Kit/Tests/CodyncUITests/StoreTestFixtures.swift
-      - ios/Kit/Tests/CodyncUITests/StoreTestReadiness.swift
       - path: ios/Kit/Tests/CodyncKitTests/Fixtures/vp8.webm
         buildPhase: resources
       - path: ios/Kit/Tests/CodyncKitTests/Fixtures/vp9.webm

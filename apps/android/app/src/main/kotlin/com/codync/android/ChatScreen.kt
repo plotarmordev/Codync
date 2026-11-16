@@ -315,6 +315,8 @@ private fun AppState.chatItems(bot: Bot) =
     val details by ThinkingDetails.enabled.collectAsStateWithLifecycle()
     val list = rememberLazyListState()
     var settled by remember { mutableStateOf(false) }
+    // The open this chat first showed in, 0 under the launch splash (iOS ThreadView's `shownInOpen`).
+    val shownInOpen = remember { if (launching) 0 else store.openTiming.opens }
     val paging = remember { EarlierPaging() }
     // Pull to refresh reconnects, like Reconnect in the roster's computer menu, until the link is back.
     // Find's shown match, else the card or quoted message brought into view: its row, after the earlier-messages row when
@@ -338,11 +340,12 @@ private fun AppState.chatItems(bot: Bot) =
         // Shown while earlier messages may still load, as on the iPhone.
         if (items.isEmpty()) item("intro") { IntroCard(bot, state) }
         items(items, key = { it.id }) { item ->
-            // `open_chat` when this open's newest row is on screen (iOS ThreadView's last row). A chat opened while
-            // its catch-up runs waits for that catch-up; scrolling away leaves this open without the milestone.
+            // `open_chat` once this open's catch-up is in and the newest row shows (iOS ThreadView's last row), for a chat
+            // already on screen when the open began: a later tap is not part of the open. Scrolling away leaves it unrecorded.
             if (item.id == lastItem) {
                 LaunchedEffect(lastItem, state.opensSeen, state.catchUpsCompleted, bot.id, launching) {
-                    if (!launching && store.openTiming.hasRecorded(OpenPhase.CatchUp, state.computer.id))
+                    if (!launching && shownInOpen < store.openTiming.opens &&
+                        store.openTiming.hasRecorded(OpenPhase.CatchUp, state.computer.id))
                         store.recordOpenTiming(OpenPhase.OpenChat)
                 }
             }

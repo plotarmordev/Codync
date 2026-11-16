@@ -381,7 +381,8 @@ struct BotListView: View {
     }
 
     private func recordNewestShown(_ bot: Bot, store: BotStore) {
-        guard !app.launching, store.openTiming.hasRecorded(.catchUp, computer: store.computer.id), bot.lastMessage != nil,
+        guard !app.launching, accounts.selection == nil,
+              store.openTiming.hasRecorded(.catchUp, computer: store.computer.id), bot.lastMessage != nil,
               store.roster.max(by: { $0.lastAt < $1.lastAt })?.id == bot.id else { return }
         store.recordOpenTiming(.chatList)
     }

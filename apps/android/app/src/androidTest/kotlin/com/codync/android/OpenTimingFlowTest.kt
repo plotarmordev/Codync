@@ -59,13 +59,15 @@ class OpenTimingFlowTest {
         }
         compose.waitUntil(30_000) { events.map { it.phase }.containsAll(listOf(OpenPhase.CatchUp, OpenPhase.ChatList)) }
         compose.onNodeWithText(bot.name).performClick()
-        compose.waitUntil(30_000) { OpenPhase.OpenChat in events.map { it.phase } }
-        assertEquals(listOf(OpenPhase.LinkReady, OpenPhase.Hello, OpenPhase.CatchUp, OpenPhase.ChatList, OpenPhase.OpenChat),
+        compose.waitUntil(5_000) { store.state.value.selectedBot == bot.id }
+        compose.waitForIdle()
+        assertEquals(listOf(OpenPhase.LinkReady, OpenPhase.Hello, OpenPhase.CatchUp, OpenPhase.ChatList),
             events.map { it.phase })
         assertEquals(store.state.value.entries, entriesAtCatchUp.single())
 
         compose.runOnUiThread {
-            store.openBot(null)
+            // The chat open when the app leaves is the screen its return lands on.
+            store.openBot(bot.id)
             timing.enteredBackground()
             store.setForeground(false)
         }
@@ -74,14 +76,18 @@ class OpenTimingFlowTest {
             timing.becameActive()
             store.setForeground(true)
         }
-        compose.waitUntil(30_000) { events.size == 9 }
-        compose.onNodeWithText(bot.name).performClick()
-        compose.waitUntil(30_000) { events.size == 10 }
+        compose.waitUntil(30_000) { events.size == 8 }
+        assertEquals(listOf(OpenPhase.LinkReady, OpenPhase.Hello, OpenPhase.CatchUp, OpenPhase.OpenChat),
+            events.drop(4).map { it.phase })
 
-        assertEquals(events.take(5).map { it.phase }, events.drop(5).map { it.phase })
-        assertEquals(listOf(OpenKind.Cold, OpenKind.Foreground), events.chunked(5).map { it.first().open })
-        for (open in events.chunked(5)) {
-            assertEquals(5, open.map { it.phase }.distinct().size)
+        compose.runOnUiThread { store.openBot(null) }
+        compose.waitUntil(30_000) { events.size == 9 }
+        assertEquals(OpenPhase.ChatList, events.last().phase)
+
+        assertEquals(listOf(OpenKind.Cold, OpenKind.Foreground), listOf(events.first().open, events[4].open))
+        assertEquals(4, events.take(4).map { it.phase }.distinct().size)
+        assertEquals(5, events.drop(4).map { it.phase }.distinct().size)
+        for (open in listOf(events.take(4), events.drop(4))) {
             assertTrue(open.zipWithNext().all { it.first.ms <= it.second.ms })
             val catchUp = open.single { it.phase == OpenPhase.CatchUp }
             assertTrue((catchUp.chats ?: 0) >= 1)

@@ -34,6 +34,8 @@ public struct ThreadView: View {
     @State var findReveal = 0
     /// The card last brought into view from the bot's details, or the message a tapped quote quotes.
     @State var revealed: ConversationReveal?
+    /// The open this chat first showed in, 0 under the launch splash: `open_chat` times only later opens.
+    @State private var shownInOpen: Int?
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     @Environment(\.launchCovered) var launchCovered
 
@@ -449,6 +451,7 @@ extension ThreadView {
     public var body: some View {
         conversation
             .tracked(.screenViewed(.chat))
+            .onAppear { if shownInOpen == nil { shownInOpen = launchCovered ? 0 : model.openTiming.opens } }
     }
 
     private var working: Bool { bot?.isWorking(in: botId) == true && !model.isOffline }
@@ -464,9 +467,10 @@ extension ThreadView {
         ChatItem.build(model.chat(botId).hidingCalls().hidingQueue(working: busy))
     }
 
-    /// `open_chat` once this open's catch-up is in and the newest row shows, never under the launch splash.
+    /// `open_chat` once this open's catch-up is in and the newest row shows, for a chat already on screen when the
+    /// open began (a deep link under the launch splash, a chat left open): a later tap is not part of the open.
     private func recordNewestShown(_ item: ChatItem, in items: [ChatItem]) {
-        guard !launchCovered, item.id == items.last?.id,
+        guard !launchCovered, item.id == items.last?.id, let shownInOpen, shownInOpen < model.openTiming.opens,
               model.openTiming.hasRecorded(.catchUp, computer: model.computer.id) else { return }
         model.recordOpenTiming(.openChat)
     }

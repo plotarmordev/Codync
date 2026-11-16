@@ -77,6 +77,7 @@ extension BotStore {
     }
 
     public func stop(_ botId: String) { perform(replay: true) { try await $0.stop(botId) } }
+    public func newSession(_ botId: String) { perform { try await $0.newSession(botId) } }
     /// A call's audio is on: the lead speaks first, on the call (an older host, which has no lead, never gets this).
     public func callStarted(_ botId: String, call: String) {
         guard bots[botId]?.lead == true else { return }
@@ -200,10 +201,11 @@ extension BotStore {
         }
     }
 
-    /// The roster's "Mark as read": everything in the chat.
+    /// The roster's "Mark as read": everything in the chat, except cards still waiting on the user, which stay
+    /// counted until they're answered.
     public func markAllRead(_ botId: String) {
-        guard (bots[botId]?.unread ?? 0) > 0 else { return }
-        bots[botId]?.unread = 0
+        guard let bot = bots[botId], bot.unseen > 0 else { return }
+        bots[botId]?.unread = bot.waiting
         perform(replay: true) { try await $0.markRead(botId) }
     }
 

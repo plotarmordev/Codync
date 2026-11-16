@@ -163,7 +163,10 @@ step's login profile ("Fallbacks set: Claude Code (Work)").
 
 ## Apps
 
-iPhone, Android, desktop and terminal show the same things:
+iPhone, Android, desktop and terminal show the same things, in the interface language (the banner is a catalog
+phrase with `{to}`, `{own}` and `{time}` slots, translated before the names go in so a login profile named "Work while
+traveling" stays whole; a rest line holds only a time, so the apps translate the filled line through the catalog's
+`{time}` templates, and the terminal fills its phrase the way it fills the banner):
 
 - **Settings → Agent card** (the Settings page of the bot's details): while on a fallback, a first row "Using Codex until Claude Code resets at 3:00 PM"
   (only a usage limit gives a reset time: another rest names its reason as the chat does, "Using Codex while Claude Code
@@ -173,7 +176,7 @@ iPhone, Android, desktop and terminal show the same things:
   it offers the logins the chain doesn't have yet, signed in, so the bot's own agent is offered on its other
   login profiles and an agent with no login left is left out); a row per fallback with its
   number, logo, "Agent · Model" ("Agent (login profile) · Model" on one), "Usage resets 3:00 PM" / "Resting until 3:00 PM" while resting, an **In use** chip,
-  and a ⋯ menu (Move up, Move down, Remove); "No fallbacks yet."; a caption; and the "Let the bot change its
+  and a ⋯ menu (Move up, Move down, Edit, Remove: Edit opens that sheet as Edit fallback, filled in with the step's agent, model, model options and login profile, its own login offered again even when it has signed out since, and saves the step in its place; picking another agent and then its own again brings those back); "No fallbacks yet."; a caption; and the "Let the bot change its
   fallbacks" switch. The bot's own Agent row says when it resets.
 - **Chat**: one line where another agent took over ("Claude Code reached its usage limit (resets in 2 h). Codex carried
   on.") or the bot's own came back ("Back on Claude Code."); it unfolds to what the agent was told (past 8,000 bytes,
@@ -182,7 +185,7 @@ iPhone, Android, desktop and terminal show the same things:
   sign-in sheet. A failure with
   `addFallback` offers **Add a fallback**, which opens the bot's Settings at the Agent card.
 - **Terminal**: the bot form's Fallbacks field (←→ pick, space adds the next free agent or cycles a fallback's model,
-  `a` changes its agent, `c` changes its login profile, `[`/`]` move, `x` removes) and "Bot edits" (whether the bot may change them); while the bot is on a fallback the Settings page says which agent is in use ("Using Codex until Claude Code resets 15:00", "Using Codex while Claude Code is signed out"),
+  `a` changes its agent, `c` changes its login profile, `[`/`]` move, `x` removes) and "Bot edits" (whether the bot may change them); while the bot is on a fallback the Settings page says which agent is in use ("Using Codex until Claude Code resets at 15:00", "Using Codex while Claude Code is signed out"),
   and `b` on its Agent field switches back; in the chat `↪` lines unfold with `o`, and `A` on a picked failure opens that bot's Fallbacks field
   (in a group, the member whose agent failed).
 

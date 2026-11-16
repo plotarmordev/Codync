@@ -6,7 +6,7 @@ use super::{Actor, Reacted, Seg, SegKind};
 use crate::agent::acp::{self, Incoming};
 use crate::hub::BotStatus;
 use crate::remote::push::{self, AlertKind};
-use crate::store::{BotConfig, Entry, EntryKind, Lane, Permission};
+use crate::store::{BotConfig, Entry, EntryKind, Lane};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
@@ -171,7 +171,7 @@ impl Actor {
     pub(super) async fn on_permission(&mut self, rpc_id: Value, params: Value) {
         let options = params["options"].as_array().cloned().unwrap_or_default();
         let tool = &params["toolCall"];
-        if self.cfg.permission == Permission::Auto
+        if self.hub.ceilings.approves_by_itself(&self.cfg)
             && let (Some(option), Some(conn)) = (auto_pick(&options), &self.conn)
         {
             let _ = conn.acp.respond(rpc_id, acp::permission_answer(Some(option))).await;
@@ -207,13 +207,14 @@ impl Actor {
     }
 
     /// A permission request from work the agent goes on with after its turn ended (a background subagent): no turn
-    /// shows a card for it, so it gets what a turn would answer without asking, under the bot's Approve automatically,
-    /// for one of this bot's own sessions, unless the user stopped its last turn. Anything else is declined.
+    /// shows a card for it, so it gets what a turn would answer without asking, where the bot approves by itself
+    /// (`Ceilings::approves_by_itself`), for one of this bot's own sessions, unless the user stopped its last turn.
+    /// Anything else is declined.
     pub(super) async fn answer_background(&self, rpc_id: Value, params: &Value) {
         let Some(conn) = &self.conn else { return };
         let own = params["sessionId"].as_str().is_some_and(|sid| conn.loaded.contains_key(sid));
         let options = params["options"].as_array().cloned().unwrap_or_default();
-        let pick = (self.cfg.permission == Permission::Auto && own && !self.stop_requested)
+        let pick = (self.hub.ceilings.approves_by_itself(&self.cfg) && own && !self.stop_requested)
             .then(|| auto_pick(&options))
             .flatten();
         tracing::info!(bot = %self.id(), approved = pick.is_some(), title = params["toolCall"]["title"].as_str(), "permission asked outside a turn");
@@ -318,9 +319,10 @@ impl Actor {
     }
 
     /// A `send_message`: the user's next bubble, in the turn's lane, right away. Only in the
-    /// bot's own chat; a room, a bot request or a routine reads the turn's reply.
-    pub(super) fn send_to_user(&mut self, text: String) -> anyhow::Result<()> {
-        let Some(turn) = self.turn else { return self.send_between_turns(&text) };
+    /// bot's own chat; a room, a bot request or a routine reads the turn's reply. `quote`: the message it answers.
+    pub(super) fn send_to_user(&mut self, text: String, quote: Option<Value>) -> anyhow::Result<()> {
+        let data = crate::chat::replies::with_quote(json!({"text": text, "final": true}), quote);
+        let Some(turn) = self.turn else { return self.send_between_turns(&text, data) };
         // A background result can't be told from this turn's own send (no session in the call): it may try again later.
         if self.in_request() {
             anyhow::bail!(
@@ -331,7 +333,7 @@ impl Actor {
             anyhow::bail!("send_message isn't available in this turn: write your answer as your reply {LATER}");
         }
         self.close_seg();
-        let saved = self.add(EntryKind::Agent, turn, json!({"text": text, "final": true}));
+        let saved = self.add(EntryKind::Agent, turn, data);
         self.record_sent(saved, text)?;
         self.set_activity("Working…");
         Ok(())
@@ -348,11 +350,11 @@ impl Actor {
 
     /// A `send_message` from work the agent goes on with after its turn ended (a background subagent's result): a
     /// message in the bot's own chat, with the alert a finished turn sends, unless the user stopped its last turn.
-    fn send_between_turns(&self, text: &str) -> anyhow::Result<()> {
+    fn send_between_turns(&self, text: &str, mut data: Value) -> anyhow::Result<()> {
         anyhow::ensure!(self.conn.is_some(), "no turn is running");
         anyhow::ensure!(!self.stop_requested, "the user stopped you: send nothing until they write again");
-        self.add_between_turns(EntryKind::Agent, &json!({"text": text, "final": true, "author": self.cfg.id}))
-            .ok_or_else(|| anyhow::anyhow!("couldn't save the message"))?;
+        data["author"] = self.cfg.id.as_str().into();
+        self.add_between_turns(EntryKind::Agent, &data).ok_or_else(|| anyhow::anyhow!("couldn't save the message"))?;
         push::notify(&self.hub, &self.cfg, None, &self.cfg.name, text, AlertKind::Done);
         Ok(())
     }

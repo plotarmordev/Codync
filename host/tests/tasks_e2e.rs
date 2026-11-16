@@ -692,8 +692,9 @@ async fn another_bots_request_is_an_item_and_its_last_message_is_the_reply() {
     // The reply went to the bot that asked, as a turn of its own, and not into the asked bot's chat.
     let prompt = wait("the reply turn", async || {
         let prompts = host.log(&asker, "prompts.jsonl");
-        let reply =
-            prompts.iter().find(|p| p["text"].as_str().unwrap().contains("replied to your message_bot request"));
+        let reply = prompts
+            .iter()
+            .find(|p| p["text"].as_str().unwrap().contains("[Codync: Mika replied to your message_bot request"));
         reply.map(|p| p["text"].as_str().unwrap().to_owned())
     })
     .await;
@@ -737,7 +738,7 @@ async fn a_task_asks_the_user_to_choose_and_shares_in_the_chat() {
     let host = Host::start().await;
     let bot = host.fixture_bot("Mika", "task_agent.py", "").await;
     host.reply(&bot, "hello").await;
-    host.reply(&bot, "ADD Pick one|ASK then SHARE and ARTIFACT").await;
+    host.reply(&bot, "ADD Pick one|ASK then SHARE QUOTE and ARTIFACT").await;
 
     let card = wait("the task's choice card in the chat", async || {
         let mut cards = history(&host, &bot).await.into_iter().filter(|e| e["data"]["decision"] == true);
@@ -773,6 +774,11 @@ async fn a_task_asks_the_user_to_choose_and_shares_in_the_chat() {
         (&json!("agent"), &waits["id"], &json!(bot))
     );
     assert_eq!(file["data"]["files"][0]["name"], "shared.txt");
+    // Its `reply_to` quotes a message of the bot's chat, where the file shows, not of the task's own (issue #402).
+    let asked = chat
+        .iter()
+        .find(|e| e["kind"] == "user" && e["data"]["text"] == "ADD Pick one|ASK then SHARE QUOTE and ARTIFACT");
+    assert_eq!(file["data"]["replyTo"]["id"], asked.expect("the message that added the item")["id"]);
     let stored = host.home.join("bots").join(&bot).join("files").join(file["data"]["files"][0]["id"].as_str().unwrap());
     assert!(stored.exists(), "kept with the bot, not with the task: {}", stored.display());
     let page = chat.iter().find(|e| !e["data"]["artifact"].is_null()).expect("the artifact's card");
@@ -918,10 +924,15 @@ async fn a_task_beside_another_in_one_repository_works_in_a_worktree_of_its_own(
     // Nothing changed in it: the worktree and its branch go, and the report says so.
     std::fs::write(folder(&second).join("release-second"), "").unwrap();
     let report = relayed_for(&host, &bot, "Second task").await;
-    assert!(report.contains("had no changes and no commits and was removed with its branch"), "{report}");
     let done = item(&host, &bot, "Second task", "done").await;
-    assert!(done["worktree"].is_null() && !folder(&second).exists(), "{done}");
-    assert!(!branches().contains("codync/second-task"), "{}", branches());
+    // On Windows a folder a process is still in can't be removed: the worktree stays and the report says where.
+    if cfg!(windows) {
+        assert!(report.contains("branch codync/second-task") && report.contains("nothing was merged"), "{report}");
+    } else {
+        assert!(report.contains("had no changes and no commits and was removed with its branch"), "{report}");
+        assert!(done["worktree"].is_null() && !folder(&second).exists(), "{done}");
+        assert!(!branches().contains("codync/second-task"), "{}", branches());
+    }
 
     // A file it made: both stay, and the report names the branch and the folder for the bot to tell the user.
     std::fs::write(folder(&third).join("release-third"), "").unwrap();

@@ -52,7 +52,7 @@ for line in sys.stdin:
             send({"id": request["id"], "result": {"sessionId": session_id}})
     elif method == "session/prompt":
         text = request["params"]["prompt"][0]["text"]
-        if text.split("\n\n")[-1].startswith("HOLD"):
+        if "HOLD" in text.split("\n"):
             subprocess.Popen(
                 [sys.executable, __file__, "--hold", str(here / f"{session_id}.lock")],
                 stdout=subprocess.DEVNULL,

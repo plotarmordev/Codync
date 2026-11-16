@@ -36,37 +36,49 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - 在訊息上往旁邊滑就能回覆，就像「訊息」App：你的訊息往左滑，Bot 的訊息往右滑，放開時就會開始回覆。
 - 語音通話設定的 OpenAI 區塊會顯示電腦目前使用的「伺服器」：OpenAI，或你在電腦上設定的自有語音伺服器。使用自有伺服器時，模式固定為語音識別。
 - 可以只回覆訊息的其中一段：長按訊息選「選取文字」，選好文字後在選單點「回覆」，Bot 會知道你問的是哪一段。
+- Bot 也可以引用訊息：晚一點才回的答案，上方會顯示它回答的是哪一則。點一下引用就會捲到那則訊息。
 - Bot 設定的「技能」只列出名稱，點旁邊的資訊按鈕可以看完整說明。
 - 裝置上聽寫與語音通話不會再弄丟停頓前說的話。
-- Bot 改用備援時，「智慧體」卡片會說明原本的智慧體為什麼停下（已登出、被限速等），只有用量上限才顯示重設時間。
+- Bot 改用備援時，「智慧體」卡片會說明原本的智慧體為什麼停下（已登出、被限速等），只有用量上限才顯示重設時間；這一行和備援底下的休息時間都會跟著 App 的語言。
 - 輸入 `/` 時，清單最後會列出 Bot 所用智慧體自己的指令（Claude Code、Codex、OpenCode 等），和 Codync 自己的指令、技能分開，標上智慧體的名稱、圖示和說明；選一個會填入 `/<指令>`，送出後由智慧體直接執行。
+- 電腦的「網路」頁會列出新的規則等級：「自動」只讓其他電腦的 Bot 做 agent 判斷為安全的事，其餘先問你；「詢問」讓每個變更和指令都等你批准。沒有符合任何規則的電腦預設為「自動」，原本就在網路裡的電腦維持「允許」。
+- 備援的 ⋯ 選單新增「編輯」：可以直接換它的智慧體、模型或登入設定，順序不變。
+- 聽寫中直接按「傳送」，會等說的話轉成文字，再和打好的字一起送出，不會再丟掉。
+- 等待核准的卡片會一直算在 Bot 的未讀數字裡（顯示為琥珀色），打開聊天或「標示為已讀」都不會讓它消失，直到你回覆為止；收起的分組裡有 Bot 在等你時，分組的數字也會變成琥珀色。
+- 長按 Bot 選「新會話」，就能讓智慧體從新的上下文開始，聊天記錄會保留。
 
 ### en-US
-- Bots do long work in the background, several things at once: the chat stays free, so you can keep writing and the bot keeps answering. When the work is done, the bot tells you what it found in a message, or why it couldn't finish.
-- One capsule above the message box says "In the background" with how many are working and waiting; with a single one it shows what it is doing and for how long, and you can stop it there. Tap it to open the bot's Details.
-- Details lists what the bot does. Threads: the work that runs now and the places still free; a row opens what it did. Event box: what waits, in order, where you can move one First, Cut in when every place is taken (you pick what gives way; it starts again later), or touch and hold to Drop it. Recent: what ended in the last day; a stopped or failed one says why and has Try again.
-- Agents at once, in the bot's Settings, sets how many work at the same time (1 to 6). Instructions and Agent (model, fast mode, fallbacks) moved there from Details.
-- Background work can ask for your approval or a choice in the chat and send you a file or a voice note there, marked "In the background" with the name of the work; answer a card like any other.
-- Routines and other bots' requests run in the background too: you can keep talking to the bot while a routine runs.
-- A Work button at the top of the bot list shows every bot's work that is running or waiting, with the same actions as in Details.
-- Worktree per agent, in the bot's Settings (shown when its folder is a Git repository): agents working at once in one repository each get their own branch, so they don't change the same files. Codync never merges or deletes a branch that has work on it.
+- Bots do long work in the background, several at once, and keep answering in chat. When done, they report the result or why it failed.
+- A capsule above the message box shows background work and its progress, with Stop for a single task. Tap it for Details.
+- Details lists running Threads, waiting Event box tasks (First, Cut in, Drop), and Recent work from the last day, with retry for stopped or failed work.
+- Agents at once, in the bot's Settings, sets how many work at a time (1 to 6). Instructions and Agent (model, fast mode, fallbacks) moved there from Details.
+- Background work can ask for approval or a choice and send files or voice notes in the chat, marked "In the background".
+- Routines and other bots' requests run in the background too.
+- A Work button at the top of the bot list shows every bot's running or waiting work.
+- Worktree per agent, in the bot's Settings (for a Git repository): agents working at once each get their own branch. Codync never merges or deletes a branch with work on it.
 - The Live Activity stays while background work runs, and shows when it needs you.
-- Share text, links, photos or files to a bot from any app: choose Codync in the share sheet and add a message if you like. The bots you shared to last are under Recent.
-- Update notices clearly identify whether this app or Codync on your computer needs updating, and explain when a cloud computer is updating itself.
-- Agents can have more than one login profile: under Login profiles in an agent's setup, add an account (Claude Code, Codex, OpenCode, Pi, Google Antigravity and more), or an API key for any agent (its values stay on the computer). Name each one, then pick a bot's under Agent in its settings, so two bots can work at once on different logins.
-- A fallback can be the same agent on another of its login profiles: when one runs out of usage, the bot carries on with the next.
+- Share text, links, photos or files to a bot from any app: choose Codync in the share sheet, with a message if you like. Bots you shared to last are under Recent.
+- Update notices say whether this app or Codync on your computer needs updating, and when a cloud computer is updating itself.
+- Agents can have several login profiles: add an account or an API key in an agent's setup (keys stay on the computer), name each, and pick a bot's under Agent, so two bots can work at once on different logins.
+- A fallback can be the same agent on another login profile: when one runs out of usage, the bot carries on with the next.
 - Usage limits lists each account of an agent with its own limits (Claude Code, Codex), and widgets show the one nearest its limit.
-- After your computer restarts or the app or Codync updates, the iPhone catches up on only what's new instead of reloading every chat.
-- A voice note shows its play button, progress bar and length (like 0:00 / 0:09) from the start, with even space on both sides of the bar; its sound loads in the background so it plays the moment you tap (on mobile data, only notes under 2 MB load ahead). A sound file sent on its own uses the same player; Download is in the message's menu. When a note can't play, the error takes the bar's place.
-- Choice cards show numbered options, and the last row, Something else, takes your own answer; the bot continues with your words.
-- A bot that says it will check back later now sets a follow-up: "Follow-up in 20 minutes" shows in the chat, and when it's due the bot comes back to tell you what it found, or stays quiet if there's nothing yet. Waiting follow-ups are listed above the bot's routines, where you can cancel one.
+- After a restart or an update, the iPhone loads only what's new, not every chat again.
+- Voice notes play in the chat; downloads moved to the message menu.
+- Choice cards show numbered options; the last row, Something else, takes your own answer.
+- A bot that says it will check back later sets a follow-up ("Follow-up in 20 minutes") and tells you what it found when it's due. Waiting ones are above its routines.
 - A routine remembers where its last run stopped, so work done in parts carries on from there.
 - A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.
 - Optional Google Search in Gemini realtime calls, off by default.
-- Swipe a message sideways to reply, as in Messages: yours to the left, the bot's to the right, and let go.
-- Voice chat settings show which Server the computer's OpenAI engine uses: OpenAI, or a speech server of your own set on the computer. With your own server, Mode stays on Speech.
-- Reply to one part of a message: touch and hold it, choose Select Text, select the words, then Reply. The bot is told which part you mean.
+- Voice chat settings show which Server the computer's OpenAI engine uses: OpenAI, or your own speech server (Mode then stays on Speech).
+- Swipe sideways on a message to reply.
+- Reply to one part of a message: touch and hold it, choose Select Text, select the words, then Reply.
+- Bots can quote a message too: tap the quote above an answer to see it.
 - A bot's Skills settings list only each skill's name; the info button beside one shows its description.
 - On-device dictation and calls keep the words you said before a pause.
-- While a bot is on a fallback, the Agent card says why its own agent stopped (signed out, rate limited and so on) and gives a reset time only for a usage limit.
-- Typing `/` now also lists the bot's agent's own commands (Claude Code, Codex, OpenCode and more), listed apart from Codync's own commands and skills under the agent's name, with its logo and description; pick one to fill in `/<command>`, and the agent runs it when you send.
+- On a fallback, the Agent card says in the app's language why the bot's agent stopped (signed out, rate limited, etc.); only a usage limit shows a reset time.
+- Typing `/` also lists the agent's own commands (Claude Code, Codex, OpenCode and more) under its name; pick one and the agent runs it when you send.
+- Network rules gain two levels: Auto (another computer's bots get only what the agent judges safe; the rest asks you) and Ask (everything waits for you). A computer no rule matches gets Auto.
+- A fallback's ⋯ menu has Edit: change its agent, model or login profile in place.
+- Send while dictating waits for what you said and sends it with what you typed.
+- A waiting approval card stays in the bot's badge, in amber, until you answer it, even after you open the chat or mark it read; a folded section turns amber too.
+- Touch and hold a bot for New session: a fresh context for its agent; the chat stays.

@@ -37,7 +37,6 @@ host answers and sends it once the host is up.
 | Event | Sent by | When | Properties |
 |---|---|---|---|
 | `app_opened` | host `track` (desktop, TUI), iOS, Android | Desktop: each launch, once the host answers. TUI: each start. Phones: each return to the foreground. | desktop `at_login` (opened by the login item); phones `notifications` (`allowed`/`denied`/`not_asked`), `widgets` (count on the Home Screen) |
-| `open_timing` | iOS, Android | One computer reaches a milestone after a cold open or return from the background: `link_ready`, `hello`, `catch_up`, then the newest message shown in `chat_list` or `open_chat` (never under the launch splash). Once per phase, computer and open. | `phase`, `open` (`cold`/`foreground`), `ms` (since the app opened), `computer` (hashed key), `computers` (the open account's saved computers); `catch_up` also has `chats` and `messages` (counts caught up and fetched in this open: both `0` when a live call kept the link current through the background) |
 | `window_opened` | host `track` (desktop) | The chat window is shown after being hidden (tray, dock, shortcut, second launch). A long-running menu bar app opens it many times per launch. | — |
 | `window_recovery` | host `track` (desktop) | A window's page crashed (`RendererGone` in error tracking): it loaded again, or crashed too often and stays down | `outcome` (`reloaded`/`gave_up`) |
 | `host_started` | host | Each start of the host process | `first_run` (the first start of a new install; `open_store` marks a new host id with an empty `analytics_version`), `updated_from` (the previous version, when it changed), `service` (started by launchd, systemd or the Windows runner: `XPC_SERVICE_NAME`, `SYSTEMD_EXEC_PID`, `CODYNC_SERVICE`), `loopback` (listening on this computer only: `install --bind 127.0.0.1`) |
@@ -85,18 +84,6 @@ host answers and sends it once the host is up.
 | `notification_opened` | iOS, Android | A Codync notification was tapped | `kind` (`done`/`needs_input`/`failed`) |
 | `star_prompt_answered` | host `track` (desktop) | The GitHub star setup invitation or the fifth-prompt invitation was answered or closed | `ask` (`first`/`second`), `starred` |
 | `link_opened` | host `track` (desktop), iOS, Android | An outbound link was opened (`install_command`: an install command copied; `install_link`: the phone's website link copied; `whats_new_film`: a What's new highlight's full video) | `link` (`github`/`docs`/`issues`/`discord`/`app_store`/`demo`/`tailscale`/`privacy`/`support`/`install_command`/`install_link`/`product_hunt`/`whats_new_film`) |
-
-PostHog → SQL editor reads the timing distribution, in milliseconds, for the last seven days:
-
-```sql
-SELECT properties.open, properties.phase, count() AS samples,
-       round(avg(toFloat(properties.ms))) AS average_ms,
-       round(quantile(0.95)(toFloat(properties.ms))) AS p95_ms
-FROM events
-WHERE event = 'open_timing' AND timestamp > now() - INTERVAL 7 DAY
-GROUP BY properties.open, properties.phase
-ORDER BY properties.open, properties.phase
-```
 
 ## Using Codync
 
@@ -223,6 +210,23 @@ The *Onboarding & conversion* dashboard in PostHog reads these steps, each per `
 - **Star**: `star_prompt_answered` with `starred` ÷ all `star_prompt_answered`, per `ask`.
 - **Website**: `$pageview` → `download_clicked` (per `platform`) → the first `app_opened` that day
   (counts only, no link between a visitor and an install).
+
+## Phone performance
+
+The phones send open-timing measurements to their connected host with `recordPhonePerformance`. The host appends
+JSON Lines to `phone-performance.jsonl` in its data directory (`~/.codync/phone-performance.jsonl`, or under
+`CODYNC_HOME`; development hosts use `~/.codync-dev`). Nothing is sent to PostHog or another service. Simulators and
+emulators report nothing.
+
+Each line has the host's RFC 3339 `at` timestamp, `platform` (`ios`/`android`) and `type: open_timing`. Every event
+also has `phase` (`link_ready`, `hello`, `catch_up`, `chat_list` or `open_chat`), `open` (`cold` or `foreground`) and
+`ms` since the app opened. `catch_up` also has `chats` and `messages`, the counts caught up and fetched in this open.
+
+The log holds no message text, names or ids. A bot can read recent measurements with:
+
+```sh
+tail -n 100 ~/.codync/phone-performance.jsonl | jq -c 'select(.type == "open_timing")'
+```
 
 ## Website
 

@@ -74,8 +74,8 @@ private fun AppStore.noteOpen(retainedLink: Boolean = false) {
     mutableState.update { it.copy(opensSeen = it.opensSeen + 1) }
     if (retainedLink && channel?.state?.value is LinkState.Ready && state.value.hello != null) {
         // Ready: a catch-up still running reports its own, an open chat's rows wait for it.
-        openTiming.record(OpenPhase.LinkReady, id)
-        openTiming.record(OpenPhase.Hello, id)
+        recordOpenTiming(OpenPhase.LinkReady)
+        recordOpenTiming(OpenPhase.Hello)
         if (caughtUpSubscription == eventSubscription && eventSubscription > 0)
             noteCatchUp(chats = 0, messages = 0)
     }
@@ -84,7 +84,7 @@ private fun AppStore.noteOpen(retainedLink: Boolean = false) {
 /** A subscription's catch-up finished: the milestone once per open, and the counter the rows watch (iOS `catchUpsCompleted`). */
 private fun AppStore.noteCatchUp(chats: Int, messages: Int) {
     // Before the state change: the rows' check (`hasRecorded`) is already true when they react.
-    openTiming.record(OpenPhase.CatchUp, id, chats = chats, messages = messages)
+    recordOpenTiming(OpenPhase.CatchUp, chats = chats, messages = messages)
     mutableState.update { it.copy(catchUpsCompleted = it.catchUpsCompleted + 1) }
 }
 
@@ -126,10 +126,10 @@ fun AppStore.connect() {
                             }
                             if (link is LinkState.Ready) {
                                 noteOpen()
-                                openTiming.record(OpenPhase.LinkReady, id)
+                                recordOpenTiming(OpenPhase.LinkReady)
                                 val fromHost = HostClient.hello(active, state.value.computer)
                                 val hello = active.call("hello").jsonObject
-                                openTiming.record(OpenPhase.Hello, id)
+                                recordOpenTiming(OpenPhase.Hello)
                                 // This phone's picks (color, route, push) may have changed during those calls.
                                 changeComputer { current -> if (current.id == fromHost.id) fromHost.keepingDevicePicks(current) else current }
                                 adoptHello(active, hello, requireNotNull(iconEpoch))

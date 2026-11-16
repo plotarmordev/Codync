@@ -20,8 +20,8 @@ class ColdDeepLinkOpenTimingTest {
             historyEnd = mapOf(bot.id to HistoryEnd.Complete), opensSeen = 1, catchUpsCompleted = 1,
             entries = listOf(Entry("deep-link-message", 1, bot.id, rev = 1, kind = "agent",
                 data = buildJsonObject { put("text", "Ready."); put("final", true) })))
-        val events = mutableListOf<AnalyticsEvent.OpenTiming>()
-        val timing = OpenTiming { (it as? AnalyticsEvent.OpenTiming)?.let(events::add) }
+        val events = mutableListOf<PhonePerformance>()
+        val timing = OpenTiming { events += it }
         val launching = mutableStateOf(true)
         compose.runOnUiThread {
             store.openTiming = timing

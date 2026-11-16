@@ -301,15 +301,9 @@ private fun AppState.chatItems(bot: Bot) =
     chatItems(chatEntries(bot), pending.filter { it.botId == bot.id && (it.call == null || it.status == SendStatus.Failed) }, busy = bot.isWorking)
 
 /** The messages: all this phone has, earlier ones from the computer near the top, following the newest. */
-<<<<<<< HEAD
-@Composable private fun Transcript(bot: Bot, state: AppState, store: AppStore, connect: ConnectionRequestActions, padding: PaddingValues,
+@Composable private fun Transcript(bot: Bot, state: AppState, store: AppStore, launching: Boolean, connect: ConnectionRequestActions, padding: PaddingValues,
     indicatorTop: Dp, openRoutine: (String) -> Unit, reply: (Entry) -> Unit, selectText: (Entry) -> Unit, addFallback: (Bot) -> Unit, openArtifact: (OpenArtifact) -> Unit,
     openCall: (String) -> Unit, found: String?, revealed: String?, findStep: Int, openQuote: (String) -> Unit, openPeer: (String) -> Unit) {
-=======
-@Composable private fun Transcript(bot: Bot, state: AppState, store: AppStore, launching: Boolean, connect: ConnectionRequestActions, padding: PaddingValues,
-    indicatorTop: Dp, openRoutine: (String) -> Unit, reply: (Entry) -> Unit, addFallback: (Bot) -> Unit, openArtifact: (OpenArtifact) -> Unit,
-    openCall: (String) -> Unit, found: String?, findStep: Int, openPeer: (String) -> Unit) {
->>>>>>> 4c00961f (fix(ios,android): time an open chat only once the launch splash lifts)
     val entries = state.chatEntries(bot)
     val items = state.chatItems(bot)
     val working = bot.isWorking(bot.id) && state.connection is LinkState.Ready
@@ -349,7 +343,7 @@ private fun AppState.chatItems(bot: Bot) =
             if (item.id == lastItem) {
                 LaunchedEffect(lastItem, state.opensSeen, state.catchUpsCompleted, bot.id, launching) {
                     if (!launching && store.openTiming.hasRecorded(OpenPhase.CatchUp, state.computer.id))
-                        store.openTiming.record(OpenPhase.OpenChat, state.computer.id)
+                        store.recordOpenTiming(OpenPhase.OpenChat)
                 }
             }
             // The message holding find's shown match is highlighted.

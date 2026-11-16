@@ -12,7 +12,7 @@ struct OpenTimingFlowTests {
         let (storage, suite) = context()
         defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
         var clock = ContinuousClock.now
-        var events: [AnalyticsEvent] = []
+        var events: [PhonePerformance] = []
         let timing = OpenTiming(now: {
             clock += .milliseconds(1)
             return clock
@@ -77,7 +77,7 @@ struct OpenTimingFlowTests {
     @Test func aChatOpenedUnderTheLaunchSplashRecordsOnceTheSplashLifts() async throws {
         let (storage, suite) = context()
         defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
-        var events: [AnalyticsEvent] = []
+        var events: [PhonePerformance] = []
         let timing = OpenTiming(capture: { events.append($0) })
         timing.beginCold()
         timing.becameActive()
@@ -110,18 +110,12 @@ struct OpenTimingFlowTests {
         #expect(phases(events).last == .openChat)
     }
 
-    private func phases(_ events: [AnalyticsEvent]) -> [AnalyticsEvent.OpenPhase?] {
-        events.map { event in
-            guard case let .openTiming(phase, _, _, _, _, _, _) = event else { return nil }
-            return phase
-        }
+    private func phases(_ events: [PhonePerformance]) -> [OpenPhase] {
+        events.map(\.phase)
     }
 
-    private func milliseconds(_ events: [AnalyticsEvent]) -> [Int?] {
-        events.map { event in
-            guard case let .openTiming(_, _, ms, _, _, _, _) = event else { return nil }
-            return ms
-        }
+    private func milliseconds(_ events: [PhonePerformance]) -> [Int] {
+        events.map(\.ms)
     }
 }
 

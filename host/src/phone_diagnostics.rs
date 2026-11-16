@@ -1,0 +1,157 @@
+//! A phone's open-timing measurements, logged locally so a slow phone can be diagnosed later.
+//! `recordPhonePerformance` appends one JSON line to `phone-performance.jsonl` in the data
+//! directory. Only timings and counts are stored: no message content, names or ids, and nothing
+//! goes to analytics.
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::path::{Path, PathBuf};
+use tokio::io::AsyncWriteExt as _;
+
+/// A measurement a phone sends (`apps/*/PhonePerformance.*`).
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum Measurement {
+    #[serde(rename_all = "camelCase")]
+    OpenTiming {
+        platform: Platform,
+        phase: OpenPhase,
+        open: OpenKind,
+        ms: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        chats: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        messages: Option<u64>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Platform {
+    Ios,
+    Android,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum OpenPhase {
+    LinkReady,
+    Hello,
+    CatchUp,
+    ChatList,
+    OpenChat,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum OpenKind {
+    Cold,
+    Foreground,
+}
+
+fn file() -> PathBuf {
+    crate::service::data_dir().join("phone-performance.jsonl")
+}
+
+/// `recordPhonePerformance`: type-check `body` and append it as one JSONL line.
+pub async fn record(body: Value) -> Result<Value> {
+    record_at(&file(), body).await?;
+    Ok(json!({}))
+}
+
+async fn record_at(path: &Path, body: Value) -> Result<()> {
+    let measurement: Measurement = serde_json::from_value(body).context("malformed phone performance")?;
+    // Serialize first, then stamp: an internally-tagged enum can't be `flatten`ed with other
+    // fields. The host stamps arrival time, so a phone's clock is never trusted.
+    let mut event = serde_json::to_value(&measurement)?;
+    event
+        .as_object_mut()
+        .context("a measurement is an object")?
+        .insert("at".to_owned(), chrono::Utc::now().to_rfc3339().into());
+    let mut line = serde_json::to_vec(&event)?;
+    line.push(b'\n');
+    if let Some(parent) = path.parent() {
+        tokio::fs::create_dir_all(parent).await.with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .await
+        .with_context(|| format!("opening {}", path.display()))?;
+    file.write_all(&line).await.with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    fn log() -> PathBuf {
+        std::env::temp_dir().join(format!("codync-phone-perf-{}", uuid::Uuid::new_v4())).join("phone-performance.jsonl")
+    }
+
+    fn lines(path: &Path) -> Vec<Value> {
+        std::fs::read_to_string(path).unwrap().lines().map(|line| serde_json::from_str(line).unwrap()).collect()
+    }
+
+    #[tokio::test]
+    async fn open_timings_append_valid_jsonl_without_unknown_content() {
+        let path = log();
+        record_at(&path, json!({"type": "open_timing", "platform": "ios", "phase": "link_ready", "open": "cold", "ms": 240}))
+            .await
+            .unwrap();
+        record_at(
+            &path,
+            json!({
+                "type": "open_timing", "platform": "android", "phase": "catch_up", "open": "foreground",
+                "ms": 1250, "chats": 8, "messages": 31, "message": "never logged"
+            }),
+        )
+        .await
+        .unwrap();
+        let lines = lines(&path);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0]["type"], "open_timing");
+        assert_eq!(lines[0]["platform"], "ios");
+        assert_eq!(lines[0]["phase"], "link_ready");
+        assert_eq!(lines[0]["ms"], 240);
+        assert_eq!(lines[1]["chats"], 8);
+        assert_eq!(lines[1]["messages"], 31);
+        assert!(lines[1].get("message").is_none(), "unknown fields aren't logged");
+        for line in &lines {
+            assert!(line["at"].is_string());
+            chrono::DateTime::parse_from_rfc3339(line["at"].as_str().unwrap()).unwrap();
+        }
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn optional_counts_are_omitted_not_null() {
+        let path = log();
+        record_at(&path, json!({"type": "open_timing", "platform": "ios", "phase": "open_chat", "open": "cold", "ms": 90}))
+            .await
+            .unwrap();
+        let lines = lines(&path);
+        assert!(lines[0].get("chats").is_none());
+        assert!(lines[0].get("messages").is_none());
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn malformed_input_is_rejected_and_writes_nothing() {
+        let path = log();
+        for bad in [
+            json!({}),
+            json!({"type": "nope", "platform": "ios"}),
+            json!({"type": "open_timing", "platform": "ios", "phase": "hello", "open": "cold"}),
+            json!({"type": "open_timing", "platform": "android", "phase": "settings", "open": "cold", "ms": 1}),
+            json!({"type": "open_timing", "platform": "android", "phase": "hello", "open": "warm", "ms": 1}),
+        ] {
+            assert!(record_at(&path, bad).await.is_err());
+        }
+        assert!(!path.exists());
+    }
+}

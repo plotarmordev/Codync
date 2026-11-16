@@ -467,7 +467,6 @@ public final class AccountStore {
             persist()
         }
         if ordered != computers { Motion.animate { computers = ordered } }
-        if !retired { openTiming.setComputerCount(ordered.count) }
         rosterChanged()
     }
 

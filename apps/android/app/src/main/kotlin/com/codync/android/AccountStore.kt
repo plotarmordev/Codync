@@ -92,7 +92,6 @@ class AccountStore(application: Application) : AndroidViewModel(application) {
             widgetOwner = withContext(Dispatchers.IO) { WidgetStore.activate(getApplication(), local.contextId) }
             PushDelivery.activate(getApplication(), userId)
             val computers = withContext(Dispatchers.IO) { local.computers() }
-            OpenTiming.shared.setComputerCount(computers.size)
             val complete = withContext(Dispatchers.IO) { local.setupComplete() }
             val last = withContext(Dispatchers.IO) { local.lastComputer() }
             val lead = withContext(Dispatchers.IO) { local.shortcutLead() }

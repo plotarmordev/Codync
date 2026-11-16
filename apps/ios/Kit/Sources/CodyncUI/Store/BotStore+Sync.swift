@@ -54,7 +54,7 @@ extension BotStore {
                         finishRefetch()
                         caughtUpSubscription = subscription
                         catchUpsCompleted += 1
-                        openTiming.record(.catchUp, computer: computer.id, chats: chatsCaughtUp.count, messages: messagesFetched)
+                        recordOpenTiming(.catchUp, chats: chatsCaughtUp.count, messages: messagesFetched)
                     }
                 }
             } catch is CancellationError {
@@ -94,7 +94,7 @@ extension BotStore {
         guard epoch == iconsEpoch else { return }
         iconsRevision = -1
         hello = h
-        openTiming.record(.hello, computer: computer.id)
+        recordOpenTiming(.hello)
         applyIcons(h.icons ?? [:], revision: h.iconsRevision ?? 0)
         noteSyncStamp(Self.syncStamp(h))
         noteHostVersion(HostVersion(version: h.version, minApp: h.minApp))

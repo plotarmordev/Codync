@@ -126,7 +126,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         // Before the stores foreground: a live link records this open's milestones as it notices it.
-        OpenTiming.shared.becameActive(accounts.state.value.computers.size)
+        OpenTiming.shared.becameActive()
         accounts.setForeground(true); Analytics.becameActive(applicationContext)
         lifecycleScope.launch { AppUpdates.refresh(applicationContext) }
     }

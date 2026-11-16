@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 
+public enum OpenPhase: String, Sendable { case linkReady = "link_ready", hello, catchUp = "catch_up", chatList = "chat_list", openChat = "open_chat" }
+public enum OpenKind: String, Sendable { case cold, foreground }
+
 /// Milliseconds from each cold or foreground open to its connection and rendering milestones.
 @Observable
 @MainActor
@@ -9,20 +12,19 @@ public final class OpenTiming {
     public private(set) var opens = 0
 
     private let now: () -> ContinuousClock.Instant
-    private let capture: (AnalyticsEvent) -> Void
+    private let capture: ((PhonePerformance) -> Void)?
     private var openedAt: ContinuousClock.Instant?
-    private var kind = AnalyticsEvent.OpenKind.cold
+    private var kind = OpenKind.cold
     private var backgrounded = false
-    private var computers = 0
     private var sent: Set<Key> = []
 
     private struct Key: Hashable {
         let computer: ComputerID
-        let phase: AnalyticsEvent.OpenPhase
+        let phase: OpenPhase
     }
 
     init(now: @escaping () -> ContinuousClock.Instant = { .now },
-         capture: @escaping (AnalyticsEvent) -> Void = { Analytics.shared.capture($0) }) {
+         capture: ((PhonePerformance) -> Void)? = nil) {
         self.now = now
         self.capture = capture
     }
@@ -33,11 +35,6 @@ public final class OpenTiming {
         openedAt = now()
         kind = .cold
         sent = []
-    }
-
-    /// The open account's saved computers, kept current by its `AccountStore` (accounts restore and switch after launch).
-    public func setComputerCount(_ count: Int) {
-        computers = count
     }
 
     public func becameActive() {
@@ -54,15 +51,16 @@ public final class OpenTiming {
         backgrounded = true
     }
 
-    public func hasRecorded(_ phase: AnalyticsEvent.OpenPhase, computer: ComputerID) -> Bool {
+    public func hasRecorded(_ phase: OpenPhase, computer: ComputerID) -> Bool {
         sent.contains(Key(computer: computer, phase: phase))
     }
 
-    public func record(_ phase: AnalyticsEvent.OpenPhase, computer: ComputerID,
-                       chats: Int? = nil, messages: Int? = nil) {
-        guard let openedAt, sent.insert(Key(computer: computer, phase: phase)).inserted else { return }
+    public func record(_ phase: OpenPhase, computer: ComputerID,
+                       chats: Int? = nil, messages: Int? = nil) -> PhonePerformance? {
+        guard let openedAt, sent.insert(Key(computer: computer, phase: phase)).inserted else { return nil }
         let ms = Int((now() - openedAt) / .milliseconds(1))
-        capture(.openTiming(phase, open: kind, ms: ms, computer: computer,
-                            computers: computers, chats: chats, messages: messages))
+        let measurement = PhonePerformance(phase: phase, open: kind, ms: ms, chats: chats, messages: messages)
+        capture?(measurement)
+        return measurement
     }
 }

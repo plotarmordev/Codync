@@ -20,8 +20,8 @@ class OpenTimingFlowTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test fun productionClockMeasuresARealDelay() {
-        val events = mutableListOf<AnalyticsEvent.OpenTiming>()
-        val timing = OpenTiming { (it as? AnalyticsEvent.OpenTiming)?.let(events::add) }
+        val events = mutableListOf<PhonePerformance>()
+        val timing = OpenTiming { events += it }
         timing.beginCold()
         timing.record(OpenPhase.LinkReady, "computer")
         Thread.sleep(20)
@@ -41,12 +41,11 @@ class OpenTimingFlowTest {
             !state.loading && state.rosterLoaded && state.bots.any { !it.deleted }
         }
         val bot = store.state.value.bots.first { !it.deleted }
-        val events = mutableListOf<AnalyticsEvent.OpenTiming>()
+        val events = mutableListOf<PhonePerformance>()
         val entriesAtCatchUp = mutableListOf<List<Entry>>()
         val timing = OpenTiming(capture = {
-            val event = it as? AnalyticsEvent.OpenTiming ?: return@OpenTiming
-            if (event.computerId == store.id) events += event
-            if (event.phase == OpenPhase.CatchUp) entriesAtCatchUp += store.state.value.entries
+            events += it
+            if (it.phase == OpenPhase.CatchUp) entriesAtCatchUp += store.state.value.entries
         })
         compose.runOnUiThread {
             store.setForeground(false)
@@ -56,7 +55,6 @@ class OpenTimingFlowTest {
 
         compose.runOnUiThread {
             timing.beginCold()
-            timing.setComputerCount(1)
             store.setForeground(true)
         }
         compose.waitUntil(30_000) { events.map { it.phase }.containsAll(listOf(OpenPhase.CatchUp, OpenPhase.ChatList)) }
@@ -73,7 +71,7 @@ class OpenTimingFlowTest {
         }
         compose.waitUntil(10_000) { store.channel == null }
         compose.runOnUiThread {
-            timing.becameActive(computers = 1)
+            timing.becameActive()
             store.setForeground(true)
         }
         compose.waitUntil(30_000) { events.size == 9 }
@@ -96,14 +94,13 @@ class OpenTimingFlowTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val local = LocalStore(context, "open-timing-" + UUID.randomUUID())
         val store = AppStore(context.applicationContext as Application, local, host.computer, "local", 0, kotlinx.coroutines.SupervisorJob(), {}, {})
-        val events = mutableListOf<AnalyticsEvent.OpenTiming>()
-        val timing = OpenTiming { (it as? AnalyticsEvent.OpenTiming)?.let(events::add) }
+        val events = mutableListOf<PhonePerformance>()
+        val timing = OpenTiming { events += it }
         try {
             runBlocking { store.open() }
             compose.runOnUiThread {
                 store.openTiming = timing
                 timing.beginCold()
-                timing.setComputerCount(1)
                 store.setForeground(true)
             }
             compose.waitUntil(10_000) { host.rosterHeld }
@@ -121,7 +118,7 @@ class OpenTimingFlowTest {
             }
             assertTrue(store.channel?.state?.value is LinkState.Ready)
             compose.runOnUiThread {
-                timing.becameActive(computers = 1)
+                timing.becameActive()
                 store.setForeground(true)
             }
             compose.waitUntil(5_000) { events.size == 6 }

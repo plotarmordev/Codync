@@ -468,7 +468,7 @@ extension ThreadView {
     private func recordNewestShown(_ item: ChatItem, in items: [ChatItem]) {
         guard !launchCovered, item.id == items.last?.id,
               model.openTiming.hasRecorded(.catchUp, computer: model.computer.id) else { return }
-        model.openTiming.record(.openChat, computer: model.computer.id)
+        model.recordOpenTiming(.openChat)
     }
 
     /// `shown`: the find's current match, whose message is highlighted and brought into view.

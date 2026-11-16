@@ -383,7 +383,7 @@ struct BotListView: View {
     private func recordNewestShown(_ bot: Bot, store: BotStore) {
         guard !app.launching, store.openTiming.hasRecorded(.catchUp, computer: store.computer.id), bot.lastMessage != nil,
               store.roster.max(by: { $0.lastAt < $1.lastAt })?.id == bot.id else { return }
-        store.openTiming.record(.chatList, computer: store.computer.id)
+        store.recordOpenTiming(.chatList)
     }
 
     private func row(_ item: RosterItem, store: BotStore) -> some View {

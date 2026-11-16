@@ -318,7 +318,7 @@ private fun Bot.movesWith(other: Bot) = band == other.band && (pinned || section
     LaunchedEffect(launching, state.opensSeen, state.catchUpsCompleted, bot.id) {
         if (!launching && store.openTiming.hasRecorded(OpenPhase.CatchUp, state.computer.id) &&
             bot.lastMessage != null && roster(state.bots).maxByOrNull { it.lastAt }?.id == bot.id)
-            store.openTiming.record(OpenPhase.ChatList, state.computer.id)
+            store.recordOpenTiming(OpenPhase.ChatList)
     }
     Box(Modifier.fillMaxWidth().contextActions(onClick = { store.openBot(bot.id) }, reorder = drag, preview = {
         Box(Modifier.padding(horizontal = 8.dp)) { BotRow(bot, state, agent) }

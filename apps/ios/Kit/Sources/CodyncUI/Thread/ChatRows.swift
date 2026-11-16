@@ -149,6 +149,8 @@ struct UserBubble: View {
     var selectText: (() -> Void)?
     var openQuote: ((String) -> Void)?
     @Environment(BotStore.self) private var model
+    /// The item's thread the message was written to: no reactions there, and Resend goes to the thread.
+    @Environment(\.workThread) private var thread
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
@@ -174,7 +176,7 @@ struct UserBubble: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(Palette.bubbleUser, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contextActions(reactions: menu.reactions) { menu.textItems() }
+                .contextActions(reactions: thread == nil ? menu.reactions : nil) { menu.textItems() }
     }
 
     private var menu: MessageMenu {
@@ -188,8 +190,8 @@ struct UserBubble: View {
         case "failed":
             HStack(spacing: 10) {
                 Text(L10n.tr("Failed to send")).foregroundStyle(Palette.danger)
-                Button(L10n.tr("Resend"), systemImage: "arrow.clockwise") { model.retry(entry) }.labelStyle(.iconOnly).help("Resend")
-                Button(L10n.tr("Delete"), systemImage: "trash") { model.discard(entry) }.labelStyle(.iconOnly).help("Delete")
+                Button(L10n.tr("Resend"), systemImage: "arrow.clockwise") { model.retry(entry, in: thread) }.labelStyle(.iconOnly).help("Resend")
+                Button(L10n.tr("Delete"), systemImage: "trash") { model.discard(entry, in: thread) }.labelStyle(.iconOnly).help("Delete")
             }
             .buttonStyle(.plain)
             .font(.caption2.bold())
@@ -222,6 +224,8 @@ struct AgentBubble: View {
     var openFile: ((FileViewerTarget) -> Void)?
     var openQuote: ((String) -> Void)?
     @Environment(BotStore.self) private var model
+    /// In an item's thread a message has Copy alone: reactions and "Show what it did" are the chat's.
+    @Environment(\.workThread) private var thread
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -257,7 +261,7 @@ struct AgentBubble: View {
                             .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                 }
-                .contextActions(reactions: menu.reactions) {
+                .contextActions(reactions: thread == nil ? menu.reactions : nil) {
                     // A voice note's Download follows Copy and Select Text, as on Android.
                     menu.textItems(more: entry.data.voiceNoteFile.map { [downloadItem($0)] } ?? [])
                 }
@@ -277,7 +281,7 @@ struct AgentBubble: View {
 
     private var menu: MessageMenu {
         MessageMenu.of(entry, reactions: model.reactionPick(entry), reply: reply, selectText: selectText,
-                       more: [MenuItem("Show what it did", icon: "list.bullet", action: openTrace)])
+                       more: thread == nil ? [MenuItem("Show what it did", icon: "list.bullet", action: openTrace)] : [])
     }
 }
 
@@ -308,6 +312,7 @@ struct NoticeRow: View {
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.danger)
                 }
+                TaskLine(data: entry.data)
                 if entry.data.addFallback == true, let addFallback {
                     Button(L10n.tr("Add a fallback"), action: addFallback).buttonStyle(.secondary)
                 }

@@ -86,7 +86,9 @@ host answers and sends it once the host is up.
 | `star_prompt_answered` | host `track` (desktop) | The GitHub star setup invitation or the fifth-prompt invitation was answered or closed | `ask` (`first`/`second`), `starred` |
 | `link_opened` | host `track` (desktop), iOS, Android | An outbound link was opened (`install_command`: an install command copied; `install_link`: the phone's website link copied) | `link` (`github`/`docs`/`issues`/`discord`/`app_store`/`demo`/`tailscale`/`privacy`/`support`/`install_command`/`install_link`/`product_hunt`) |
 
-PostHog → SQL editor reads the timing distribution, in milliseconds, for the last seven days:
+PostHog → SQL editor reads the timing distribution, in milliseconds, for the last seven days. Create the
+**Variables** `os` (`iOS` or `Android`) and `person` (the account's distinct id, from its person page) so the
+numbers are one phone's, never everyone's:
 
 ```sql
 SELECT properties.open, properties.phase, count() AS samples,
@@ -94,6 +96,7 @@ SELECT properties.open, properties.phase, count() AS samples,
        round(quantile(0.95)(toFloat(properties.ms))) AS p95_ms
 FROM events
 WHERE event = 'open_timing' AND timestamp > now() - INTERVAL 7 DAY
+  AND properties.$os = {variables.os} AND distinct_id = {variables.person}
 GROUP BY properties.open, properties.phase
 ORDER BY properties.open, properties.phase
 ```

@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Swipe to reply — Android evidence</title>
+<style>
+  body { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; padding: 24px; background: #f6f6f7; color: #1c1c1e; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.note { color: #6c6c70; margin: 0 0 20px; }
+  h2 { font-size: 16px; margin: 28px 0 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; }
+  figure { margin: 0; background: #fff; border-radius: 12px; padding: 10px; }
+  figure img { display: block; width: 270px; height: auto; border-radius: 8px; }
+  figcaption { font-size: 13px; color: #3a3a3c; padding-top: 6px; text-align: center; }
+</style>
+<h1>Swipe to reply — Android evidence</h1>
+<p class="note">Compose instrumentation test <code>SwipeToReplyGestureTest</code> on the muted <code>bots-phone</code> emulator (1080×2424), fixture chat with a group author label and a 👍 reaction on both messages. Full size; the images are the emulator's own pixels.</p>
+
+<h2>Light</h2>
+<div class="row">
+  <figure><img src="swipe-to-reply-light-rest.png" alt=""><figcaption>Rest</figcaption></figure>
+  <figure><img src="swipe-to-reply-light-mid-drag.png" alt=""><figcaption>Mid-drag, past 64 dp: arrow in the gap</figcaption></figure>
+  <figure><img src="swipe-to-reply-light-spring-back.png" alt=""><figcaption>Released early: sprung back</figcaption></figure>
+  <figure><img src="swipe-to-reply-light-own-mid-drag.png" alt=""><figcaption>My message, dragged left</figcaption></figure>
+</div>
+
+<h2>Dark</h2>
+<div class="row">
+  <figure><img src="swipe-to-reply-dark-rest.png" alt=""><figcaption>Rest</figcaption></figure>
+  <figure><img src="swipe-to-reply-dark-mid-drag.png" alt=""><figcaption>Mid-drag, past 64 dp: arrow in the gap</figcaption></figure>
+  <figure><img src="swipe-to-reply-dark-spring-back.png" alt=""><figcaption>Released early: sprung back</figcaption></figure>
+  <figure><img src="swipe-to-reply-dark-own-mid-drag.png" alt=""><figcaption>My message, dragged left</figcaption></figure>
+</div>

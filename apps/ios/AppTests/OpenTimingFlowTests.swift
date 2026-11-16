@@ -23,7 +23,7 @@ struct OpenTimingFlowTests {
         let computer = randomComputer("Mac")
         storage.computers = [computer]
         let remote = FakeRemote(.ready(.direct))
-        let accounts = AccountStore(storage: storage, cloud: nil, openTiming: timing) { computer in
+        let accounts = AccountStore(storage: storage, cloud: nil) { computer in
             let store = BotStore(computer: computer, storage: storage) { _ in remote }
             store.openTiming = timing
             return store

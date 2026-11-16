@@ -213,14 +213,19 @@ The *Onboarding & conversion* dashboard in PostHog reads these steps, each per `
 
 ## Phone performance
 
-The phones send open-timing measurements to their connected host with `recordPhonePerformance`. The host appends
+The phones send performance measurements to their connected host with `recordPhonePerformance`. The host appends
 JSON Lines to `phone-performance.jsonl` in its data directory (`~/.codync/phone-performance.jsonl`, or under
 `CODYNC_HOME`; development hosts use `~/.codync-dev`). Nothing is sent to PostHog or another service. Simulators and
 emulators report nothing.
 
-Each line has the host's RFC 3339 `at` timestamp, `platform` (`ios`/`android`) and `type: open_timing`. Every event
-also has `phase` (`link_ready`, `hello`, `catch_up`, `chat_list` or `open_chat`), `open` (`cold` or `foreground`) and
-`ms` since the app opened. `catch_up` also has `chats` and `messages`, the counts caught up and fetched in this open.
+Each line has the host's RFC 3339 `at` timestamp, `platform` (`ios`/`android`) and `type`:
+
+- `open_timing`: `phase` (`link_ready`, `hello`, `catch_up`, `chat_list` or `open_chat`), `open` (`cold` or
+  `foreground`) and `ms` since the app opened. `catch_up` also has `chats` and `messages`, the counts caught up and
+  fetched in this open.
+- `chat_open`: `durationMs`, from the chat-opening action until its messages reach their first laid-out frame.
+- `scroll`: `list` (`bots`/`chat`), `rows`, `frames`, `hitches`, `longestMs`, `hitchMsPerS` and `fps`; a chat also
+  has `stop` (`top`/`end`/`middle`) and `jump` (post-stop movement in points/dp).
 
 The log holds no message text, names or ids. A bot can read recent measurements with:
 

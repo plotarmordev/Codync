@@ -61,7 +61,6 @@ public final class AccountStore {
     let cloud: CloudClient?
     private let computerOrder: ComputerOrderStore
     private let makeStore: @MainActor (Computer) -> BotStore
-    private let openTiming: OpenTiming
     /// Persisted in the context (channel route).
     var saved: [Computer]
     private var accessPolls: [ComputerID: Task<Void, Never>] = [:]
@@ -86,14 +85,13 @@ public final class AccountStore {
         }
     }
 
-    init(storage: SharedStore.Context, cloud: CloudClient?, openTiming: OpenTiming = .shared,
+    init(storage: SharedStore.Context, cloud: CloudClient?,
          makeStore: @escaping @MainActor (Computer) -> BotStore) {
         self.storage = storage
         self.cloud = cloud
         cloudListLoaded = cloud == nil
         computerOrder = ComputerOrderStore(storage: storage)
         self.makeStore = makeStore
-        self.openTiming = openTiming
         cloudMachine = cloud.map(CloudMachineStore.init)
         saved = storage.computers.filter(\.isConsistent)
         for computer in saved { open(computer) }

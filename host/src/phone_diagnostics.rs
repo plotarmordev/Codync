@@ -1,4 +1,4 @@
-//! A phone's open-timing measurements, logged locally so a slow phone can be diagnosed later.
+//! A phone's performance measurements, logged locally so a slow phone can be diagnosed later.
 //! `recordPhonePerformance` appends one JSON line to `phone-performance.jsonl` in the data
 //! directory. Only timings and counts are stored: no message content, names or ids, and nothing
 //! goes to analytics.
@@ -9,10 +9,13 @@ use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt as _;
 
-/// A measurement a phone sends (`apps/*/PhonePerformance.*`).
+/// A measurement a phone sends (`apps/*/PhonePerformance.*`): `type` picks the shape.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Measurement {
+    /// Waiting for a chat's messages to reach their first laid-out frame.
+    #[serde(rename_all = "camelCase")]
+    ChatOpen { platform: Platform, duration_ms: u64 },
     #[serde(rename_all = "camelCase")]
     OpenTiming {
         platform: Platform,
@@ -23,6 +26,22 @@ enum Measurement {
         chats: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         messages: Option<u64>,
+    },
+    /// One scroll through a list.
+    #[serde(rename_all = "camelCase")]
+    Scroll {
+        platform: Platform,
+        list: ScrollList,
+        rows: u64,
+        frames: u64,
+        hitches: u64,
+        longest_ms: u64,
+        hitch_ms_per_s: u64,
+        fps: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        stop: Option<ScrollStop>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        jump: Option<u64>,
     },
 }
 
@@ -48,6 +67,21 @@ enum OpenPhase {
 enum OpenKind {
     Cold,
     Foreground,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ScrollList {
+    Bots,
+    Chat,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ScrollStop {
+    Top,
+    End,
+    Middle,
 }
 
 fn file() -> PathBuf {
@@ -99,7 +133,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn open_timings_append_valid_jsonl_without_unknown_content() {
+    async fn all_measurements_append_valid_jsonl_without_unknown_content() {
         let path = log();
         record_at(
             &path,
@@ -116,8 +150,19 @@ mod tests {
         )
         .await
         .unwrap();
+        record_at(&path, json!({"type": "chat_open", "platform": "ios", "durationMs": 240})).await.unwrap();
+        record_at(
+            &path,
+            json!({
+                "type": "scroll", "platform": "android", "list": "chat", "rows": 320, "frames": 240,
+                "hitches": 3, "longestMs": 58, "hitchMsPerS": 21, "fps": 120, "stop": "end", "jump": 14,
+                "someFutureField": true
+            }),
+        )
+        .await
+        .unwrap();
         let lines = lines(&path);
-        assert_eq!(lines.len(), 2);
+        assert_eq!(lines.len(), 4);
         assert_eq!(lines[0]["type"], "open_timing");
         assert_eq!(lines[0]["platform"], "ios");
         assert_eq!(lines[0]["phase"], "link_ready");
@@ -125,6 +170,12 @@ mod tests {
         assert_eq!(lines[1]["chats"], 8);
         assert_eq!(lines[1]["messages"], 31);
         assert!(lines[1].get("message").is_none(), "unknown fields aren't logged");
+        assert_eq!(lines[2]["durationMs"], 240);
+        assert_eq!(lines[3]["list"], "chat");
+        assert_eq!(lines[3]["hitchMsPerS"], 21);
+        assert_eq!(lines[3]["stop"], "end");
+        assert_eq!(lines[3]["jump"], 14);
+        assert!(lines[3].get("someFutureField").is_none(), "unknown fields aren't logged");
         for line in &lines {
             assert!(line["at"].is_string());
             chrono::DateTime::parse_from_rfc3339(line["at"].as_str().unwrap()).unwrap();
@@ -156,6 +207,11 @@ mod tests {
             json!({"type": "open_timing", "platform": "ios", "phase": "hello", "open": "cold"}),
             json!({"type": "open_timing", "platform": "android", "phase": "settings", "open": "cold", "ms": 1}),
             json!({"type": "open_timing", "platform": "android", "phase": "hello", "open": "warm", "ms": 1}),
+            json!({"type": "chat_open", "platform": "ios"}),
+            json!({"type": "scroll", "platform": "android", "list": "chat", "rows": 1, "frames": 1,
+                   "hitches": 0, "longestMs": 1, "hitchMsPerS": 0}),
+            json!({"type": "scroll", "platform": "android", "list": "settings", "rows": 1, "frames": 1,
+                   "hitches": 0, "longestMs": 1, "hitchMsPerS": 0, "fps": 60}),
         ] {
             assert!(record_at(&path, bad).await.is_err());
         }

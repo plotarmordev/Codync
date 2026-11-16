@@ -14,8 +14,6 @@ class OpenTimingTest {
         return { clock += 1.milliseconds; clock } to events
     }
 
-    private fun timings(events: List<PhonePerformance>) = events
-
     @Test fun `one open records each timing once in order`() {
         val (now, events) = ticking()
         val timing = OpenTiming(now) { events += it }
@@ -33,7 +31,7 @@ class OpenTimingTest {
         timing.record(OpenPhase.ChatList, "computer")
         timing.record(OpenPhase.OpenChat, "computer")
 
-        val sent = timings(events)
+        val sent = events
         assertEquals(listOf(OpenPhase.LinkReady, OpenPhase.Hello, OpenPhase.CatchUp, OpenPhase.ChatList, OpenPhase.OpenChat),
             sent.map { it.phase })
         assertEquals(listOf(1L, 2L, 3L, 4L, 5L), sent.map { it.ms })
@@ -51,7 +49,7 @@ class OpenTimingTest {
         timing.record(OpenPhase.LinkReady, "one")
         timing.record(OpenPhase.LinkReady, "two")
         timing.record(OpenPhase.LinkReady, "one")
-        assertEquals(2, timings(events).size)
+        assertEquals(2, events.size)
     }
 
     @Test fun `returning from the background starts a new timing open`() {
@@ -62,12 +60,12 @@ class OpenTimingTest {
         timing.record(OpenPhase.LinkReady, "computer")
         // Not backgrounded first: the same open goes on, its milestones still sent.
         timing.becameActive()
-        assertEquals(1, timings(events).size)
+        assertEquals(1, events.size)
         timing.enteredBackground()
         timing.becameActive()
         timing.record(OpenPhase.LinkReady, "computer")
 
-        val sent = timings(events)
+        val sent = events
         assertEquals(2, sent.size)
         assertEquals(OpenKind.Cold, sent[0].open)
         assertEquals(OpenKind.Foreground, sent[1].open)

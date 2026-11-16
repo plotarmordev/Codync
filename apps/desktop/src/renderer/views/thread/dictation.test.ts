@@ -173,7 +173,7 @@ test("a provider's transcript lands after what's in the box by then, in order, t
   assert.equal(s.dictation.transcribing, false)
 })
 
-test('cancel while transcribing drops the transcript', async () => {
+test('Send again while transcribing still waits for the transcript', async () => {
   const s = setup({ target: () => 'openai' })
   s.dictation.start(s.box())
   await settle()

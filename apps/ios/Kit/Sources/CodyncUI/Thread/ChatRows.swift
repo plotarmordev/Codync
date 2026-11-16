@@ -23,6 +23,8 @@ struct ChatRow: View {
     var openFile: ((FileViewerTarget) -> Void)?
     /// A voice call's line: the call's conversation.
     var openCall: (() -> Void)?
+    /// A tap on the message's quote: brings the quoted message (its id) into view.
+    var openQuote: ((String) -> Void)?
     @Environment(BotStore.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -30,7 +32,7 @@ struct ChatRow: View {
         switch entry.kind {
         case "user":
             VStack(alignment: .trailing, spacing: 4) {
-                UserBubble(entry: entry, reply: reply, selectText: selectText)
+                UserBubble(entry: entry, reply: reply, selectText: selectText, openQuote: openQuote)
                 ReactionsRow(entry: entry)
             }
             .swipeToReply(.left, margin: 56, reply: reply)
@@ -41,7 +43,7 @@ struct ChatRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 if chat?.isGroup == true, groupStart { AuthorLabel(botId: entry.data.author) }
                 AgentBubble(entry: entry, openTrace: openTrace, reply: reply, selectText: selectText, openArtifact: openArtifact,
-                            openFile: openFile)
+                            openFile: openFile, openQuote: openQuote)
                 ReactionsRow(entry: entry)
                     .padding(.leading, chat?.isGroup == true ? 34 : 0)
             }
@@ -112,11 +114,23 @@ struct AuthorLabel: View {
     }
 }
 
-/// The message a reply quotes, as its first line without Markdown markers.
+/// The message a reply quotes, as its first line without Markdown markers. With `open`
+/// (in a bubble), a tap brings the quoted message into view.
 struct QuoteLine: View {
     let text: String
+    var open: (() -> Void)?
 
     var body: some View {
+        if let open {
+            Button(action: open) { line }
+                .buttonStyle(.plain)
+                .accessibilityHint(L10n.tr("Show the quoted message"))
+        } else {
+            line
+        }
+    }
+
+    private var line: some View {
         Label {
             Text(L10n.tr("“\(MessagePreview.text(text))”")).lineLimit(1)
         } icon: {
@@ -133,6 +147,7 @@ struct UserBubble: View {
     let entry: Entry
     var reply: (() -> Void)?
     var selectText: (() -> Void)?
+    var openQuote: ((String) -> Void)?
     @Environment(BotStore.self) private var model
 
     var body: some View {
@@ -148,7 +163,7 @@ struct UserBubble: View {
 
     private var text: some View {
             VStack(alignment: .leading, spacing: 4) {
-                if let quote = entry.data.replyTo { QuoteLine(text: quote.text) }
+                if let quote = entry.data.replyTo { QuoteLine(text: quote.text, open: openQuote.map { open in { open(quote.id) } }) }
                 if let text = entry.data.text, !text.isEmpty {
                     Text(text)
                         .font(.body)
@@ -205,10 +220,13 @@ struct AgentBubble: View {
     var selectText: (() -> Void)?
     var openArtifact: ((ArtifactRef) -> Void)?
     var openFile: ((FileViewerTarget) -> Void)?
+    var openQuote: ((String) -> Void)?
     @Environment(BotStore.self) private var model
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            // The message the bot answers (`reply_to`), above its bubble.
+            if let quote = entry.data.replyTo { QuoteLine(text: quote.text, open: openQuote.map { open in { open(quote.id) } }).padding(.horizontal, 16) }
             if entry.data.artifact == nil, entry.data.voiceNoteFile == nil, let files = entry.data.files, !files.isEmpty {
                 // Each card has the menu, its picture's copy items in Copy's place; a sound the computer marked
                 // playable is the player bubble instead, its name under the row.

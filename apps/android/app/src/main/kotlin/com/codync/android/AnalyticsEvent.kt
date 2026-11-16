@@ -167,6 +167,10 @@ internal sealed class AnalyticsEvent(val name: String) {
     }
     /** A message dragged sideways far enough to start a reply (iOS `replySwiped`). */
     data object ReplySwiped : AnalyticsEvent("reply_swiped")
+    /** A quote at the top of a message was tapped: whether the quoted message was loaded and came into view (iOS `quoteOpened`). */
+    data class QuoteOpened(val found: Boolean) : AnalyticsEvent("quote_opened") {
+        override val properties get() = mapOf("found" to JsonPrimitive(found))
+    }
     /** One computer reached a milestone after a cold open or return from the background (iOS `openTiming`);
      * the computer's analytics key, never its id. [chats]/[messages]: `catch_up`'s counts only. */
     data class OpenTiming(val phase: OpenPhase, val open: OpenKind, val ms: Long, val computerId: String, val computers: Int,

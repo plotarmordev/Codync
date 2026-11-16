@@ -134,9 +134,13 @@ async fn publishes_all_types_with_final_text_and_survives_restart_workspace_chan
     host.call("send", json!({"botId":bot,"text":"share-files resumed"})).await;
     ready(&host, bot, 8).await;
     assert!(cwd.join("resumed").exists());
-    host.call("send", json!({"botId":bot,"text":"share-files in a reply", "replyTo":root["entry"]["id"]})).await;
+    let asked =
+        host.call("send", json!({"botId":bot,"text":"share-files in a reply", "replyTo":root["entry"]["id"]})).await;
     let entries = ready(&host, bot, 12).await;
     let file = entries.iter().rfind(|e| e["data"]["files"].is_array()).unwrap();
+    // The agent's `reply_to` quotes the message above its file card (issue #402).
+    let quote = json!({"id": asked["entry"]["id"], "author": "user", "text": "share-files in a reply"});
+    assert_eq!(file["data"]["replyTo"], quote);
     host.call("readFile", json!({"entryId":file["id"],"fileId":file["data"]["files"][0]["id"],"offset":0})).await;
     let mut updated = created["bot"].clone();
     updated["cwd"] = host.home.to_string_lossy().into();
@@ -219,23 +223,22 @@ async fn groups_and_delegated_turns_cannot_publish_files() {
 
 #[tokio::test]
 async fn a_routine_run_shares_a_voice_note_in_the_bots_own_chat() {
-    use base64::Engine as _;
     let host = Host::start().await;
     let note = b"\0\0\0\x18ftypM4A voice".to_vec();
     std::fs::write(host.home.join("note.m4a"), &note).unwrap();
     let agent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/file_agent.py");
     let created = host.call("createBot", json!({"name":"Reporter", "backend":"custom", "cwd":host.home, "command":common::python_agent(&agent), "connectors":[], "notify":false})).await;
     let bot = created["bot"]["id"].as_str().unwrap();
-    let routine = json!({"botId":bot,"name":"Briefing","instruction":"voice-note","triggers":[{"type":"webhook"}]});
-    let routine = host.call("saveRoutine", routine).await;
-    host.call("runRoutine", json!({"botId":bot,"id":routine["routine"]["id"]})).await;
-    let entries = ready(&host, bot, 1).await;
-    let shared = entries.iter().find(|e| e["data"]["files"].is_array()).unwrap();
-    assert_eq!(shared["data"]["files"][0]["name"], "note.m4a");
-    let read = host
-        .call("readFile", json!({"entryId":shared["id"],"fileId":shared["data"]["files"][0]["id"],"offset":0}))
-        .await;
-    assert_eq!(base64::engine::general_purpose::STANDARD.decode(read["data"].as_str().unwrap()).unwrap(), note);
+    let asked = host.call("send", json!({"botId":bot,"text":"spoken"})).await;
+    let entries = spoken(&host, bot, 1).await;
+    let shared: Vec<_> = entries.iter().filter(|e| e["data"]["files"].is_array()).collect();
+    assert_eq!(shared.len(), 1, "{entries:?}");
+    let message = &shared[0]["data"];
+    assert_eq!((message["text"].as_str(), message["voiceNote"].as_bool()), (Some("Here is the **plan**."), Some(true)));
+    assert_eq!((&message["files"][0]["name"], &message["files"][0]["playsInChat"]), (&json!("note.m4a"), &json!(true)));
+    assert_eq!(message["replyTo"], json!({"id": asked["entry"]["id"], "author": "user", "text": "spoken"}));
+    // The voice note's message is the turn's reply: what the agent wrote as its reply stays in the trace.
+    assert!(entries.iter().all(|e| e["data"]["text"] != "The files are ready." || e["data"]["final"] != true));
 }
 
 /// The bot's history once its `voice_messages`-th run of `spoken` settled: its voice message saved, the bot idle.

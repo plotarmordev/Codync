@@ -164,7 +164,11 @@ final class Dictation {
                 withAnimation(Motion.morph) { transcribing = false } completion: { [weak self] in
                     guard generation == self?.generation else { return }
                     edit? { SpeechSegments.join($0, said) }
+                    let done = self?.done
+                    self?.done = nil
+                    done?()
                 }
+                return
             } catch {
                 guard generation == self.generation else { return }
                 failure = error.localizedDescription

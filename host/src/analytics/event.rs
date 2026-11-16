@@ -81,6 +81,10 @@ pub enum Event {
     WorkFinished,
     /// An item was moved, cut in, replaced, stopped, dropped or tried again (`how`), by the bot or the user (`by`).
     WorkSteered,
+    /// An item's turn couldn't go on until the user signs in to its agent, so it waits for them (`agent`, `source`).
+    WorkNeedsSignIn,
+    /// The user wrote to an item's thread (`chat::tasks::thread`): whether it reopened the item, and whether it waits.
+    WorkMessaged,
     /// A bot's `start_dev_server` ended (`outcome`).
     DevServerStarted,
     /// A dev server ended (`by`).
@@ -117,6 +121,8 @@ pub enum Event {
     /// A bot's `send_message` or `send_file` with `reply_to` (`tool`), quoted or sent without it (`outcome`).
     BotQuoted,
     CredentialSaved,
+    /// Every saved credential deleted, for a computer whose key is gone (`outcome`).
+    CredentialsReset,
     AgentSetupStarted,
     AgentSignedIn,
     /// A login profile was added, renamed or removed, or got its keys (`action`); never its name, who it signs in or
@@ -228,6 +234,8 @@ impl Event {
             Self::WorkAdded => "work_added",
             Self::WorkFinished => "work_finished",
             Self::WorkSteered => "work_steered",
+            Self::WorkNeedsSignIn => "work_needs_sign_in",
+            Self::WorkMessaged => "work_messaged",
             Self::DevServerStarted => "dev_server_started",
             Self::DevServerStopped => "dev_server_stopped",
             Self::DevServerAction => "dev_server_action",
@@ -253,6 +261,7 @@ impl Event {
             Self::VoiceNotePlayed => "voice_note_played",
             Self::BotQuoted => "bot_quoted",
             Self::CredentialSaved => "credential_saved",
+            Self::CredentialsReset => "credentials_reset",
             Self::AgentSetupStarted => "agent_setup_started",
             Self::AgentSignedIn => "agent_signed_in",
             Self::LoginProfileChanged => "login_profile_changed",

@@ -6,13 +6,14 @@ any left). tools/asc-submit.py reads the released version's section;
 a version without one gets a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
-## 2.49.0
+## 2.49.1
 ### zh-Hant
 - Bot 會把比較久的工作交給背景進行，而且可以同時做好幾件：聊天不會被占住，你可以繼續傳訊息，它也會照常回答。
 - 輸入框上方會有一個「背景」膠囊，顯示幾件進行中、幾件等待中；只有一件在做時會顯示它的進度與時間，也可以直接停止（已經改的內容會留著）。點一下會打開 Bot 的「詳情」。
-- 「詳情」現在列出 Bot 在做的事：「Threads」是正在進行的工作和還空著的名額，點一列可以看它做了什麼；「Event Box」是依序等待的工作，可以「先做」、名額滿時「插隊」（選一件讓位，它之後會重新開始），或長按「丟掉」。
+- 「詳情」現在列出 Bot 在做的事：「Threads」是正在進行的工作和還空著的名額，點一列會打開那個 thread 的頁面，看它做了什麼，也可以像聊天一樣直接傳訊息給它：它還在做時訊息會先排隊，可以「現在送」或「移除」；已經結束的 thread 收到訊息會再繼續。每個 thread 會顯示它工作的資料夾或分支；「Event Box」是依序等待的工作，可以「先做」、名額滿時「插隊」（選一件讓位，它之後會重新開始），或長按「丟掉」。
 - 「最近」列出一天內結束的工作：完成的可以點開看過程，停止或失敗的會說明原因，並且可以「再試一次」。
 - 「同時幾個 agent」在 Bot 的「設定」裡，可以設 1 到 6 個。
+- 「設定」的「工作區」會說明資料夾是不是 Git repository，旁邊的資訊按鈕會打開說明文件。
 - 「指令」和「智慧體」（模型、快速模式、備援等）從「詳情」移到 Bot 的「設定」最上方。
 - 背景工作需要你核准時，卡片會出現在聊天裡並標示「背景」，照平常的方式回答就好。
 - 背景工作完成後，Bot 會用一則訊息告訴你結果；沒有完成也會說明原因。
@@ -42,24 +43,26 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - Bot 改用備援時，「智慧體」卡片會說明原本的智慧體為什麼停下（已登出、被限速等），只有用量上限才顯示重設時間；這一行和備援底下的休息時間都會跟著 App 的語言。
 - 輸入 `/` 時，清單最後會列出 Bot 所用智慧體自己的指令（Claude Code、Codex、OpenCode 等），和 Codync 自己的指令、技能分開，標上智慧體的名稱、圖示和說明；選一個會填入 `/<指令>`，送出後由智慧體直接執行。
 - 電腦的「網路」頁會列出新的規則等級：「自動」只讓其他電腦的 Bot 做 agent 判斷為安全的事，其餘先問你；「詢問」讓每個變更和指令都等你批准。沒有符合任何規則的電腦預設為「自動」，原本就在網路裡的電腦維持「允許」。
-- 備援的 ⋯ 選單新增「編輯」：可以直接換它的智慧體、模型或登入設定，順序不變。
+- 備援直接在「智慧體」卡片裡設定，和 Bot 自己的智慧體一樣：點一列就能換它的智慧體、模型或登入設定，順序不變；按「+」新增的備援會直接展開。
 - 聽寫中直接按「傳送」，會等說的話轉成文字，再和打好的字一起送出，不會再丟掉。
 - 等待核准的卡片會一直算在 Bot 的未讀數字裡（顯示為琥珀色），打開聊天或「標示為已讀」都不會讓它消失，直到你回覆為止；收起的分組裡有 Bot 在等你時，分組的數字也會變成琥珀色。
 - 長按 Bot 選「新會話」，就能讓智慧體從新的上下文開始，聊天記錄會保留。
+- 背景工作也會用備援；需要登入時會在聊天裡請你登入。
 
 ### en-US
-- Bots do long work in the background, several at once, and keep answering in chat. When done, they report the result or why it failed.
+- Bots do long work in the background, several things at once, and keep answering in the chat.
 - A capsule above the message box shows background work and its progress, with Stop for a single task. Tap it for Details.
-- Details lists running Threads, waiting Event box tasks (First, Cut in, Drop), and Recent work from the last day, with retry for stopped or failed work.
+- Details lists running Threads (tap one to open it and write to it like a chat; each shows its folder or branch), waiting Event box tasks (First, Cut in, Drop), and Recent work from the last day, with Try again.
 - Agents at once, in the bot's Settings, sets how many work at a time (1 to 6). Instructions and Agent (model, fast mode, fallbacks) moved there from Details.
 - Background work can ask for approval or a choice and send files or voice notes in the chat, marked "In the background".
 - Routines and other bots' requests run in the background too.
+- Settings > Workspace says if the folder is a git repository.
 - A Work button at the top of the bot list shows every bot's running or waiting work.
-- Worktree per agent, in the bot's Settings (for a Git repository): agents working at once each get their own branch. Codync never merges or deletes a branch with work on it.
+- Worktree per agent, in the bot's Settings (for a Git repository): agents working at once each get their own branch.
 - The Live Activity stays while background work runs, and shows when it needs you.
 - Share text, links, photos or files to a bot from any app: choose Codync in the share sheet, with a message if you like. Bots you shared to last are under Recent.
 - Update notices say whether this app or Codync on your computer needs updating, and when a cloud computer is updating itself.
-- Agents can have several login profiles: add an account or an API key in an agent's setup (keys stay on the computer), name each, and pick a bot's under Agent, so two bots can work at once on different logins.
+- Agents can have several login profiles: add an account or an API key in an agent's setup (keys stay on the computer) and pick a bot's under Agent.
 - A fallback can be the same agent on another login profile: when one runs out of usage, the bot carries on with the next.
 - Usage limits lists each account of an agent with its own limits (Claude Code, Codex), and widgets show the one nearest its limit.
 - After a restart or an update, the iPhone loads only what's new, not every chat again.
@@ -75,10 +78,11 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - Bots can quote a message too: tap the quote above an answer to see it.
 - A bot's Skills settings list only each skill's name; the info button beside one shows its description.
 - On-device dictation and calls keep the words you said before a pause.
-- On a fallback, the Agent card says in the app's language why the bot's agent stopped (signed out, rate limited, etc.); only a usage limit shows a reset time.
+- On a fallback, the Agent card says why the bot's agent stopped (signed out, rate limited, etc.).
 - Typing `/` also lists the agent's own commands (Claude Code, Codex, OpenCode and more) under its name; pick one and the agent runs it when you send.
 - Network rules gain two levels: Auto (another computer's bots get only what the agent judges safe; the rest asks you) and Ask (everything waits for you). A computer no rule matches gets Auto.
-- A fallback's ⋯ menu has Edit: change its agent, model or login profile in place.
+- Fallbacks are set right in the Agent card, like the bot's own agent: tap one to change its agent, model or login profile in place; + adds one already open.
 - Send while dictating waits for what you said and sends it with what you typed.
-- A waiting approval card stays in the bot's badge, in amber, until you answer it, even after you open the chat or mark it read; a folded section turns amber too.
+- A waiting approval card stays in the bot's badge, in amber, until you answer it.
 - Touch and hold a bot for New session: a fresh context for its agent; the chat stays.
+- Background work uses fallbacks too; sign-ins it needs show in the chat.

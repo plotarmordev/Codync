@@ -33,6 +33,7 @@ class ColdDeepLinkOpenTimingTest {
             timing.record(OpenPhase.CatchUp, previewComputer.id, chats = 0, messages = 0)
         }
         val splash = hasContentDescription("Connecting")
+        compose.mainClock.autoAdvance = false
         compose.setContent {
             Hosted {
                 var launching by remember { mutableStateOf(true) }
@@ -42,7 +43,6 @@ class ColdDeepLinkOpenTimingTest {
                 }
             }
         }
-        compose.mainClock.autoAdvance = false
         compose.onNode(splash).assertExists()
         fun openChats() = events.count { it.phase == OpenPhase.OpenChat }
         assertEquals(0, openChats())

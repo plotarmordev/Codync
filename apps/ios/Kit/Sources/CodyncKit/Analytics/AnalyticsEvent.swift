@@ -70,6 +70,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case conversationFindSearched(found: Bool)
     /// Something from another app's share sheet handed to a bot, or why it wasn't; never names or content.
     case shareSent(ShareSent)
+
     public enum Notifications: String, Sendable { case allowed, denied, notAsked = "not_asked" }
     public enum OnboardingStep: String, Sendable { case welcome, choose, install, scan }
     public enum OnboardingVia: String, Sendable { case paired, account, skipped }

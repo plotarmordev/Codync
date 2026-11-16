@@ -311,13 +311,17 @@ private fun AppState.chatItems(bot: Bot) =
     val more = Residency.needsEarlier(shown, bot.id in state.historyEnd)
     val details by ThinkingDetails.enabled.collectAsStateWithLifecycle()
     val list = rememberLazyListState()
+    val openToMessages = remember { OpenToMessages().also { it.begin() } }
     var settled by remember { mutableStateOf(false) }
     val paging = remember { EarlierPaging() }
     // Pull to refresh reconnects, like Reconnect in the roster's computer menu, until the link is back.
     // Find's shown match, else the approval card the details led to: its row, after the earlier-messages row when there is one.
     val reveal = items.indexOfFirst { it.id == (found ?: revealed) }.takeIf { it >= 0 }?.let { ConversationReveal(items[it].id, it + if (more) 1 else 0, findStep) }
     ConversationList(list, items.lastOrNull()?.id, entries.lastOrNull()?.rev, working, padding, store::refreshConnection, indicatorTop,
-        reveal = reveal, onOpened = { settled = true }) {
+        reveal = reveal, report = store::recordPerformance, onOpened = {
+            settled = true
+            openToMessages.finish()?.let { store.recordPerformance(PhonePerformance.ChatOpen(it)) }
+        }) {
         if (more) item("earlier") {
             Box(Modifier.fillMaxWidth().padding(vertical = 14.dp).clearAndSetSemantics { contentDescription = "Loading earlier messages" },
                 contentAlignment = Alignment.Center) { Spinner(14.dp) }

@@ -35,12 +35,12 @@ public final class OpenTiming {
         sent = []
     }
 
+    /// The open account's saved computers, kept current by its `AccountStore` (accounts restore and switch after launch).
     public func setComputerCount(_ count: Int) {
         computers = count
     }
 
-    public func becameActive(computers: Int) {
-        self.computers = computers
+    public func becameActive() {
         if backgrounded {
             opens += 1
             openedAt = now()

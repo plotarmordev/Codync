@@ -77,7 +77,7 @@ private fun AppStore.noteOpen(retainedLink: Boolean = false) {
         openTiming.record(OpenPhase.LinkReady, id)
         openTiming.record(OpenPhase.Hello, id)
         if (caughtUpSubscription == eventSubscription && eventSubscription > 0)
-            noteCatchUp(chats = state.value.bots.size, messages = 0)
+            noteCatchUp(chats = 0, messages = 0)
     }
 }
 
@@ -129,10 +129,10 @@ fun AppStore.connect() {
                                 openTiming.record(OpenPhase.LinkReady, id)
                                 val fromHost = HostClient.hello(active, state.value.computer)
                                 val hello = active.call("hello").jsonObject
+                                openTiming.record(OpenPhase.Hello, id)
                                 // This phone's picks (color, route, push) may have changed during those calls.
                                 changeComputer { current -> if (current.id == fromHost.id) fromHost.keepingDevicePicks(current) else current }
                                 adoptHello(active, hello, requireNotNull(iconEpoch))
-                                openTiming.record(OpenPhase.Hello, id)
                                 refresh()
                                 backoff = 1_000
                                 reconcileMailbox(active)

@@ -1,10 +1,14 @@
 package com.codync.android
 
+import android.app.Application
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
-import com.codync.android.core.Entry
+import com.codync.android.core.*
+import java.util.UUID
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -84,6 +88,56 @@ class OpenTimingFlowTest {
             val catchUp = open.single { it.phase == OpenPhase.CatchUp }
             assertTrue((catchUp.chats ?: 0) >= 1)
             assertTrue((catchUp.messages ?: 0) >= 0)
+        }
+    }
+
+    @Test fun helloRecordsBeforeAHeldRosterAndARetainedLinkReportsNoCatchUpWork() {
+        val host = HeldRosterHost()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val local = LocalStore(context, "open-timing-" + UUID.randomUUID())
+        val store = AppStore(context.applicationContext as Application, local, host.computer, "local", 0, kotlinx.coroutines.SupervisorJob(), {}, {})
+        val events = mutableListOf<AnalyticsEvent.OpenTiming>()
+        val timing = OpenTiming { (it as? AnalyticsEvent.OpenTiming)?.let(events::add) }
+        try {
+            runBlocking { store.open() }
+            compose.runOnUiThread {
+                store.openTiming = timing
+                timing.beginCold()
+                timing.setComputerCount(1)
+                store.setForeground(true)
+            }
+            compose.waitUntil(10_000) { host.rosterHeld }
+            assertEquals(listOf(OpenPhase.LinkReady, OpenPhase.Hello), events.map { it.phase })
+
+            host.releaseRoster()
+            compose.waitUntil(10_000) { events.map { it.phase }.contains(OpenPhase.CatchUp) && store.state.value.bots.size == 2 }
+            assertEquals(2, host.eventSubscriptions)
+            val subscriptions = host.eventSubscriptions
+            compose.runOnUiThread {
+                // A call retains transport while the app is backgrounded, so this open reuses the ready link.
+                store.mutableState.update { it.copy(voice = VoiceCallViewState("held-call", "bot-1")) }
+                timing.enteredBackground()
+                store.setForeground(false)
+            }
+            assertTrue(store.channel?.state?.value is LinkState.Ready)
+            compose.runOnUiThread {
+                timing.becameActive(computers = 1)
+                store.setForeground(true)
+            }
+            compose.waitUntil(5_000) { events.size == 6 }
+
+            assertEquals(listOf(OpenPhase.LinkReady, OpenPhase.Hello, OpenPhase.CatchUp), events.drop(3).map { it.phase })
+            assertEquals(0, events.last().chats)
+            assertEquals(0, events.last().messages)
+            assertEquals(subscriptions, host.eventSubscriptions)
+        } finally {
+            compose.runOnUiThread {
+                store.mutableState.update { it.copy(voice = null) }
+                store.setForeground(false)
+            }
+            runBlocking { store.retire(unregister = false) }
+            local.erase()
+            host.close()
         }
     }
 }

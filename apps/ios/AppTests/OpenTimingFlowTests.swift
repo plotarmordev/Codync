@@ -18,12 +18,12 @@ struct OpenTimingFlowTests {
             return clock
         }, capture: { events.append($0) })
         timing.beginCold()
-        timing.becameActive(computers: 1)
+        timing.becameActive()
 
         let computer = randomComputer("Mac")
         storage.computers = [computer]
         let remote = FakeRemote(.ready(.direct))
-        let accounts = AccountStore(storage: storage, cloud: nil) { computer in
+        let accounts = AccountStore(storage: storage, cloud: nil, openTiming: timing) { computer in
             let store = BotStore(computer: computer, storage: storage) { _ in remote }
             store.openTiming = timing
             return store
@@ -58,7 +58,7 @@ struct OpenTimingFlowTests {
         await remote.fail("hello", times: 1)
         accounts.setActive(false)
         timing.enteredBackground()
-        timing.becameActive(computers: 1)
+        timing.becameActive()
         accounts.setActive(true)
         #expect(await until { events.count == 6 })
         #expect(phases(events) == [.linkReady, .hello, .catchUp, .chatList, .openChat, .linkReady])

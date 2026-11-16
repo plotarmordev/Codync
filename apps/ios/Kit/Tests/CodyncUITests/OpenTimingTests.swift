@@ -14,7 +14,7 @@ import Testing
     }, capture: { events.append($0) })
     timing.beginCold()
     timing.setComputerCount(1)
-    timing.becameActive(computers: 1)
+    timing.becameActive()
 
     let computer = randomComputer("Mac")
     let remote = FakeRemote(.ready(.direct))
@@ -68,12 +68,14 @@ import Testing
         return clock
     }, capture: { events.append($0) })
     timing.beginCold()
-    timing.becameActive(computers: 1)
+    timing.setComputerCount(1)
+    timing.becameActive()
     timing.record(.linkReady, computer: "computer")
-    timing.becameActive(computers: 2)
+    timing.becameActive()
     #expect(events.count == 1)
     timing.enteredBackground()
-    timing.becameActive(computers: 2)
+    timing.setComputerCount(2)
+    timing.becameActive()
     timing.record(.linkReady, computer: "computer")
 
     guard events.count == 2,
@@ -90,13 +92,39 @@ import Testing
     #expect(secondComputers == 2)
 }
 
-@MainActor @Test func foregroundReturnWithVoiceCallRecordsAnAlreadyReadyLink() async throws {
+@MainActor @Test func anAccountRestoredAfterLaunchCountsItsComputers() {
+    let (launched, launchedSuite) = context()
+    let (restored, restoredSuite) = context()
+    defer {
+        UserDefaults(suiteName: launchedSuite)?.removePersistentDomain(forName: launchedSuite)
+        UserDefaults(suiteName: restoredSuite)?.removePersistentDomain(forName: restoredSuite)
+    }
+    var events: [AnalyticsEvent] = []
+    let timing = OpenTiming(capture: { events.append($0) })
+    timing.beginCold()
+    timing.becameActive()
+    let remote = FakeRemote(.ready(.direct))
+    let atLaunch = AccountStore(storage: launched, cloud: nil, openTiming: timing) { BotStore(computer: $0, storage: launched) { _ in remote } }
+
+    // The account's sign-in restores after the scene is active: its context replaces the empty one.
+    let computers = [randomComputer("Mac"), randomComputer("Mini")]
+    restored.computers = computers
+    atLaunch.retire()
+    let accounts = AccountStore(storage: restored, cloud: nil, openTiming: timing) { BotStore(computer: $0, storage: restored) { _ in remote } }
+    defer { accounts.retire() }
+    timing.record(.linkReady, computer: computers[0].id)
+
+    #expect(!events.isEmpty)
+    for case let .openTiming(_, _, _, _, count, _, _) in events { #expect(count == 2) }
+}
+
+@MainActor @Test func foregroundReturnWithVoiceCallReportsARetainedLinkCaughtUpNothing() async throws {
     let (storage, suite) = context()
     defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     var events: [AnalyticsEvent] = []
     let timing = OpenTiming(capture: { events.append($0) })
     timing.beginCold()
-    timing.becameActive(computers: 1)
+    timing.becameActive()
 
     let computer = randomComputer("Mac")
     let remote = FakeRemote(.ready(.direct))
@@ -107,12 +135,13 @@ import Testing
     #expect(await until { await remote.subscribed })
     await remote.emit(#"{"type":"hello","hostId":"h1","rev":1,"catchUp":1}"#)
     await remote.emit(botEvent("b1", name: "Bot", rev: 1))
-    #expect(await until { events.count == 3 })
+    await remote.emit(botEvent("b2", name: "Other", rev: 2))
+    #expect(await until { events.count == 3 && store.roster.count == 2 })
 
     store.beginVoiceCall(UUID(), hear: { _ in }, end: {})
     store.setActive(false)
     timing.enteredBackground()
-    timing.becameActive(computers: 1)
+    timing.becameActive()
     store.setActive(true)
 
     #expect(await until { events.count == 6 })
@@ -124,7 +153,7 @@ import Testing
     #expect(await remote.eventSinces.count == 1)
     guard case let .openTiming(_, open, _, _, _, chats, messages) = events[5] else { return }
     #expect(open == .foreground)
-    #expect(chats == 1)
+    #expect(chats == 0)
     #expect(messages == 0)
 }
 
@@ -134,7 +163,7 @@ import Testing
     var events: [AnalyticsEvent] = []
     let timing = OpenTiming(capture: { events.append($0) })
     timing.beginCold()
-    timing.becameActive(computers: 1)
+    timing.becameActive()
 
     let remote = FakeRemote(.ready(.direct))
     let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in remote }
@@ -151,7 +180,7 @@ import Testing
     await remote.set(.connecting)
     #expect(await until { store.hostRoute == nil })
     timing.enteredBackground()
-    timing.becameActive(computers: 1)
+    timing.becameActive()
     store.setActive(true)
 
     #expect(events.count == 3)
@@ -163,7 +192,7 @@ import Testing
     var events: [AnalyticsEvent] = []
     let timing = OpenTiming(capture: { events.append($0) })
     timing.beginCold()
-    timing.becameActive(computers: 1)
+    timing.becameActive()
     let computer = randomComputer("Mac")
     let remote = FakeRemote(.ready(.direct))
     let store = BotStore(computer: computer, storage: storage) { _ in remote }
@@ -186,7 +215,7 @@ import Testing
     var events: [AnalyticsEvent] = []
     let timing = OpenTiming(capture: { events.append($0) })
     timing.beginCold()
-    timing.becameActive(computers: 1)
+    timing.becameActive()
     let remote = FakeRemote(.ready(.direct))
     let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in remote }
     store.openTiming = timing
@@ -203,7 +232,7 @@ import Testing
     #expect(await until { await remote.eventSinces.count == 2 })
     await remote.emit(#"{"type":"hello","hostId":"h1","rev":2,"catchUp":1}"#)
     timing.enteredBackground()
-    timing.becameActive(computers: 1)
+    timing.becameActive()
     store.setActive(true)
     #expect(events.count == 5)
 
@@ -222,7 +251,7 @@ import Testing
     var events: [AnalyticsEvent] = []
     let timing = OpenTiming(capture: { events.append($0) })
     timing.beginCold()
-    timing.becameActive(computers: 1)
+    timing.becameActive()
 
     let computer = randomComputer("Mac")
     let remote = FakeRemote(.ready(.direct))

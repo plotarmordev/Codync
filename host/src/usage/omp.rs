@@ -1,15 +1,46 @@
 //! `omp usage --json`: one window per upstream limit oh-my-pi reports.
 //! Claude and Codex stay on their own cards; these windows belong to oh-my-pi,
 //! labeled with the upstream, so a second login isn't written over the CLI's.
+//!
+//! A host whose own `omp` has no logins (they belong to another account on the computer) reads the
+//! report that account saves instead: `omp usage --json` written to the file `CODYNC_OMP_USAGE_FILE` names.
 
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use super::Window;
 
+const SAVED_REPORT: &str = "CODYNC_OMP_USAGE_FILE";
+
 pub(super) async fn collect() -> Option<Vec<Window>> {
-    super::command::windows("omp", &["usage", "--json"], None, Duration::from_secs(30), parse).await
+    match saved_report() {
+        Some(path) => read_saved(&path).await,
+        None => super::command::windows("omp", &["usage", "--json"], None, Duration::from_secs(30), parse).await,
+    }
+}
+
+/// A saved report to read on a host without `omp` installed.
+pub(super) fn report_saved() -> bool {
+    saved_report().is_some_and(|path| path.is_file())
+}
+
+fn saved_report() -> Option<PathBuf> {
+    std::env::var_os(SAVED_REPORT).filter(|path| !path.is_empty()).map(PathBuf::from)
+}
+
+/// The saved report's limits; a missing file or one without limits is no reading, and the last one stays.
+async fn read_saved(path: &Path) -> Option<Vec<Window>> {
+    let text = match tokio::fs::read_to_string(path).await {
+        Ok(text) => text,
+        Err(error) => {
+            tracing::warn!(path = %path.display(), %error, "couldn't read the saved oh-my-pi usage report");
+            return None;
+        }
+    };
+    let windows = parse(&text);
+    (!windows.is_empty()).then_some(windows)
 }
 
 fn parse(text: &str) -> Vec<Window> {
@@ -192,5 +223,26 @@ mod tests {
         let w = parse(text);
         assert_eq!(w[0].text.as_deref(), Some("$3.20 spent"));
         assert!(w[0].percent.abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn a_saved_report_is_read_like_the_command() {
+        let dir = std::env::temp_dir().join(format!("codync-omp-usage-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("usage.json");
+        std::fs::write(
+            &file,
+            r#"{"generatedAt":1,"reports":[{"provider":"kimi-code","limits":[{"label":"Weekly",
+               "scope":{"windowId":"7d"},"amount":{"usedFraction":0.36}}]}]}"#,
+        )
+        .unwrap();
+        let windows = read_saved(&file).await.expect("a reading");
+        assert_eq!(windows[0].label, "Weekly");
+        assert!((windows[0].percent - 36.0).abs() < 1e-9);
+
+        std::fs::write(&file, r#"{"generatedAt":2,"reports":[]}"#).unwrap();
+        assert!(read_saved(&file).await.is_none(), "a report without limits is no reading");
+        assert!(read_saved(&dir.join("missing.json")).await.is_none(), "nor is a missing file");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

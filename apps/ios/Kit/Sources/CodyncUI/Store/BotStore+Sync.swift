@@ -19,6 +19,10 @@ extension BotStore {
                     try await Task.sleep(for: hostUpdateOffer() == .updating ? Self.updatingRecheck : Self.mismatchRecheck)
                     continue
                 }
+                eventSubscription += 1
+                let subscription = eventSubscription
+                var messagesFetched = 0
+                var chatsCaughtUp: Set<String> = []
                 // A refetch the link cut short starts over: only one whole catch-up says what the computer still has.
                 if refetched != nil { refetchAll() }
                 requestedSince = rev
@@ -29,6 +33,13 @@ extension BotStore {
                     setConnection(.online)
                     backoff = 1
                     apply(event)
+                    switch event {
+                    case let .entry(entry):
+                        messagesFetched += 1
+                        chatsCaughtUp.insert(entry.botId)
+                    case let .bot(bot): chatsCaughtUp.insert(bot.id)
+                    default: break
+                    }
                     // An event that restarted the stream leaves the refetch to the new one.
                     guard !Task.isCancelled else { return }
                     if case let .hello(_, _, _, _, _, catchUp) = event {
@@ -39,7 +50,12 @@ extension BotStore {
                     } else {
                         continue
                     }
-                    if catchUpLeft == 0 { finishRefetch() }
+                    if catchUpLeft == 0 {
+                        finishRefetch()
+                        caughtUpSubscription = subscription
+                        catchUpsCompleted += 1
+                        openTiming.record(.catchUp, computer: computer.id, chats: chatsCaughtUp.count, messages: messagesFetched)
+                    }
                 }
             } catch is CancellationError {
                 return
@@ -81,6 +97,7 @@ extension BotStore {
         hostId = h.hostId
         iconsRevision = -1
         hello = h
+        openTiming.record(.hello, computer: computer.id)
         applyIcons(h.icons ?? [:], revision: h.iconsRevision ?? 0)
         noteHostVersion(HostVersion(version: h.version, minApp: h.minApp), schema: h.schema)
     }
@@ -253,11 +270,11 @@ extension BotStore {
         return e.seq < floor
     }
 
-    /// A task that ended leaves its bot's `tasks`; its details read it back (`taskEntries`) from then on.
+    /// A task no item names any more is gone from the computer too; its transcript goes with it.
     private func dropEndedTasks() {
         guard !taskEntries.isEmpty else { return }
-        let live = Set(bots.values.flatMap(\.tasks).map(\.id))
-        taskEntries = taskEntries.filter { live.contains($0.key) }
+        let named = Set(bots.values.flatMap(\.work).compactMap(\.task))
+        taskEntries = taskEntries.filter { named.contains($0.key) }
     }
 
     func upsert(_ e: Entry) {

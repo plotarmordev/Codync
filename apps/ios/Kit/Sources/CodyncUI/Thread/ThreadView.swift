@@ -11,12 +11,13 @@ public struct ThreadView: View {
     public init(botId: String) { self.botId = botId }
     @Environment(BotStore.self) var model
     @State var showTrace = false
-    /// The message the composer's next send quotes.
-    @State var replyingTo: Entry?
+    /// What the composer's next send quotes: a message, or the part of it the user selected.
+    @State var replyingTo: ReplyQuote?
+    /// The message whose text is open for selecting a part to reply to.
+    @State var selectingText: Entry?
     @State var botChat: BotChatTarget?
     @State var openArtifact: ArtifactTarget?
     @State var openCall: Entry?
-    @State var showTasks = false
     @State var editingGroup = false
     @State var details: DetailsRequest?
     @State var openFile: FileViewerTarget?
@@ -32,11 +33,14 @@ public struct ThreadView: View {
     @State var find: ConversationFind?
     /// Bumped to bring the shown match's message into view (a new text, a step).
     @State var findReveal = 0
+    /// The card last brought into view from the bot's details.
+    @State var cardReveal: ConversationReveal?
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.launchCovered) var launchCovered
 
     var bot: Bot? { model.bots[botId] }
-    /// The bot's background tasks, shown in its own chat only.
-    private var tasks: [BotTask] { bot.flatMap { $0.isGroup ? nil : $0.tasks } ?? [] }
+    /// The bot's work in the background, shown in its own chat only.
+    private var work: WorkSections { WorkSections(bot.flatMap { $0.isGroup ? nil : $0.work } ?? []) }
 
     /// The messages, the composer and the find bar, without the platform's top chrome.
     private var chat: some View {
@@ -54,8 +58,8 @@ public struct ThreadView: View {
                         .padding(.bottom, 8)
                         .transition(.opacity)
                 } else {
-                    if !tasks.isEmpty {
-                        TaskCapsule(botId: botId, tasks: tasks) { showTasks = true }
+                    if !work.isIdle {
+                        WorkCapsule(botId: botId, work: work) { details = DetailsRequest() }
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     Composer(botId: botId, replyingTo: $replyingTo,
@@ -65,7 +69,7 @@ public struct ThreadView: View {
                 }
             }
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: model.mismatch)
-            .animation(Motion.reduced(Motion.layout, reduceMotion), value: tasks.isEmpty)
+            .animation(Motion.reduced(Motion.layout, reduceMotion), value: work.isIdle)
         }
         // Grok Bot's call: a bar floating over the chat, which stays readable and usable.
         .overlay(alignment: .top) {
@@ -109,6 +113,7 @@ public struct ThreadView: View {
 
     func openFind() {
         guard find == nil else { return }
+        cardReveal = nil
         Analytics.shared.capture(.conversationFindOpened)
         withAnimation(Motion.reduced(Motion.layout, reduceMotion)) { find = ConversationFind() }
     }
@@ -132,6 +137,12 @@ public struct ThreadView: View {
     var conversation: some View {
         chrome(chat)
             .readingConversation(botId)
+            .onChange(of: model.detailsRequest, initial: true) { _, _ in
+                if model.takeDetailsRequest(for: botId) { details = DetailsRequest() }
+            }
+            .onChange(of: model.cardRequest?.item.id, initial: true) { _, _ in
+                if let item = model.takeCardRequest(for: botId) { showCard(item) }
+            }
             .onChange(of: model.voiceCallRequest, initial: true) { _, _ in
                 if model.takeVoiceCallRequest(for: botId) { startShortcutCall() }
             }
@@ -141,13 +152,19 @@ public struct ThreadView: View {
             .codyncSheet(isPresented: $showTrace) {
                 TraceView(botId: botId)
             }
+            .codyncSheet(item: $selectingText) { e in
+                SelectTextSheet(text: e.data.text ?? "") { part in
+                    selectingText = nil
+                    reply(to: e.replyQuote(part: part))
+                }
+            }
             .codyncSheet(item: $botChat) { BotConversationView(botId: botId, peerId: $0.id) }
             .codyncSheet(item: $openArtifact) { ArtifactView(target: $0) }
             .codyncSheet(item: $openFile) { FileViewer(file: $0.file, entryId: $0.entryId, botId: $0.botId) }
             .codyncSheet(item: $openCall) { CallConversationView(line: $0) }
-            .codyncSheet(isPresented: $showTasks) { TasksSheet(botId: botId, tasks: tasks) }
             .codyncSheet(item: $details) { request in
-                BotDetailsView(botId: request.botId ?? botId, request: request) { artifact in
+                // A card is in this chat: another bot's details (a group member's) have none to go to.
+                BotDetailsView(botId: request.botId ?? botId, request: request, openCard: (request.botId ?? botId) == botId ? { showCard($0) } : nil) { artifact in
                     details = nil
                     openArtifact = artifact
                 }
@@ -157,10 +174,20 @@ public struct ThreadView: View {
             }
     }
 
+    /// Closes the details over the chat and brings the card `item` waits on into view, read from the computer first
+    /// when this device doesn't hold it. One that can't be found leaves the chat where it was.
+    private func showCard(_ item: WorkItem) {
+        details = nil
+        Task {
+            guard let card = await model.card(for: item, in: botId) else { return }
+            findReveal += 1
+            cardReveal = ConversationReveal(id: card.id, step: findReveal)
+        }
+    }
+
     /// Open Live Mode from Shortcuts: closes whatever covers the chat, then starts the call.
     private func startShortcutCall() {
         showTrace = false
-        showTasks = false
         botChat = nil
         openArtifact = nil
         openFile = nil
@@ -185,9 +212,10 @@ public struct ThreadView: View {
             } else {
                 ChatRow(entry: e, groupStart: groupStart, chat: bot, openTrace: { showTrace = true },
                         // An update card takes the composer's place, so there's nothing to reply with.
-                        reply: e.isReplyable && model.mismatch == nil ? { reply(to: e) } : nil,
+                        reply: e.isReplyable && model.mismatch == nil ? { reply(to: e.replyQuote) } : nil,
+                        selectText: model.supportsReplyPart ? { selectingText = e } : nil,
                         // In a group, the bot whose agent failed.
-                        addFallback: { details = DetailsRequest(botId: e.data.author ?? e.botId) },
+                        addFallback: { details = .fallbacks(of: e.data.author ?? e.botId) },
                         openArtifact: { openArtifact = ArtifactTarget(botId: e.botId, id: $0.id, title: $0.title) },
                         openFile: { openFile = $0 },
                         openCall: { openCall = e })
@@ -196,8 +224,8 @@ public struct ThreadView: View {
         }
     }
 
-    private func reply(to entry: Entry) {
-        withAnimation(Motion.reduced(Motion.layout, reduceMotion)) { replyingTo = entry }
+    private func reply(to quote: ReplyQuote) {
+        withAnimation(Motion.reduced(Motion.layout, reduceMotion)) { replyingTo = quote }
     }
 
     // MARK: chrome
@@ -425,6 +453,13 @@ extension ThreadView {
         ChatItem.build(model.chat(botId).hidingCalls().hidingQueue(working: busy))
     }
 
+    /// `open_chat` once this open's catch-up is in and the newest row shows, never under the launch splash.
+    private func recordNewestShown(_ item: ChatItem, in items: [ChatItem]) {
+        guard !launchCovered, item.id == items.last?.id,
+              model.openTiming.hasRecorded(.catchUp, computer: model.computer.id) else { return }
+        model.openTiming.record(.openChat, computer: model.computer.id)
+    }
+
     /// `shown`: the find's current match, whose message is highlighted and brought into view.
     func transcript(_ items: [ChatItem], shown: ConversationFind.Match?) -> some View {
         var rows: [ConversationRow] = []
@@ -448,6 +483,10 @@ extension ThreadView {
                 row(item)
                     .background(shown?.id == item.id ? Palette.attention.opacity(0.18) : .clear)
                     .accessibilityAddTraits(shown?.id == item.id ? .isSelected : [])
+                    .onAppear { recordNewestShown(item, in: items) }
+                    .onChange(of: model.catchUpsCompleted) { _, _ in recordNewestShown(item, in: items) }
+                    .onChange(of: model.openTiming.opens) { _, _ in recordNewestShown(item, in: items) }
+                    .onChange(of: launchCovered) { _, _ in recordNewestShown(item, in: items) }
             }
         }
         // Offline, "working" is only what the computer last said; don't show it as live.
@@ -460,7 +499,7 @@ extension ThreadView {
             })
         }
         // Pull to refresh reconnects, like Reconnect in the computer menu, until the link is back.
-        let reveal = shown.map { ConversationReveal(id: $0.id, step: findReveal) }
+        let reveal = shown.map { ConversationReveal(id: $0.id, step: findReveal) } ?? cardReveal
         return ConversationList(rows: rows, following: $following, reveal: reveal, nearTop: { showEarlier() }, refresh: {
             model.restartStream()
             _ = try? await model.ready()
@@ -522,4 +561,9 @@ extension ThreadView {
         }
         .symbolEffect(.pulse, options: .repeating, isActive: operating)
     }
+}
+
+public extension EnvironmentValues {
+    /// The launch splash still covers the app: nothing under it counts as shown yet.
+    @Entry var launchCovered = false
 }

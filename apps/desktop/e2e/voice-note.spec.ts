@@ -23,11 +23,11 @@ test('a failed voice note offers retry in the selected language', async () => {
     const caption = player.locator('.file-card-detail')
     await expect(player).toBeVisible()
     // Neither the host nor the player can read this fixture's length: no clock and no size, but the clock's room stays,
-    // an hour's clock wide, so the bar ends where it will once a length shows.
+    // a short note's clock wide, so the bar ends where it will once a length shows.
     await expect(caption).toHaveText('')
     const bar = (await player.locator('input.voice-note-progress').boundingBox())!
     const room = (await caption.boundingBox())!
-    expect(room.width).toBeGreaterThan(70)
+    expect(room.width).toBeGreaterThan(30)
     expect(bar.x + bar.width).toBeLessThan(room.x)
     await player.locator('.voice-note-glyph').click()
     await expect(player).toContainText('Lecture impossible. Cliquez pour réessayer.')
@@ -72,13 +72,24 @@ test('a click on the voice note plays or pauses it; only its bar seeks', async (
     await expect(player).toBeVisible()
     // The host read the length when the note was shared: the bar and clock show before the first play.
     await expect(player.locator('.file-card-detail')).toHaveText('0:00 / 0:04')
-    // Hovering fades the glyph to its filled form over the app's hover time, never a sudden switch.
-    const filled = play.locator('.icon-button-hover')
+    // Hovering lays a soft round chip behind the outline glyph over the app's hover time, never a sudden switch.
+    const chip = async () => play.evaluate((el) => {
+      const style = getComputedStyle(el, '::before')
+      return { background: style.backgroundColor, radius: style.borderRadius, transition: style.transitionDuration }
+    })
+    expect((await chip()).background).toBe('rgba(0, 0, 0, 0)')
     await play.hover()
-    await expect(filled).toHaveCSS('transition-duration', '0.12s')
-    await expect(filled).toHaveCSS('opacity', '1')
+    await expect.poll(async () => (await chip()).background).not.toBe('rgba(0, 0, 0, 0)')
+    expect(await chip()).toMatchObject({ radius: '50%', transition: '0.12s' })
     await page.mouse.move(0, 0)
-    await expect(filled).toHaveCSS('opacity', '0')
+    await expect.poll(async () => (await chip()).background).toBe('rgba(0, 0, 0, 0)')
+    // The bar sits 10 px from the play glyph's slot and 10 px from the clock, at rest and while it plays.
+    const gaps = async () => player.evaluate((note) => {
+      const box = (selector: string) => note.querySelector(selector)!.getBoundingClientRect()
+      const track = box('input.voice-note-progress')
+      return [track.left - box('.voice-note-slot').right, box('.file-card-detail').left - track.right].map(Math.round)
+    })
+    expect(await gaps()).toEqual([10, 10])
     // The play button plays, and the row stays put: the bar and clock keep their places once the sound loads.
     const bar = player.locator('input.voice-note-progress')
     const clock = player.locator('.file-card-detail')
@@ -89,6 +100,7 @@ test('a click on the voice note plays or pauses it; only its bar seeks', async (
     await play.click()
     await expect(pause).toBeVisible()
     expect(await layout()).toEqual(atRest)
+    expect(await gaps()).toEqual([10, 10])
     // A click on the player's clock pauses.
     await clock.click()
     await expect(play).toBeVisible()

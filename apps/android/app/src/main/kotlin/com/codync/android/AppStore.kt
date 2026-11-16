@@ -52,6 +52,11 @@ class AppStore internal constructor(
     internal var channel: EncryptedChannel? = null
     internal var foreground = false
     internal val foregroundState = MutableStateFlow(false)
+    /** The app's open timing (iOS `BotStore.openTiming`); [openSeen] is the last open this store noticed. */
+    internal var openTiming = OpenTiming.shared
+    internal var openSeen = 0
+    internal var eventSubscription = 0
+    internal var caughtUpSubscription = 0
     internal val setupTerminals = mutableMapOf<String, SetupTerminalSession>()
     internal val appConnections = mutableMapOf<String, AppConnectionSession>()
     internal var oauthRequestId: String? = null
@@ -204,7 +209,7 @@ class AppStore internal constructor(
         if (PushPreferences.tasks(application)) {
             val watched = withContext(Dispatchers.IO) { feed.all().filter { !it.finished }.map { it.botId }.toSet() }
             for (bot in snapshot.bots.filter { it.id in watched }) {
-                val watch = withContext(Dispatchers.IO) { feed.local(bot) }
+                val watch = withContext(Dispatchers.IO) { feed.local(bot, outsideLine(bot) { it }) }
                 if (watch != null) NotificationDisplay.task(application, local.referenceId, id, watch)
             }
         }

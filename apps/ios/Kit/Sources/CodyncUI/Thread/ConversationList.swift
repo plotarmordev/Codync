@@ -86,6 +86,10 @@ private struct ConversationCollection: UIViewRepresentable {
         context.coordinator.update(self, context: context)
     }
 
+    static func dismantleUIView(_ view: ConversationContainer, coordinator: Coordinator) {
+        coordinator.meter.cancel()
+    }
+
     @MainActor final class Coordinator: NSObject, UICollectionViewDelegate {
         private var view: ConversationCollectionView!
         private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
@@ -98,6 +102,7 @@ private struct ConversationCollection: UIViewRepresentable {
         private var lastReveal: ConversationReveal?
         private var lastOffset: CGFloat = 0
         private var reduceMotion = false
+        let meter = ScrollHitchMeter(.chat)
 
         func makeView() -> ConversationCollectionView {
             let size = NSCollectionLayoutSize(widthDimension: .fractionalWidth(1), heightDimension: .estimated(80))
@@ -201,10 +206,15 @@ private struct ConversationCollection: UIViewRepresentable {
         private func reveal(_ reveal: ConversationReveal?) {
             guard let reveal, reveal != lastReveal, let path = dataSource.indexPath(for: reveal.id) else { return }
             lastReveal = reveal
+            view.layoutIfNeeded()
+            // Already where it would be brought (a row by the end can't reach the middle): nothing moves,
+            // and a list at the end keeps following.
+            if let frame = view.layoutAttributesForItem(at: path)?.frame,
+               abs(view.centeredOffset(of: frame) - view.contentOffset.y) < 1 { return }
             view.cancelScrollingToEnd()
             setFollowing(false)
-            view.layoutIfNeeded()
             view.scrollToItem(at: path, at: .centeredVertically, animated: !reduceMotion)
+            if reduceMotion { settle() }
         }
 
         /// Rows going in or out above: the first row on screen stays where it is.
@@ -241,6 +251,7 @@ private struct ConversationCollection: UIViewRepresentable {
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
             view.cancelScrollingToEnd()
             lastOffset = scrollView.contentOffset.y
+            meter.begin()
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -297,7 +308,7 @@ private struct ConversationCollection: UIViewRepresentable {
         }
 
         func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
-            if view.following { view.pinToEnd() }
+            settle()
         }
 
         /// Long enough to read as a refresh even when the link comes back at once; then the chat
@@ -328,10 +339,22 @@ private struct ConversationCollection: UIViewRepresentable {
             pull.progress = progress
         }
 
-        /// The reader stopped scrolling: resting at the end follows again; anywhere else stays put.
+        /// The list stopped moving (the reader's scrolling, a row brought into view): resting at the end follows again;
+        /// anywhere else stays put.
         private func settle() {
+            meter.rest(rows: dataSource.snapshot().numberOfItems, stop: view.stop, track: restingRow())
             setFollowing(view.followingAfterInteraction())
             if view.following { view.pinToEnd() }
+        }
+
+        /// Where the first row on screen now sits on screen, followed by its id: rows going in above don't move it.
+        private func restingRow() -> () -> CGFloat? {
+            let id = view.indexPathsForVisibleItems.min().flatMap(dataSource.itemIdentifier(for:))
+            return { [weak self] in
+                guard let self, let id, let path = dataSource.indexPath(for: id),
+                      let frame = view.layoutAttributesForItem(at: path)?.frame else { return nil }
+                return frame.minY - view.contentOffset.y
+            }
         }
     }
 }

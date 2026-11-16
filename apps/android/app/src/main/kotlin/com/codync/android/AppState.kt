@@ -95,6 +95,10 @@ data class AppState(
     val selectedBot: String? = null,
     /** A call to start in this bot's chat once it shows ("Talk to Codync"). */
     val callRequest: String? = null,
+    /** This bot's details to open over its chat once it shows (a heading of the view of all bots' work). */
+    val detailsRequest: String? = null,
+    /** A bot and the item of its whose card its chat brings into view once it holds it (a needs-you row of the view of all bots' work). */
+    val cardRequest: Pair<String, WorkItem>? = null,
     val trace: Boolean = false,
     val busy: Set<String> = emptySet(),
     /** Chats that page back no further, and why: their earlier row is dropped. */
@@ -125,6 +129,10 @@ data class AppState(
     /** The Codync cloud's emergency floor for this app version (`426 appUpdateRequired`), as the account last heard it. */
     val appFloor: String? = null,
     val error: String? = null,
+    /** Completed event catch-ups (iOS `BotStore.catchUpsCompleted`): `open_timing`'s `catch_up`, and the rows' notice to re-report. */
+    val catchUpsCompleted: Int = 0,
+    /** Opens this computer has noticed (iOS a row's `onAppear`): `open_timing`'s `chat_list`/`open_chat` re-report after each. */
+    val opensSeen: Int = 0,
 ) {
     /** Connection alone cannot make a cached roster current before event catch-up. */
     internal val widgetBotsCurrent: Boolean get() {

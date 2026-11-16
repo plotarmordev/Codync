@@ -41,6 +41,9 @@ public final class BotStore {
     public internal(set) var connection: Connection = .connecting
     /// The first catch-up has arrived: everything up to the host's rev when this app connected.
     public internal(set) var caughtUp = false
+    public internal(set) var catchUpsCompleted = 0
+    var eventSubscription = 0
+    var caughtUpSubscription = 0
     var catchUpRev = Int64.max
     /// The `since` this connection's events stream was opened with; the `hello` that opens its
     /// catch-up reads it (after a mirror reset `rev` no longer says what was requested).
@@ -59,6 +62,7 @@ public final class BotStore {
     public internal(set) var hostRoute: HostRoute?
     public internal(set) var client: HostClient?
     public internal(set) var hello: Hello?
+    @ObservationIgnored public internal(set) var openTiming = OpenTiming.shared
     /// The host's version and `minApp`, kept even when the rest of its `hello` can't be read.
     public internal(set) var hostVersion: HostVersion?
     /// An update this phone asked of the computer; cleared when its version changes.
@@ -92,6 +96,12 @@ public final class BotStore {
     public var selection: String?
     /// The remote screen viewer (iPhone); `codync://screen` opens it.
     public var screenRequest: ScreenRequest?
+
+    /// A bot whose details its conversation should open (from the view of all bots' work), consumed by it.
+    public internal(set) var detailsRequest: String?
+
+    /// An item whose card its bot's conversation should bring into view, consumed by it.
+    public internal(set) var cardRequest: (botId: String, item: WorkItem)?
 
     /// A Shortcuts request, consumed by the matching conversation.
     public internal(set) var voiceCallRequest: String?
@@ -275,6 +285,14 @@ public final class BotStore {
     }
 
     static let queueActionsHost = "2.39.0"
+
+    /// From host 2.48.1 a reply can quote a part of a message (`send`'s `replyPart`); an older host drops the part
+    /// and quotes the whole message, so its messages offer no Select Text.
+    public var supportsReplyPart: Bool {
+        hostVersion.map { !AppVersion.isBelow($0.version, Self.replyPartHost) } ?? false
+    }
+
+    static let replyPartHost = "2.48.1"
 
     static let sectionsHost = "2.32.0"
 

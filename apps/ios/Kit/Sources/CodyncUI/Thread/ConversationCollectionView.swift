@@ -1,3 +1,4 @@
+import CodyncKit
 import UIKit
 
 /// Only one owner moves the list: the reader, a jump animation, or passive end-following.
@@ -21,6 +22,20 @@ class ConversationCollectionView: UICollectionView {
 
     var endOffset: CGFloat {
         max(contentSize.height + adjustedContentInset.bottom - bounds.height, -adjustedContentInset.top)
+    }
+
+    /// Where the list rests: at either end, or between.
+    var stop: AnalyticsEvent.ScrollHitches.Stop {
+        if endOffset - contentOffset.y < 1 { return .end }
+        if contentOffset.y + adjustedContentInset.top < 1 { return .top }
+        return .middle
+    }
+
+    /// Where the list rests with a row at `frame` in the middle, as far as its ends allow.
+    func centeredOffset(of frame: CGRect) -> CGFloat {
+        let insets = adjustedContentInset
+        let centered = frame.midY - insets.top - (bounds.height - insets.top - insets.bottom) / 2
+        return min(max(centered, -insets.top), endOffset)
     }
 
     /// Keyboard/composer layout is one change: intermediate offsets aren't reader scrolling.

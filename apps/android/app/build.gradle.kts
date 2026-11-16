@@ -142,7 +142,7 @@ android {
     buildFeatures.buildConfig = true
     buildFeatures.resValues = true
     sourceSets.getByName("main").assets.srcDir(rootProject.file("../ios/Kit/Sources/CodyncKit/Resources/Languages"))
-    sourceSets.getByName("main").assets.srcDir(rootProject.file("../ios/Kit/Sources/CodyncKit/Resources/Announcements"))
+    sourceSets.getByName("main").assets.srcDir(rootProject.file("../ios/Kit/Sources/CodyncUI/Resources/Announcements"))
     sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("../../docs/reference/fixtures"))
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -202,4 +202,5 @@ dependencies {
     androidTestImplementation(libs.compose.test)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(testFixtures(project(":core")))
 }

@@ -115,11 +115,26 @@ internal fun detail(file: SharedFile, download: FileDownloadState?, tr: (String)
     }
 }
 
-/** A voice note's caption, never a byte count: a player failure, then a failed download, then the sound's clock;
- *  empty (the bar alone) while its length is unknown. */
+/** A voice note's caption, never a byte count: a player failure, then a failed download, then the sound's clock —
+ *  the elapsed written in the duration's shape (digits padded with zeroes) so the caption is always exactly as wide
+ *  as [voiceNoteRoom]'s reservation. Empty (the bar alone) while its length is unknown. */
 internal fun voiceNoteDetail(download: FileDownloadState?, audio: SharedAudio, tr: (String) -> String = { it }): String = when {
     audio.phase == AudioPhase.Failed -> tr("Couldn't play. Tap to retry.")
     download is FileDownloadState.Failed -> "${download.message} ${tr("Tap to retry.")}"
-    audio.duration > 0.0 -> "${clock(audio.elapsed)} / ${clock(audio.duration)}"
+    audio.duration > 0.0 -> {
+        val shape = timeShape(clock(audio.duration))
+        val elapsed = clock(audio.elapsed)
+        shape.take((shape.length - elapsed.length).coerceAtLeast(0)) + elapsed + " / " + clock(audio.duration)
+    }
     else -> ""
+}
+
+/** [text]'s shape: its digits zeroed, colons kept, so `00:05` fits the room `12:00` reserved. */
+internal fun timeShape(text: String): String = text.map { if (it.isDigit()) '0' else it }.joinToString("")
+
+/** The room a voice note's clock keeps: its caption at full width, or `0:00 / 0:00` while the length is unknown. */
+internal fun voiceNoteRoom(audio: SharedAudio): String {
+    if (audio.duration <= 0.0) return "0:00 / 0:00"
+    val shape = timeShape(clock(audio.duration))
+    return "$shape / $shape"
 }

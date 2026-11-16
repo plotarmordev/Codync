@@ -1,14 +1,15 @@
 package com.codync.android
 
+import android.os.SystemClock
 import kotlin.time.Duration
-import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Milliseconds from each cold or foreground open to its connection and rendering milestones
  * (iOS `OpenTiming`). Main thread only; one [AnalyticsEvent.OpenTiming] per phase, computer and open.
  */
 internal class OpenTiming(
-    private val now: () -> Duration = { TimeSource.Monotonic.markNow().elapsedNow() },
+    private val now: () -> Duration = { SystemClock.elapsedRealtime().milliseconds },
     private val capture: (AnalyticsEvent) -> Unit = Analytics::capture,
 ) {
     private var openedAt: Duration? = null

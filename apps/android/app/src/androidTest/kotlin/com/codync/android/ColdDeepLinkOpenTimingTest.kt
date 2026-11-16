@@ -1,6 +1,11 @@
 package com.codync.android
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.codync.android.core.*
 import kotlinx.serialization.json.buildJsonObject
@@ -22,19 +27,42 @@ class ColdDeepLinkOpenTimingTest {
                 data = buildJsonObject { put("text", "Ready."); put("final", true) })))
         val events = mutableListOf<AnalyticsEvent.OpenTiming>()
         val timing = OpenTiming { (it as? AnalyticsEvent.OpenTiming)?.let(events::add) }
-        val launching = mutableStateOf(true)
         compose.runOnUiThread {
             store.openTiming = timing
             timing.beginCold()
             timing.record(OpenPhase.CatchUp, previewComputer.id, chats = 0, messages = 0)
         }
-        compose.setContent { Hosted { ChatScreen(state, store, editGroup = {}, launching = launching.value) } }
-        compose.waitForIdle()
-        assertEquals(0, events.count { it.phase == OpenPhase.OpenChat })
+        val splash = hasContentDescription("Connecting")
+        compose.setContent {
+            Hosted {
+                var launching by remember { mutableStateOf(true) }
+                Box {
+                    ChatScreen(state, store, editGroup = {}, launching = launching)
+                    LaunchLayer(loading = false, caughtUp = true) { launching = false }
+                }
+            }
+        }
+        compose.mainClock.autoAdvance = false
+        compose.onNode(splash).assertExists()
+        fun openChats() = events.count { it.phase == OpenPhase.OpenChat }
+        assertEquals(0, openChats())
 
-        compose.runOnUiThread { launching.value = false }
-        compose.waitUntil(5_000) { events.count { it.phase == OpenPhase.OpenChat } == 1 }
+        // The splash's delay() runs on the test scheduler; only the System.currentTimeMillis() subtraction that
+        // shortens its 0.7 s hold is wall clock. Well inside the hold nothing may have been recorded.
+        compose.mainClock.advanceTimeBy(400)
         compose.waitForIdle()
-        assertEquals(1, events.count { it.phase == OpenPhase.OpenChat })
+        assertEquals(0, openChats())
+
+        // Hold, then the 0.3 s fade-out: covered the whole way, so `open_chat` can only exist once the row is gone.
+        // `System.currentTimeMillis()` subtracts a few wall milliseconds from the hold; 100 frames is 1.6 s of slack.
+        repeat(100) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            if (compose.onAllNodes(splash).fetchSemanticsNodes().isEmpty()) return@repeat
+            assertEquals(0, openChats())
+        }
+        compose.onNode(splash).assertDoesNotExist()
+        compose.waitUntil(5_000) { openChats() == 1 }
+        assertEquals(1, openChats())
     }
 }

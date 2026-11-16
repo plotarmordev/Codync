@@ -29,7 +29,6 @@ struct CodyncApp: App {
                 .environment(app)
                 .environment(app.accounts)
                 .environment(app.account)
-                .environment(\.launchCovered, app.launching)
                 .environment(\.customIconAccount, CustomIconAccount(
                     signedIn: app.account.isSignedIn, loading: app.account.isBusy || !app.account.isReady,
                     error: app.account.errorMessage,
@@ -63,13 +62,7 @@ struct CodyncApp: App {
                 .onChange(of: app.account.userID, initial: true) { _, userID in
                     app.switchAccount(to: userID)
                 }
-                .overlay {
-                    if app.launching {
-                        LaunchSplash(stores: app.accounts.computers.compactMap { app.accounts.store(for: $0.id) }) {
-                            withAnimation(.easeOut(duration: 0.35)) { app.launching = false }
-                        }
-                    }
-                }
+                .launchSplash(app, stores: app.accounts.computers.compactMap { app.accounts.store(for: $0.id) })
                 .onOpenURL { url in app.open(url) }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     switch phase {

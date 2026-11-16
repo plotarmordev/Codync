@@ -307,11 +307,11 @@ private fun Bot.movesWith(other: Bot) = band == other.band && (pinned || section
 
 @Composable private fun BotRowItem(bot: Bot, state: AppState, store: AppStore, drag: ContextDrag, sections: List<String>, grouped: Boolean,
     launching: Boolean, agent: AgentMark?, edit: () -> Unit, delete: () -> Unit, newSection: () -> Unit) {
-    // The newest message's row reports `chat_list` once the current open's catch-up is recorded (iOS
+    // The newest row carrying a message reports `chat_list` once the current open's catch-up is recorded (iOS
     // `recordNewestShown`): each open counts it again, so the triggers are this open noticed and its catch-up done.
     LaunchedEffect(launching, state.opensSeen, state.catchUpsCompleted, bot.id) {
         if (!launching && store.openTiming.hasRecorded(OpenPhase.CatchUp, state.computer.id) &&
-            bot.lastMessage != null && roster(state.bots).maxByOrNull { it.lastAt }?.id == bot.id)
+            roster(state.bots).filter { it.lastMessage != null }.maxByOrNull { it.lastAt }?.id == bot.id)
             store.openTiming.record(OpenPhase.ChatList, state.computer.id)
     }
     Box(Modifier.fillMaxWidth().contextActions(onClick = { store.openBot(bot.id) }, reorder = drag, preview = {

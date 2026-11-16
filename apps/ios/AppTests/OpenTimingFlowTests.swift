@@ -39,10 +39,12 @@ struct OpenTimingFlowTests {
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
         #expect(await until { await remote.subscribed })
-        await remote.emit(#"{"type":"hello","hostId":"h1","rev":2,"catchUp":2}"#)
+        await remote.emit(#"{"type":"hello","hostId":"h1","rev":3,"catchUp":3}"#)
         await remote.emit(#"{"type":"bot","bot":{"id":"b1","name":"Bot","rev":1,"lastAt":2,"lastMessage":"new"}}"#)
         await remote.emit(#"{"type":"entry","entry":{"id":"e1","seq":1,"botId":"b1","rev":2,"kind":"agent","turn":1,"data":{"text":"new","final":true},"createdAt":1,"updatedAt":1}}"#)
-        #expect(await until { store.roster.first?.lastMessage != nil })
+        // Created after b1's message: the newest bot, but with nothing to show.
+        await remote.emit(#"{"type":"bot","bot":{"id":"b0","name":"New","rev":3,"lastAt":3}}"#)
+        #expect(await until { store.roster.count == 2 })
         #expect(!app.launching)
         #expect(await until { events.count == 4 })
 
@@ -74,7 +76,7 @@ struct OpenTimingFlowTests {
         #expect(milliseconds(events).suffix(5) == [1, 2, 3, 4, 5])
     }
 
-    @Test func aChatOpenedUnderTheLaunchSplashRecordsOnceTheSplashLifts() async throws {
+    @Test func aChatOpenedUnderTheLaunchSplashRecordsOnceItHasFadedOut() async throws {
         let (storage, suite) = context()
         defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
         var events: [AnalyticsEvent] = []
@@ -91,23 +93,22 @@ struct OpenTimingFlowTests {
         app.launching = true
         defer { app.launching = false }
 
-        // A cold deep link: the chat is pushed under the splash, which lifts after its catch-up.
+        // A cold deep link: the chat is pushed under the app's real splash, which leaves after its catch-up.
         let window = UIWindow(windowScene: try #require(UIApplication.shared.connectedScenes.first as? UIWindowScene))
         window.frame = UIScreen.main.bounds
-        window.rootViewController = UIHostingController(rootView: SplashCovered(app: app) { ThreadView(botId: "b1").environment(store) })
+        window.rootViewController = UIHostingController(rootView: ThreadView(botId: "b1").environment(store)
+            .launchSplash(app, stores: [store]))
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
         #expect(await until { await remote.subscribed })
         await remote.emit(#"{"type":"hello","hostId":"h1","rev":2,"catchUp":2}"#)
         await remote.emit(#"{"type":"bot","bot":{"id":"b1","name":"Bot","rev":1,"lastAt":2,"lastMessage":"new"}}"#)
         await remote.emit(#"{"type":"entry","entry":{"id":"e1","seq":1,"botId":"b1","rev":2,"kind":"agent","turn":1,"data":{"text":"new","final":true},"createdAt":1,"updatedAt":1}}"#)
-        #expect(await until { events.count == 3 })
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(phases(events) == [.linkReady, .hello, .catchUp])
-
-        app.launching = false
         #expect(await until { events.count == 4 })
+
+        // The splash holds 700 ms from its first frame, then fades out over 350 ms; the transcript shows only after.
         #expect(phases(events).last == .openChat)
+        #expect(try #require(milliseconds(events).last ?? nil) >= 1050)
     }
 
     private func phases(_ events: [AnalyticsEvent]) -> [AnalyticsEvent.OpenPhase?] {
@@ -122,15 +123,5 @@ struct OpenTimingFlowTests {
             guard case let .openTiming(_, _, ms, _, _, _, _) = event else { return nil }
             return ms
         }
-    }
-}
-
-/// The app's root: the splash state reaches every screen under it.
-private struct SplashCovered<Content: View>: View {
-    let app: AppStore
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content.environment(\.launchCovered, app.launching)
     }
 }

@@ -17,22 +17,29 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 「同時幾個 agent」在 Bot 的「設定」。
 - 「每個 agent 一個 worktree」：同時在同一個 repository 工作的 agent 各有自己的分支。
 - 改用備援時，智慧體卡片會說明原因。
+- 備援的 ⋯ 選單新增「編輯」，順序不變。
 - 輸入 `/` 時會列出 Bot 所用智慧體自己的指令。
 - 語音訊息一出現就顯示播放鍵、進度條和長度，進度條兩側間距相同，聲音先在背景載入，按下就播放（行動數據時只預先載入 2 MB 以下）；下載移到訊息的選單裡；載入時離開聊天，它不會在離開後才開始播放。
 - 重新連上電腦後只補上錯過的訊息。
 - 訊息裡的表格放不進泡泡時，過長的文字會在格子裡換行，不再被截斷。
 - 在訊息上往旁邊滑就能回覆：你的訊息往左滑，Bot 的訊息往右滑，放開時就會開始回覆。
+- 網路規則新增「自動」與「詢問」等級，沒有符合規則的電腦預設為「自動」。
+- 聽寫中按「傳送」會等說的話轉成文字再一起送出。
+- 等待核准的卡片會算在 Bot 的未讀數字裡（琥珀色），直到你回覆為止。
 
 ### en-US
-- Bots do long work in the background and keep answering.
-- Routines and other bots' requests run there too.
-- The Work button in the bot list shows every bot's background work.
-- Background work can ask, or send a file, in the chat.
-- Details: Threads (running), Event box (waiting: First, Cut in, Drop).
-- Settings: Agents at once; Worktree per agent gives each its own branch.
+- Bots, routines and other bots' requests work in the background.
+- The Work button lists background work.
+- Approval cards stay in the badge, amber, until answered.
+- Background work can ask or send files.
+- Details: Threads, Event box (First, Cut in, Drop).
+- Settings: Agents at once, Worktree per agent.
 - On a fallback, the Agent card says why.
+- Fallbacks: ⋯ has Edit.
 - `/` also lists the agent's own commands.
 - Voice notes show a player at once, load ahead so they play on tap (under 2 MB on mobile data), and stop when you leave.
 - Reconnects fetch only missed messages.
 - A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.
 - Swipe a message sideways to reply: yours to the left, the bot's to the right.
+- Network rules gain Auto and Ask.
+- Send while dictating keeps your words.

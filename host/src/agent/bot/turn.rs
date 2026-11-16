@@ -103,6 +103,8 @@ impl Actor {
     ) -> Result<()> {
         self.task_source = tasks::source_of(&self.hub.store, &self.cfg);
         if self.cfg.is_task() {
+            // Another computer's request holds the task's turn to its ceiling, as it holds a turn in the chat.
+            self.hub.ceilings.set(&self.cfg.id, tasks::access_of(&self.hub, &self.cfg));
             // A run worked as a task: its session's setup ends by the routine's time limit too, where the box's
             // timer (`tasks::sources::watch`) only reaches a turn that began. Any other item has none.
             self.routine_deadline = match &self.task_source {
@@ -171,9 +173,12 @@ impl Actor {
         }
         // A bot request or room turn isn't resumed after a host restart (the room that waited is gone): a request's
         // persisted notices are marked interrupted instead of silently repeating work. Nor is a call's opening (the
-        // call is over). A reply turn is resumed, and so is a follow-up, which is gone from the list by now.
+        // call is over). A reply turn is resumed, and so is a follow-up, which is gone from the list by now. A turn
+        // under a network rule's ceiling isn't: the ceiling doesn't outlive the host, and the turn that resumed it
+        // would work on the sender's text as the bot is set.
         self.set_inflight(
             self.active_request.is_none()
+                && !self.hub.ceilings.holds(&self.cfg.id)
                 && self.active_group.is_none()
                 && self.active_routine.is_none()
                 && self.host_turn.is_none_or(HostTurn::resumed),
@@ -490,6 +495,20 @@ impl Actor {
         self.flush(true);
         self.seg = Seg::None;
         self.expire_decisions(crate::chat::decision::Expiry::TurnEnded);
+        self.expire_perms();
+        for entry_id in self.tools.values() {
+            if let Some(mut e) = self.hub.store.entry(entry_id)
+                && matches!(e.data["status"].as_str(), Some("pending" | "in_progress"))
+            {
+                e.data["status"] = if failed { "failed" } else { "completed" }.into();
+                self.hub.set_entry(entry_id, &e.data);
+            }
+        }
+    }
+
+    /// Expires the permission cards still unanswered: no one can answer them once their turn, or the actor, is
+    /// gone, and a pending card would stay in its chat's badge (`Store::badge`).
+    pub(super) fn expire_perms(&mut self) {
         let client = self.conn.as_ref().map(|c| c.acp.clone());
         for (id, answer) in self.perms.drain() {
             if let Some(mut e) = self.hub.store.entry(&id) {
@@ -499,14 +518,6 @@ impl Actor {
             // The agent would wait on a card no one can answer any more.
             if let (super::updates::Answer::Agent(rpc_id), Some(client)) = (answer, client.clone()) {
                 tokio::spawn(async move { client.respond(rpc_id, acp::permission_answer(None)).await });
-            }
-        }
-        for entry_id in self.tools.values() {
-            if let Some(mut e) = self.hub.store.entry(entry_id)
-                && matches!(e.data["status"].as_str(), Some("pending" | "in_progress"))
-            {
-                e.data["status"] = if failed { "failed" } else { "completed" }.into();
-                self.hub.set_entry(entry_id, &e.data);
             }
         }
     }
@@ -524,7 +535,7 @@ impl Actor {
         };
         let started = self.hub.runtime(&self.id()).started_at.unwrap_or_else(now_ms);
         let ms = now_ms() - started;
-        analytics::turn_finished(&self.hub, &self.cfg.backend, outcome, stop_reason, failure, self.source(), ms);
+        analytics::turn_finished(&self.hub, &self.cfg, outcome, stop_reason, failure, self.source(), ms);
     }
 
     /// The turn is a routine's run: in the chat, or a task's whose item is one.

@@ -165,7 +165,7 @@ pub(super) const READERS: &[Reader] = &[
         id: "omp",
         name: "oh-my-pi",
         source: "omp usage",
-        found_without_cli: None,
+        found_without_cli: Some(omp::report_saved),
         read: |_| Box::pin(omp::collect()),
         read_profile: None,
     },

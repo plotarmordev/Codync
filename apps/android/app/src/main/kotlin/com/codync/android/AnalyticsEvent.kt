@@ -165,6 +165,8 @@ internal sealed class AnalyticsEvent(val name: String) {
     data class ConversationFindSearched(val found: Boolean) : AnalyticsEvent("conversation_find_searched") {
         override val properties get() = mapOf("found" to JsonPrimitive(found))
     }
+    /** A message dragged sideways far enough to start a reply (iOS `replySwiped`). */
+    data object ReplySwiped : AnalyticsEvent("reply_swiped")
     /** One computer reached a milestone after a cold open or return from the background (iOS `openTiming`);
      * the computer's analytics key, never its id. [chats]/[messages]: `catch_up`'s counts only. */
     data class OpenTiming(val phase: OpenPhase, val open: OpenKind, val ms: Long, val computerId: String, val computers: Int,
@@ -317,7 +319,7 @@ internal enum class PhoneSetting(override val wire: String) : CatalogValue { Pus
 /** What an outbound link leads to (`install_command`: an install command copied; `install_link`: the website link copied). */
 internal enum class OutboundLink(override val wire: String) : CatalogValue {
     Github("github"), Issues("issues"), AppStore("app_store"), Demo("demo"), Tailscale("tailscale"), Privacy("privacy"), InstallCommand("install_command"),
-    InstallLink("install_link"),
+    InstallLink("install_link"), WhatsNewFilm("whats_new_film"),
 }
 
 internal enum class DevServerUse(override val wire: String) : CatalogValue { Open("open"), Copy("copy") }
@@ -354,7 +356,7 @@ internal enum class AnalyticsScreen(override val wire: String) : CatalogValue {
     Bots("bots"), State("state"), Chat("chat"), Trace("trace"), BotDetails("bot_details"), Memory("memory"),
     Routines("routines"), Marketplace("marketplace"), Settings("settings"), Computers("computers"), Usage("usage"),
     Account("account"), Pairing("pairing"), VoiceSettings("voice_settings"), RemoteScreen("remote_screen"),
-    Library("library"), Artifact("artifact"), Network("network"), BotComputer("bot_computer"), Task("task"),
+    Library("library"), Artifact("artifact"), Network("network"), BotComputer("bot_computer"), Task("task"), AllWork("all_work"),
 }
 
 /** `open_timing`'s milestones, as sent (iOS `OpenPhase`). */

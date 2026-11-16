@@ -24,10 +24,10 @@ mod roster;
 mod section_order;
 mod slash;
 mod steps;
-mod tasks;
 mod ui;
 mod usage_chooser;
 mod whats_new;
+mod work;
 
 pub use approvals::parse_modes;
 pub use bot::{AgentModel, Bot, ModelOption, OwnMemory};
@@ -39,13 +39,13 @@ pub use model::{After, Entry, Kind, Mark, Msg, Status};
 pub use roster::{RosterLine, cursor_line, rename_fold, roster_lines, stops};
 pub use slash::SlashAction;
 pub(super) use steps::{running_turn, working_steps};
-pub use tasks::{Background, Task, TaskStatus};
 pub use ui::{
     ACTIONS, Action, COLORS, Click, Confirm, ConfirmAct, Dir, FIELDS, FILTERS, Field, Focus, FolderMode, FolderPicker,
     Form, Goto, GotoItem, GroupField, GroupForm, Hits, NewBot, NewBotField, Overlay, PairCode, SHAPES, Toast, Toggle,
     TraceMode, Width,
 };
 pub use whats_new::WhatsNew;
+pub use work::{Background, MAX_AGENTS, Sections, Source, WorkItem, WorkStatus, can_cut_in, counts, places, word};
 
 use crate::tui::l10n::tr;
 use serde_json::{Value, json};
@@ -265,7 +265,7 @@ impl App {
     pub fn counts(&self) -> [usize; 4] {
         let mut c = [0; 4];
         for b in self.bots.values().filter(|b| !b.hidden) {
-            match b.mark() {
+            match b.roster_mark() {
                 Mark::Need => c[0] += 1,
                 Mark::Work => c[1] += 1,
                 Mark::Unread => c[2] += 1,
@@ -349,11 +349,11 @@ impl App {
             || self.hint.is_some()
             || !self.online
             || !self.answering.is_empty()
-            // A task's time runs while its bot's chat is idle.
-            || self.bots.values().any(|b| b.status == Status::Working || !b.tasks.is_empty())
+            // A working item's time runs while its bot's chat is idle.
+            || self.bots.values().any(|b| b.status == Status::Working || b.work.iter().any(|i| i.status.live()))
     }
 
-    fn select(&mut self, id: &str) {
+    pub(in crate::tui) fn select(&mut self, id: &str) {
         if self.selected.as_deref() != Some(id) {
             self.close_find();
             self.selected = Some(id.to_owned());
@@ -371,7 +371,7 @@ impl App {
         let ids: Vec<(String, bool)> = self
             .roster()
             .iter()
-            .map(|b| (b.id.clone(), b.mark() == want && (want != Mark::Need || b.away().is_none())))
+            .map(|b| (b.id.clone(), b.roster_mark() == want && (want != Mark::Need || b.away().is_none())))
             .collect();
         let start = self.selected.as_ref().and_then(|s| ids.iter().position(|(x, _)| x == s)).map_or(0, |i| i + 1);
         let found = (0..ids.len()).map(|k| &ids[(start + k) % ids.len()]).find(|(_, hit)| *hit).cloned();

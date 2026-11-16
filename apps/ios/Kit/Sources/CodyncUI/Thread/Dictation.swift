@@ -61,11 +61,11 @@ struct DictationService {
 }
 
 /// Dictation into the message box. With on-device speech the words appear as they're recognized,
-/// after what was already typed, and the recording pill's stop, or the recognizer finishing on a
-/// pause, stops it; it uses the call's language setting. With an engine picked beside the mic, it
-/// records, and the pill's stop has the computer transcribe all of it, on the user's key for a
-/// provider or on the speech server linked on the computer; the transcript goes
-/// after what's in the box by then.
+/// after what was already typed (words after a pause go after the ones before), and the recording
+/// pill's stop, or the recognizer finishing, stops it; it uses the call's language setting. With an
+/// engine picked beside the mic, it records, and the pill's stop has the computer transcribe all of
+/// it, on the user's key for a provider or on the speech server linked on the computer; the
+/// transcript goes after what's in the box by then.
 @MainActor @Observable
 final class Dictation {
     private(set) var listening = false {
@@ -91,6 +91,8 @@ final class Dictation {
     @ObservationIgnored private var edit: (((String) -> String) -> Void)?
     /// The box when dictation started.
     @ObservationIgnored private var before = ""
+    /// What the on-device recognizer heard since then.
+    @ObservationIgnored private var segments = SpeechSegments()
     /// A recording's transcription; `stop()` cancels it so no more pieces go out to the computer.
     @ObservationIgnored private var transcription: Task<Void, Never>?
     /// Bumped per start and stop, so a start still waiting (key check, permission) or a late
@@ -110,13 +112,6 @@ final class Dictation {
     /// Transcription requests in flight at once, under the channel's and the providers' limits.
     private static let inFlight = 3
 
-    /// `said` after what's already in the box, with one space between.
-    static func join(_ before: String, _ said: String) -> String {
-        if before.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return said }
-        if said.isEmpty { return before }
-        return before.last?.isWhitespace == true ? before + said : before + " " + said
-    }
-
     /// Starts with the engine picked beside the mic, after `draft`; a picked engine goes through
     /// `model`'s computer. A `stop()` (another chat, a call, a send) or another tap while it waits wins.
     func start(after draft: String, model: BotStore, edit: @escaping ((String) -> String) -> Void) async {
@@ -125,6 +120,7 @@ final class Dictation {
         needsKey = false
         generation += 1
         before = draft
+        segments = SpeechSegments()
         if let engine = service.picked() {
             await record(engine, model: model, generation: generation, edit: edit)
         } else {
@@ -148,7 +144,7 @@ final class Dictation {
                 // pill's narrower box and keeps that height.
                 withAnimation(Motion.morph) { transcribing = false } completion: { [weak self] in
                     guard generation == self?.generation else { return }
-                    edit? { Self.join($0, said) }
+                    edit? { SpeechSegments.join($0, said) }
                 }
             } catch {
                 guard generation == self.generation else { return }
@@ -304,13 +300,13 @@ final class Dictation {
             for try await done in group { keep(done) }
             return texts
         }
-        return VoiceSettings.inReadersScript(texts.filter { !$0.isEmpty }.reduce("", join))
+        return VoiceSettings.inReadersScript(texts.filter { !$0.isEmpty }.reduce("", SpeechSegments.join))
     }
 
-    private func recognized(_ text: String, final: Bool, generation: Int) {
+    private func recognized(_ text: String, final: Bool, ends: Bool, generation: Int) {
         guard generation == self.generation else { return }
-        let before = before
-        edit? { _ in Self.join(before, text) }
+        let said = SpeechSegments.join(before, segments.heard(text, ends: ends))
+        edit? { _ in said }
         if final { stop() }
     }
 
@@ -318,11 +314,12 @@ final class Dictation {
         { result, error in
             let text = result?.bestTranscription.formattedString
             let final = result?.isFinal ?? false
+            let ends = result?.endsSegment ?? false
             // Silence just ends it; any other failure says why instead of ending without a word.
             let failure = error.flatMap { OnDeviceSpeech.isSilence($0) ? nil : OnDeviceSpeech.unheard }
             let failed = error != nil
             Task { @MainActor in
-                if let text { dictation.recognized(text, final: final, generation: generation) }
+                if let text { dictation.recognized(text, final: final, ends: ends, generation: generation) }
                 guard failed, generation == dictation.generation else { return }
                 dictation.failure = failure
                 dictation.stop()

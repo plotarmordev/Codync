@@ -10,7 +10,10 @@ use super::buffer::{centered, frame_box, put, u};
 use super::overlay::field_line;
 use super::style::theme;
 
-const HELP: [(&str, &str, &str); 79] = [
+/// The key of the page of every bot's work: listed only while some bot has a live or waiting item.
+const WORK_KEY: &str = "E";
+
+const HELP: [(&str, &str, &str); 82] = [
     ("MOVE", "j k  ↑ ↓", "next / previous bot"),
     ("MOVE", "[ ]", "previous / next bot"),
     ("MOVE", "1…9", "jump to bot 1–9"),
@@ -29,8 +32,8 @@ const HELP: [(&str, &str, &str); 79] = [
     ("CHAT", "s", "stop the bot"),
     ("CHAT", "S", "send the next queued message now"),
     ("CHAT", "D", "take back the last queued message"),
-    ("CHAT", "B", "show what the bot does in the background"),
-    ("CHAT", "X", "stop the background work"),
+    ("CHAT", "B", "details: what the bot does in the background"),
+    ("CHAT", "X", "stop the one item in the background"),
     ("CHAT", ">", "show / hide the working turn's steps (thinking details on)"),
     ("CHAT", "o", "last turn's steps"),
     ("CHAT", "c", "copy the last reply"),
@@ -67,10 +70,13 @@ const HELP: [(&str, &str, &str); 79] = [
     ("BOTS", "J K", "move bot down / up"),
     ("BOTS", "w", "move to section"),
     ("BOTS", "W", "rename / remove section"),
+    ("BOTS", WORK_KEY, "work: every bot's items"),
     ("BOTS", "z", "fold / unfold section"),
     ("BOTS", "M", "memory"),
-    ("BOTS", "R", "details: agent, routines"),
-    ("BOTS", "B", "details: switch back to the bot's own agent"),
+    ("BOTS", "R", "details: threads, event box, routines, recent"),
+    ("BOTS", "↵ X", "details, on an item: its transcript / stop"),
+    ("BOTS", "F C D A", "details, on an item: first / cut in / drop / try again"),
+    ("BOTS", "b", "settings, on Agent: switch back to the bot's own agent"),
     ("BOTS", "O", "computer: where it runs, use the computer"),
     ("BOTS", "L", "library: artifacts and files; open, save, rename"),
     ("BOTS", "⇧← ⇧→", "between details, computer, library, memory and settings"),
@@ -92,7 +98,8 @@ const HELP: [(&str, &str, &str); 79] = [
     ("MOUSE", "wheel", "scroll under pointer"),
 ];
 
-pub(super) fn help(buf: &mut Buffer, area: Rect, filter: &Editor) {
+/// The keys; `work`: some bot has a live or waiting item, so `E` has a page to open.
+pub(super) fn help(buf: &mut Buffer, area: Rect, filter: &Editor, work: bool) {
     let t = theme();
     // Two columns fit everything from 42 rows up; shorter windows get a third.
     let r = centered(area, if area.height >= 42 { 80 } else { 120 }, 40);
@@ -101,6 +108,7 @@ pub(super) fn help(buf: &mut Buffer, area: Rect, filter: &Editor) {
     let q = filter.text.to_lowercase();
     let items: Vec<&(&str, &str, &str)> = HELP
         .iter()
+        .filter(|(_, k, _)| work || *k != WORK_KEY)
         .filter(|(_, k, d)| q.is_empty() || d.to_lowercase().contains(&q) || k.to_lowercase().contains(&q))
         .collect();
     // As many 38-wide columns as fit; what doesn't fit is counted in the footer.

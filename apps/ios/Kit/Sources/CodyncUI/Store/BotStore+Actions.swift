@@ -390,14 +390,65 @@ extension BotStore {
         try await ready().callEntries(botId: botId, call: call)
     }
 
-    /// A background task and its transcript, for its details. Never `upsert`ed: a task's entries stay out of chats.
-    public func fetchTask(_ botId: String, task: String) async throws -> (task: BotTask, entries: [Entry]) {
+    /// A task's transcript, for its item's details. Never `upsert`ed: a task's entries stay out of chats.
+    public func fetchTaskEntries(_ botId: String, task: String) async throws -> [Entry] {
         try await withLink(replay: true) { try await $0.taskEntries(botId: botId, taskId: task) }
     }
 
-    /// Stops one background task of the bot's, or all of them (nil).
-    public func stopTask(_ botId: String, task: String?) {
-        perform(replay: true) { try await $0.stopTask(botId: botId, taskId: task) }
+    /// Has the bot's conversation open its details once it is on screen.
+    public func requestDetails(of botId: String) { detailsRequest = botId }
+
+    /// Consumed once, including when the conversation was already on screen.
+    func takeDetailsRequest(for botId: String) -> Bool {
+        guard detailsRequest == botId else { return false }
+        detailsRequest = nil
+        return true
+    }
+
+    /// Has the bot's conversation show the card `item` waits on once it is on screen.
+    public func requestCard(of botId: String, item: WorkItem) { cardRequest = (botId, item) }
+
+    /// Consumed once, including when the conversation was already on screen.
+    func takeCardRequest(for botId: String) -> WorkItem? {
+        guard let request = cardRequest, request.botId == botId else { return nil }
+        cardRequest = nil
+        return request.item
+    }
+
+    /// The card in the bot's chat that `item` waits on, read from the computer when this device doesn't hold it
+    /// yet: up to five pages of earlier messages. Nil when it isn't there.
+    public func card(for item: WorkItem, in botId: String) async -> Entry? {
+        for _ in 0..<5 {
+            if let card = chat(botId).card(for: item) { return card }
+            guard canLoadOlder(botId) else { return nil }
+            await loadOlder(botId)
+        }
+        return chat(botId).card(for: item)
+    }
+
+    /// Stops one working item of the bot's, or all of them (nil).
+    public func stopWork(_ botId: String, item: String?) {
+        perform(replay: true) { try await $0.stopWork(botId: botId, itemId: item) }
+    }
+
+    /// A waiting item moves to the front of the box.
+    public func workFirst(_ botId: String, item: String) {
+        perform(replay: true) { try await $0.work("workFirst", botId: botId, itemId: item) }
+    }
+
+    /// A waiting item, or one that ended, leaves the box.
+    public func dropWork(_ botId: String, item: String) {
+        perform(replay: true) { try await $0.work("dropWork", botId: botId, itemId: item) }
+    }
+
+    /// A stopped or failed item waits again, last.
+    public func retryWork(_ botId: String, item: String) {
+        perform { try await $0.work("retryWork", botId: botId, itemId: item) }
+    }
+
+    /// Starts a waiting item now in the place of the working item `insteadOf`.
+    public func workCutIn(_ botId: String, item: String, insteadOf: String) {
+        perform { try await $0.workCutIn(botId: botId, itemId: item, insteadOf: insteadOf) }
     }
 
     /// The bot-to-bot notices between a chat and a peer. Never `upsert`ed: old notices in the

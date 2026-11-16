@@ -65,6 +65,8 @@ first, each with its own windows. An agent on one login looks as it always did.
 
 The readers checked only against source fail closed: anything unexpected is no reading, never a wrong number. Check one against a real login when a computer has it.
 
+oh-my-pi's logins can belong to another account on the computer than the host's, which leaves the host's own `omp usage --json` with no reports. That account then saves the report to a file (`omp usage --json --redact > file`, refreshed as often as it likes) and the host's `CODYNC_OMP_USAGE_FILE` names it: the reader reads the file instead of running `omp`, every poll.
+
 ### An agent's own slash command
 
 `usage/acp_read.rs` runs an ACP slash command that the adapter answers itself. Antigravity's `/usage` is one: its ACP server handles it with no LLM and asks Google with its own login, so the host never touches that login.

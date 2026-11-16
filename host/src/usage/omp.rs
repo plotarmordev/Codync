@@ -3,7 +3,8 @@
 //! labeled with the upstream, so a second login isn't written over the CLI's.
 //!
 //! A host whose own `omp` has no logins (they belong to another account on the computer) reads the
-//! report that account saves instead: `omp usage --json` written to the file `CODYNC_OMP_USAGE_FILE` names.
+//! file `CODYNC_OMP_USAGE_FILE` names instead, which that account keeps current: either `omp usage --json`
+//! as is, or a weekly summary of it, `{"providers": {"<upstream>": {"week_pct": [<% used per account>]}}}`.
 
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -39,8 +40,33 @@ async fn read_saved(path: &Path) -> Option<Vec<Window>> {
             return None;
         }
     };
-    let windows = parse(&text);
+    let mut windows = parse(&text);
+    if windows.is_empty() {
+        windows = serde_json::from_str(&text).map(|summary| weekly_summary(&summary)).unwrap_or_default();
+    }
     (!windows.is_empty()).then_some(windows)
+}
+
+/// One weekly window per account of each upstream in a summary of `omp usage`.
+fn weekly_summary(summary: &Value) -> Vec<Window> {
+    let Some(providers) = summary["providers"].as_object() else { return Vec::new() };
+    let mut windows = Vec::new();
+    for (provider, reading) in providers {
+        let Some(accounts) = reading["week_pct"].as_array() else { continue };
+        let name = provider_name(provider);
+        for (n, percent) in accounts.iter().enumerate() {
+            let Some(percent) = percent.as_f64() else { continue };
+            let label =
+                if accounts.len() > 1 { format!("{name} Weekly (#{})", n + 1) } else { format!("{name} Weekly") };
+            windows.push(Window::new(
+                format!("{provider}:account-{}:7d:0", n + 1),
+                label,
+                percent.clamp(0.0, 100.0),
+                None,
+            ));
+        }
+    }
+    windows
 }
 
 fn parse(text: &str) -> Vec<Window> {
@@ -243,6 +269,36 @@ mod tests {
         std::fs::write(&file, r#"{"generatedAt":2,"reports":[]}"#).unwrap();
         assert!(read_saved(&file).await.is_none(), "a report without limits is no reading");
         assert!(read_saved(&dir.join("missing.json")).await.is_none(), "nor is a missing file");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_saved_weekly_summary_gives_each_account_its_week() {
+        let dir = std::env::temp_dir().join(format!("codync-omp-summary-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("summary.json");
+        std::fs::write(
+            &file,
+            r#"{"week_pct": 100, "as_of": "2026-11-16T00:50:21+00:00", "providers": {
+               "claude": {"week_pct": [88, 100], "fable_week_pct": [82, 100]},
+               "kimi": {"week_pct": [37.5]}, "zai": {"week_pct": [99.8]}, "codex": {"week_pct": []}}}"#,
+        )
+        .unwrap();
+        let windows = read_saved(&file).await.expect("a reading");
+        let read: Vec<_> = windows.iter().map(|w| (w.id.as_str(), w.label.as_str(), w.percent)).collect();
+        assert_eq!(
+            read,
+            [
+                ("claude:account-1:7d:0", "Claude Weekly (#1)", 88.0),
+                ("claude:account-2:7d:0", "Claude Weekly (#2)", 100.0),
+                ("kimi:account-1:7d:0", "Kimi Weekly", 37.5),
+                ("zai:account-1:7d:0", "Z.ai Weekly", 99.8),
+            ],
+            "an upstream with no accounts gives no window"
+        );
+
+        std::fs::write(&file, r#"{"providers": {}}"#).unwrap();
+        assert!(read_saved(&file).await.is_none(), "a summary without accounts is no reading");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

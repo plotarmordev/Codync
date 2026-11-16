@@ -490,3 +490,138 @@ async fn drop_replay(conn: &mut Conn) {
         }
     }
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use crate::agent::bot::Cmd;
+    use crate::api::devices::Caller;
+    use crate::hub::{BotStatus, Hub};
+    use crate::store::{BotConfig, Store};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    async fn until(what: &str, hub: &Hub, mut condition: impl FnMut() -> bool) {
+        let run = tokio::time::timeout(Duration::from_secs(60), async {
+            while !condition() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        });
+        if run.await.is_err() {
+            let state = hub.runtime("bot");
+            panic!(
+                "timed out waiting for {what}: status={:?} activity={:?} history={:?}",
+                state.status,
+                state.activity,
+                hub.store
+                    .history("bot", i64::MAX, 10)
+                    .expect("test")
+                    .iter()
+                    .map(|e| e.data["text"].clone())
+                    .collect::<Vec<_>>(),
+            );
+        }
+    }
+
+    fn sessions(dir: &std::path::Path) -> Vec<Value> {
+        std::fs::read_to_string(dir.join("sessions.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("test"))
+            .collect()
+    }
+
+    struct HeldSession {
+        dir: PathBuf,
+        hub: Arc<Hub>,
+        /// The id of the session the leftover child holds.
+        sid: String,
+    }
+
+    /// A bot whose turn left a child behind that keeps its session busy: the turn was stopped and the child, in a
+    /// process session of its own, still holds the session's lock. Then the next message is sent.
+    async fn send_after_held_session() -> HeldSession {
+        let dir = std::env::temp_dir().join(format!("codync-session-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).expect("test");
+        let store = Store::open(&dir.join("test.db")).expect("test");
+        let agent = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/session_hold_agent.py");
+        let cfg: BotConfig = serde_json::from_value(json!({
+            "id": "bot", "name": "bot", "backend": "fixture", "cwd": &dir,
+            "command": crate::shell::python(&agent), "notify": false,
+        }))
+        .expect("test");
+        store.save_bot(&cfg).expect("test");
+        let identity = crate::remote::identity::Identity::load_or_create(&dir).expect("test");
+        let hub = Hub::new(store, "test-host".into(), identity, "test-token".into(), 0);
+        hub.start().expect("test");
+
+        crate::api::dispatch(&hub, &Caller::Local, "send", json!({"botId": "bot", "text": "HOLD"}))
+            .await
+            .expect("test");
+        until("the child to hold the session", &hub, || {
+            dir.join("locked").exists() && hub.runtime("bot").status == BotStatus::Working
+        })
+        .await;
+        hub.send_cmd("bot", Cmd::Stop).expect("test");
+        until("the turn to be stopped", &hub, || hub.runtime("bot").status == BotStatus::Idle).await;
+
+        crate::api::dispatch(&hub, &Caller::Local, "send", json!({"botId": "bot", "text": "hello again"}))
+            .await
+            .expect("test");
+        let sid = hub.store.bot("bot").expect("test").expect("test").session_id.expect("the turn opened a session");
+        HeldSession { dir, hub, sid }
+    }
+
+    fn session_loads(dir: &std::path::Path) -> Vec<Value> {
+        sessions(dir).into_iter().filter(|r| r["method"] == "session/load").collect()
+    }
+
+    /// The session is busy only for a while: the timed-out load is retried on a new agent, and the next message is
+    /// answered in the chat's own session.
+    #[tokio::test]
+    async fn a_stopped_turns_leftover_child_does_not_stop_the_next_answer() {
+        let HeldSession { dir, hub, sid } = send_after_held_session().await;
+        until("the fresh agent to retry the load", &hub, || session_loads(&dir).len() == 2).await;
+        let holder = std::fs::read_to_string(dir.join("locked")).expect("test");
+        let holders = session_holders(&sid).await.expect("test");
+        assert!(
+            holders.iter().any(|line| line.split_whitespace().nth(1) == Some(holder.as_str())),
+            "the process holding the session's lock is named: {holders:?}"
+        );
+        std::fs::write(dir.join("release"), "").expect("test");
+
+        let history = || hub.store.history("bot", i64::MAX, 50).expect("test");
+        until("an answer despite the busy session", &hub, || {
+            history().iter().any(|e| e.data["text"] == "answered") && hub.runtime("bot").status == BotStatus::Idle
+        })
+        .await;
+
+        let loads = session_loads(&dir);
+        assert_eq!(loads.len(), 2, "the timed-out session load was retried once");
+        assert_ne!(loads[0]["pid"], loads[1]["pid"], "the retry used a fresh agent");
+        assert_eq!(sessions(&dir).iter().filter(|r| r["method"] == "session/new").count(), 1);
+        assert_eq!(hub.store.bot("bot").expect("test").expect("test").session_id, Some(sid));
+        assert!(
+            !history().iter().any(|e| e.data["text"].as_str().is_some_and(|t| t.contains("Couldn't start"))),
+            "the message never failed to start"
+        );
+        hub.shutdown().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A session that stays busy fails the turn after the one retry, and the chat keeps its session for later.
+    #[tokio::test]
+    async fn a_session_that_stays_busy_fails_the_turn_after_one_retry() {
+        let HeldSession { dir, hub, sid } = send_after_held_session().await;
+        let history = || hub.store.history("bot", i64::MAX, 50).expect("test");
+        until("the turn to fail", &hub, || hub.runtime("bot").status == BotStatus::Error).await;
+        assert!(history().iter().any(|e| e.data["text"].as_str().is_some_and(|t| t.contains("Couldn't start"))));
+        std::fs::write(dir.join("release"), "").expect("test");
+
+        assert_eq!(session_loads(&dir).len(), 2, "the timed-out session load was retried once");
+        assert_eq!(sessions(&dir).iter().filter(|r| r["method"] == "session/new").count(), 1);
+        assert_eq!(hub.store.bot("bot").expect("test").expect("test").session_id, Some(sid));
+        hub.shutdown().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

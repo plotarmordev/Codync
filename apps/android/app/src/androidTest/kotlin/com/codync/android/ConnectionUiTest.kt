@@ -6,6 +6,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import com.codync.android.core.*
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -31,7 +32,7 @@ class ConnectionUiTest {
     @Test fun cachedBotsStayListedWhileOfflineAndAnEmptyRosterOffersTheFirstBot() = compose.withPreviewAccounts(computer) { accounts ->
         val state = mutableStateOf(fixture(LinkState.ComputerOffline(null)).copy(bots = listOf(Bot("bot", "Saved bot"))))
         var created = false
-        compose.setContent { Hosted { BotListView(app, listOf(state.value), accounts, {}, {}, { created = true }, {}, { _, _ -> }, {}, 0.dp) } }
+        compose.setContent { Hosted { BotListView(app, listOf(state.value), accounts, false, {}, {}, { created = true }, {}, { _, _ -> }, {}, 0.dp) } }
         compose.onNodeWithText("Saved bot").assertIsDisplayed()
         compose.onNodeWithText("1 offline").assertIsDisplayed()
         compose.onNodeWithText("No bots yet").assertDoesNotExist()
@@ -40,5 +41,24 @@ class ConnectionUiTest {
         compose.onNodeWithText("No bots yet").assertIsDisplayed()
         compose.onNodeWithText("Create your first bot").performClick()
         assertTrue(created)
+    }
+
+    @Test fun theNewestBotWithAMessageRecordsChatList() = compose.withPreviewAccounts(computer) { accounts ->
+        // The newest row overall has no message: `chat_list` belongs to the newest one that does (iOS `recordNewestShown`).
+        val state = fixture(LinkState.Ready(HostRoute.Direct)).copy(bots = listOf(
+            Bot("newer", "Newest quiet", lastAt = 2),
+            Bot("older", "Latest reply", lastMessage = "On it.", lastAt = 1)), opensSeen = 1, catchUpsCompleted = 1)
+        val events = mutableListOf<AnalyticsEvent.OpenTiming>()
+        val timing = OpenTiming { (it as? AnalyticsEvent.OpenTiming)?.let(events::add) }
+        val store = compose.computerStore(accounts)
+        compose.runOnUiThread {
+            store.openTiming = timing
+            timing.beginCold()
+            timing.record(OpenPhase.CatchUp, computer.id, chats = 1, messages = 1)
+        }
+        compose.setContent { Hosted { BotListView(app, listOf(state), accounts, false, {}, {}, {}, {}, { _, _ -> }, {}, 0.dp) } }
+        compose.onNodeWithText("Latest reply").assertIsDisplayed()
+        compose.waitForIdle()
+        assertEquals(1, events.count { it.phase == OpenPhase.ChatList })
     }
 }

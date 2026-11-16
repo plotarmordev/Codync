@@ -167,6 +167,14 @@ internal sealed class AnalyticsEvent(val name: String) {
     }
     /** A message dragged sideways far enough to start a reply (iOS `replySwiped`). */
     data object ReplySwiped : AnalyticsEvent("reply_swiped")
+    /** One computer reached a milestone after a cold open or return from the background (iOS `openTiming`);
+     * the computer's analytics key, never its id. [chats]/[messages]: `catch_up`'s counts only. */
+    data class OpenTiming(val phase: OpenPhase, val open: OpenKind, val ms: Long, val computerId: String, val computers: Int,
+        val chats: Int? = null, val messages: Int? = null) : AnalyticsEvent("open_timing") {
+        override val properties get() = mapOf("phase" to phase.json, "open" to open.json, "ms" to JsonPrimitive(ms),
+            "computer" to JsonPrimitive(Analytics.computerTag(computerId)), "computers" to JsonPrimitive(computers)) +
+            listOfNotNull(chats?.let { "chats" to JsonPrimitive(it) }, messages?.let { "messages" to JsonPrimitive(it) })
+    }
     /** One reader drag and its fling, including the settling tail; never row keys or content. */
     data class ScrollHitches(val list: ScrollList, val rows: Int, val frames: Int, val hitches: Int, val longestMs: Int,
         val hitchMsPerS: Int, val fps: Int, val stop: ScrollStop? = null, val jump: Int? = null) : AnalyticsEvent("scroll_hitches") {
@@ -361,3 +369,11 @@ internal enum class AnalyticsScreen(override val wire: String) : CatalogValue {
     Account("account"), Pairing("pairing"), VoiceSettings("voice_settings"), RemoteScreen("remote_screen"),
     Library("library"), Artifact("artifact"), Network("network"), BotComputer("bot_computer"), Task("task"), AllWork("all_work"),
 }
+
+/** `open_timing`'s milestones, as sent (iOS `OpenPhase`). */
+internal enum class OpenPhase(override val wire: String) : CatalogValue {
+    LinkReady("link_ready"), Hello("hello"), CatchUp("catch_up"), ChatList("chat_list"), OpenChat("open_chat"),
+}
+
+/** Which open an `open_timing` measures from (iOS `OpenKind`). */
+internal enum class OpenKind(override val wire: String) : CatalogValue { Cold("cold"), Foreground("foreground") }

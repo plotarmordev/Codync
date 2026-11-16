@@ -62,6 +62,12 @@ import Testing
     // Booleans and counts go out as JSON booleans and numbers, not strings.
     #expect(try json(.appOpened(notifications: .notAsked, widgets: 2)) == #"{"notifications":"not_asked","widgets":2}"#)
     #expect(try json(.appOpened()) == "{}")
+    #expect(try json(.openTiming(.catchUp, open: .foreground, ms: 1250,
+                                 computer: "AAECAwQFBgcICQoLDA0ODw", computers: 2, chats: 8, messages: 31))
+        == #"{"chats":8,"computer":"2d6878bee20aba04","computers":2,"messages":31,"ms":1250,"open":"foreground","phase":"catch_up"}"#)
+    #expect(try json(.openTiming(.linkReady, open: .cold, ms: 20,
+                                 computer: "AAECAwQFBgcICQoLDA0ODw", computers: 2))
+        == #"{"computer":"2d6878bee20aba04","computers":2,"ms":20,"open":"cold","phase":"link_ready"}"#)
     // A chat's scroll says where it stopped and how far it moved after; the bot list's doesn't.
     #expect(try json(.scrollHitches(.init(list: .chat, rows: 320, frames: 240, hitches: 3, longestMs: 58,
                                           hitchMsPerSecond: 21, fps: 120, stop: .end, jump: 14)))

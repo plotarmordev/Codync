@@ -36,6 +36,7 @@ public struct ThreadView: View {
     /// The card last brought into view from the bot's details.
     @State var cardReveal: ConversationReveal?
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.launchCovered) var launchCovered
 
     var bot: Bot? { model.bots[botId] }
     /// The bot's work in the background, shown in its own chat only.
@@ -452,6 +453,13 @@ extension ThreadView {
         ChatItem.build(model.chat(botId).hidingCalls().hidingQueue(working: busy))
     }
 
+    /// `open_chat` once this open's catch-up is in and the newest row shows, never under the launch splash.
+    private func recordNewestShown(_ item: ChatItem, in items: [ChatItem]) {
+        guard !launchCovered, item.id == items.last?.id,
+              model.openTiming.hasRecorded(.catchUp, computer: model.computer.id) else { return }
+        model.openTiming.record(.openChat, computer: model.computer.id)
+    }
+
     /// `shown`: the find's current match, whose message is highlighted and brought into view.
     func transcript(_ items: [ChatItem], shown: ConversationFind.Match?) -> some View {
         var rows: [ConversationRow] = []
@@ -475,6 +483,10 @@ extension ThreadView {
                 row(item)
                     .background(shown?.id == item.id ? Palette.attention.opacity(0.18) : .clear)
                     .accessibilityAddTraits(shown?.id == item.id ? .isSelected : [])
+                    .onAppear { recordNewestShown(item, in: items) }
+                    .onChange(of: model.catchUpsCompleted) { _, _ in recordNewestShown(item, in: items) }
+                    .onChange(of: model.openTiming.opens) { _, _ in recordNewestShown(item, in: items) }
+                    .onChange(of: launchCovered) { _, _ in recordNewestShown(item, in: items) }
             }
         }
         // Offline, "working" is only what the computer last said; don't show it as live.
@@ -549,4 +561,9 @@ extension ThreadView {
         }
         .symbolEffect(.pulse, options: .repeating, isActive: operating)
     }
+}
+
+public extension EnvironmentValues {
+    /// The launch splash still covers the app: nothing under it counts as shown yet.
+    @Entry var launchCovered = false
 }

@@ -42,12 +42,13 @@ extension BotStore {
         }
     }
 
+    /// A live call kept the link through the background: it is already current, so this open caught up nothing.
     private func recordReadyOpen() {
         guard hostRoute != nil else { return }
         openTiming.record(.linkReady, computer: computer.id)
         if hello != nil { openTiming.record(.hello, computer: computer.id) }
         if caughtUpSubscription == eventSubscription && eventSubscription > 0 {
-            openTiming.record(.catchUp, computer: computer.id, chats: roster.count, messages: 0)
+            openTiming.record(.catchUp, computer: computer.id, chats: 0, messages: 0)
         }
     }
 

@@ -73,7 +73,7 @@ struct CodyncApp: App {
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     switch phase {
                     case .active:
-                        OpenTiming.shared.becameActive(computers: app.accounts.computers.count)
+                        OpenTiming.shared.becameActive()
                         Analytics.shared.becameActive()
                     case .background:
                         OpenTiming.shared.enteredBackground()
@@ -167,7 +167,6 @@ final class AppStore {
         SharedStore.Context.splitPushSwitch(from: .standard,
                                             into: Set([nil, storage.accountID] + session.accounts.map(\.id)).map { SharedStore.Context(accountID: $0) })
         (accounts, cloud) = Self.makeAccounts(storage, session: session)
-        OpenTiming.shared.setComputerCount(accounts.computers.count)
         launching = !accounts.computers.isEmpty && (accounts.accountId != nil || !session.isConfigured)
         if rescan { accounts.lastError = Self.scanAgain }
     }

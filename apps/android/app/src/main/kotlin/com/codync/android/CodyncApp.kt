@@ -143,7 +143,7 @@ private data class Editing<T>(val computerId: String, val draft: T)
                         edit = edit, extensions = openMarketplace, tab = tab, onTab = { tab = it }, covered = showAccount || showComputers || showPairing || showUsage ||
                             marketplace != null || creating != null || access != null || editor != null || groupEditor != null || app.error != null) { chat ->
                         // A conversation, talking to the computer the bot lives on.
-                        accounts.store(chat.computer.id)?.let { store -> ChatScreen(chat, store) { bot -> edit(chat.computer.id, bot) } }
+                        accounts.store(chat.computer.id)?.let { store -> ChatScreen(chat, store, editGroup = { bot -> edit(chat.computer.id, bot) }, launching = launching) }
                     }
                 }
             }

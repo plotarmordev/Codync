@@ -84,6 +84,10 @@ schemes:
         iOS: all
     run:
       config: DevDebug
+    test:
+      config: DevDebug
+      targets:
+        - iOSAppTests
     archive:
       config: DevRelease
   Screen:
@@ -145,6 +149,7 @@ targets:
           - Widgets
           - NotificationService
           - Share
+          - AppTests
           - WhatsNew.md
           # The app's shared Swift package (models, client, screens), added as a package below.
           - Kit
@@ -204,10 +209,6 @@ targets:
       - ios/AppTests
       - ios/Kit/Tests/CodyncUITests/StoreTestFixtures.swift
       - ios/Kit/Tests/CodyncUITests/StoreTestReadiness.swift
-      - path: ios/Kit/Tests/CodyncKitTests/Fixtures/vp8.webm
-        buildPhase: resources
-      - path: ios/Kit/Tests/CodyncKitTests/Fixtures/vp9.webm
-        buildPhase: resources
     dependencies:
       - target: iOS
     settings:

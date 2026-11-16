@@ -62,7 +62,6 @@ import Testing
     // Booleans and counts go out as JSON booleans and numbers, not strings.
     #expect(try json(.appOpened(notifications: .notAsked, widgets: 2)) == #"{"notifications":"not_asked","widgets":2}"#)
     #expect(try json(.appOpened()) == "{}")
-
     #expect(try json(.notificationsAnswered(granted: false, source: .widgets)) == #"{"granted":false,"source":"widgets"}"#)
     #expect(try json(.settingChanged(.liveActivities, on: true)) == #"{"on":true,"setting":"live_activities"}"#)
     // Multi-word values are snake_case, as in the catalog.

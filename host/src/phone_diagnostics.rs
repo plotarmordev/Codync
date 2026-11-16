@@ -100,9 +100,12 @@ mod tests {
     #[tokio::test]
     async fn open_timings_append_valid_jsonl_without_unknown_content() {
         let path = log();
-        record_at(&path, json!({"type": "open_timing", "platform": "ios", "phase": "link_ready", "open": "cold", "ms": 240}))
-            .await
-            .unwrap();
+        record_at(
+            &path,
+            json!({"type": "open_timing", "platform": "ios", "phase": "link_ready", "open": "cold", "ms": 240}),
+        )
+        .await
+        .unwrap();
         record_at(
             &path,
             json!({
@@ -131,9 +134,12 @@ mod tests {
     #[tokio::test]
     async fn optional_counts_are_omitted_not_null() {
         let path = log();
-        record_at(&path, json!({"type": "open_timing", "platform": "ios", "phase": "open_chat", "open": "cold", "ms": 90}))
-            .await
-            .unwrap();
+        record_at(
+            &path,
+            json!({"type": "open_timing", "platform": "ios", "phase": "open_chat", "open": "cold", "ms": 90}),
+        )
+        .await
+        .unwrap();
         let lines = lines(&path);
         assert!(lines[0].get("chats").is_none());
         assert!(lines[0].get("messages").is_none());

@@ -83,6 +83,7 @@ actor FakeRemote: RemoteTransport {
 
     var subscribed: Bool { !eventSinks.isEmpty }
     var eventSubscriptionCount: Int { eventSinks.count }
+    private(set) var eventSubscriptions = 0
 
     func set(_ new: LinkState) {
         state = new
@@ -147,6 +148,7 @@ actor FakeRemote: RemoteTransport {
 
     private func addEvents(_ c: AsyncThrowingStream<Data, Error>.Continuation) {
         eventSinks.append(c)
+        eventSubscriptions += 1
         record(.eventsSubscribed)
     }
     private func addState(_ c: AsyncStream<LinkState>.Continuation) {

@@ -87,7 +87,7 @@ extension BotStore {
         #endif
     }
 
-    func recordOpenTiming(_ phase: OpenPhase, chats: Int? = nil, messages: Int? = nil) {
+    public func recordOpenTiming(_ phase: OpenPhase, chats: Int? = nil, messages: Int? = nil) {
         guard let measurement = openTiming.record(phase, computer: computer.id, chats: chats, messages: messages) else { return }
         recordPerformance(measurement)
     }

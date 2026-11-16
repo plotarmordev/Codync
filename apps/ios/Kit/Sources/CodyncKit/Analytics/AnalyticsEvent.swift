@@ -233,7 +233,6 @@ public enum AnalyticsEvent: Equatable, Sendable {
     var name: String {
         switch self {
         case .appOpened: "app_opened"
-        case .openTiming: "open_timing"
         case .onboardingStepViewed: "onboarding_step_viewed"
         case .onboardingCompleted: "onboarding_completed"
         case .signInStarted: "sign_in_started"

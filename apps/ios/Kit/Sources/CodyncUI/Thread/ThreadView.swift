@@ -425,6 +425,11 @@ extension ThreadView {
         ChatItem.build(model.chat(botId).hidingCalls().hidingQueue(working: busy))
     }
 
+    private func recordNewestShown(_ item: ChatItem, in items: [ChatItem]) {
+        guard item.id == items.last?.id, model.openTiming.hasRecorded(.catchUp, computer: model.computer.id) else { return }
+        model.openTiming.record(.openChat, computer: model.computer.id)
+    }
+
     /// `shown`: the find's current match, whose message is highlighted and brought into view.
     func transcript(_ items: [ChatItem], shown: ConversationFind.Match?) -> some View {
         var rows: [ConversationRow] = []
@@ -448,16 +453,9 @@ extension ThreadView {
                 row(item)
                     .background(shown?.id == item.id ? Palette.attention.opacity(0.18) : .clear)
                     .accessibilityAddTraits(shown?.id == item.id ? .isSelected : [])
-                    .onAppear {
-                        if item.id == items.last?.id, model.caughtUp {
-                            model.openTiming.record(.openChat, computer: model.computer.id)
-                        }
-                    }
-                    .onChange(of: model.catchUpsCompleted) { _, _ in
-                        if item.id == items.last?.id, model.caughtUp {
-                            model.openTiming.record(.openChat, computer: model.computer.id)
-                        }
-                    }
+                    .onAppear { recordNewestShown(item, in: items) }
+                    .onChange(of: model.catchUpsCompleted) { _, _ in recordNewestShown(item, in: items) }
+                    .onChange(of: model.openTiming.opens) { _, _ in recordNewestShown(item, in: items) }
             }
         }
         // Offline, "working" is only what the computer last said; don't show it as live.

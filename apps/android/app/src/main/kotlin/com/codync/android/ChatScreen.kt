@@ -295,6 +295,7 @@ private fun AppState.chatItems(bot: Bot) =
     val entries = state.chatEntries(bot)
     val items = state.chatItems(bot)
     val working = bot.isWorking(bot.id) && state.connection is LinkState.Ready
+    val lastItem = items.lastOrNull()?.id
     // The ceiling counts rows the chat shows. Tool and thought rows stay in memory for Trace, but they do not fill it.
     val shown = entries.size
     val floor = state.entries.filter { it.botId == bot.id }.minOfOrNull { it.seq } ?: Long.MAX_VALUE
@@ -324,6 +325,14 @@ private fun AppState.chatItems(bot: Bot) =
         // Shown while earlier messages may still load, as on the iPhone.
         if (items.isEmpty()) item("intro") { IntroCard(bot, state) }
         items(items, key = { it.id }) { item ->
+            // `open_chat` when this open's newest row is on screen (iOS ThreadView's last row). A chat opened while
+            // its catch-up runs waits for that catch-up; scrolling away leaves this open without the milestone.
+            if (item.id == lastItem) {
+                LaunchedEffect(lastItem, state.opensSeen, state.catchUpsCompleted, bot.id) {
+                    if (store.openTiming.hasRecorded(OpenPhase.CatchUp, state.computer.id))
+                        store.openTiming.record(OpenPhase.OpenChat, state.computer.id)
+                }
+            }
             // The message holding find's shown match is highlighted.
             Box(Modifier.background(if (item.id == found) Palette.attention.copy(alpha = 0.18f) else Color.Transparent)) {
             when (item) {

@@ -102,6 +102,11 @@ actor FakeRemote: RemoteTransport {
         for s in eventSinks { s.yield(Data(json.utf8)) }
     }
 
+    func failEvents() {
+        for s in eventSinks { s.finish(throwing: HostError.unreachable) }
+        eventSinks = []
+    }
+
     func emit(_ event: MailboxEvent) {
         for s in mailboxSinks { s.yield(event) }
     }

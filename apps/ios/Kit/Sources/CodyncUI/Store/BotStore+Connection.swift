@@ -32,9 +32,22 @@ extension BotStore {
         isActive = active
         if active {
             // Returning to the foreground must not interrupt a live call's sends.
-            if !hasBackgroundWork || streamTask == nil { restartStream() }
+            if !hasBackgroundWork || streamTask == nil {
+                restartStream()
+            } else {
+                recordReadyOpen()
+            }
         } else {
             stopIfIdle()
+        }
+    }
+
+    private func recordReadyOpen() {
+        guard hostRoute != nil else { return }
+        openTiming.record(.linkReady, computer: computer.id)
+        if hello != nil { openTiming.record(.hello, computer: computer.id) }
+        if caughtUp {
+            openTiming.record(.catchUp, computer: computer.id, chats: roster.count, messages: 0)
         }
     }
 

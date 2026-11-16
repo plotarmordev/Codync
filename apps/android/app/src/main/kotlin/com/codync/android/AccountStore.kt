@@ -80,6 +80,8 @@ class AccountStore(application: Application) : AndroidViewModel(application) {
     fun store(id: String?): AppStore? = id?.let { wanted -> stores.value.firstOrNull { it.id == wanted } }
 
     internal suspend fun loadContext(userId: String?) {
+        // The first context load times this launch's cold open; a later account switch isn't one.
+        if (OpenTiming.shared.opens == 0) OpenTiming.shared.beginCold()
         try {
             WidgetRefreshWorker.stop(getApplication())
             local = LocalStore(getApplication(), userId ?: "local")
@@ -90,6 +92,7 @@ class AccountStore(application: Application) : AndroidViewModel(application) {
             widgetOwner = withContext(Dispatchers.IO) { WidgetStore.activate(getApplication(), local.contextId) }
             PushDelivery.activate(getApplication(), userId)
             val computers = withContext(Dispatchers.IO) { local.computers() }
+            OpenTiming.shared.setComputerCount(computers.size)
             val complete = withContext(Dispatchers.IO) { local.setupComplete() }
             val last = withContext(Dispatchers.IO) { local.lastComputer() }
             val lead = withContext(Dispatchers.IO) { local.shortcutLead() }

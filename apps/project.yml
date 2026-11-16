@@ -182,6 +182,7 @@ targets:
     settings:
       base:
         PRODUCT_NAME: $(CODYNC_APP_NAME)
+        PRODUCT_MODULE_NAME: Codync
         PRODUCT_BUNDLE_IDENTIFIER: $(CODYNC_IOS_BUNDLE_ID)
         INFOPLIST_FILE: ios/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: YES
@@ -209,6 +210,8 @@ targets:
     platform: iOS
     sources:
       - ios/AppTests
+      - ios/Kit/Tests/CodyncUITests/StoreTestFixtures.swift
+      - ios/Kit/Tests/CodyncUITests/StoreTestReadiness.swift
       - path: ios/Kit/Tests/CodyncKitTests/Fixtures/vp8.webm
         buildPhase: resources
       - path: ios/Kit/Tests/CodyncKitTests/Fixtures/vp9.webm

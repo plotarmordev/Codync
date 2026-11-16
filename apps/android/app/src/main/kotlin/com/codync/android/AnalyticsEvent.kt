@@ -165,6 +165,14 @@ internal sealed class AnalyticsEvent(val name: String) {
     data class ConversationFindSearched(val found: Boolean) : AnalyticsEvent("conversation_find_searched") {
         override val properties get() = mapOf("found" to JsonPrimitive(found))
     }
+    /** One computer reached a milestone after a cold open or return from the background (iOS `openTiming`);
+     * the computer's analytics key, never its id. [chats]/[messages]: `catch_up`'s counts only. */
+    data class OpenTiming(val phase: OpenPhase, val open: OpenKind, val ms: Long, val computerId: String, val computers: Int,
+        val chats: Int? = null, val messages: Int? = null) : AnalyticsEvent("open_timing") {
+        override val properties get() = mapOf("phase" to phase.json, "open" to open.json, "ms" to JsonPrimitive(ms),
+            "computer" to JsonPrimitive(Analytics.computerTag(computerId)), "computers" to JsonPrimitive(computers)) +
+            listOfNotNull(chats?.let { "chats" to JsonPrimitive(it) }, messages?.let { "messages" to JsonPrimitive(it) })
+    }
 }
 
 /** One of a property's catalog values, as sent. */
@@ -348,3 +356,11 @@ internal enum class AnalyticsScreen(override val wire: String) : CatalogValue {
     Account("account"), Pairing("pairing"), VoiceSettings("voice_settings"), RemoteScreen("remote_screen"),
     Library("library"), Artifact("artifact"), Network("network"), BotComputer("bot_computer"), Task("task"),
 }
+
+/** `open_timing`'s milestones, as sent (iOS `OpenPhase`). */
+internal enum class OpenPhase(override val wire: String) : CatalogValue {
+    LinkReady("link_ready"), Hello("hello"), CatchUp("catch_up"), ChatList("chat_list"), OpenChat("open_chat"),
+}
+
+/** Which open an `open_timing` measures from (iOS `OpenKind`). */
+internal enum class OpenKind(override val wire: String) : CatalogValue { Cold("cold"), Foreground("foreground") }

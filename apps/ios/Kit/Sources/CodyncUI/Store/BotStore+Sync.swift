@@ -8,10 +8,10 @@ extension BotStore {
     /// Events (catch-up since `rev`, then live) for as long as the link stays ready.
     func runEvents(_ client: HostClient) async {
         var backoff: Double = 1
-        var messagesFetched = 0
-        var chatsCaughtUp: Set<String> = []
         while !Task.isCancelled {
             do {
+                var messagesFetched = 0
+                var chatsCaughtUp: Set<String> = []
                 try await refreshHello(client)
                 guard !Task.isCancelled, !retired else { return }
                 if mismatch != nil {
@@ -31,9 +31,10 @@ extension BotStore {
                     setConnection(.online)
                     backoff = 1
                     apply(event)
-                    if case let .entry(entry) = event {
-                        messagesFetched += 1
-                        chatsCaughtUp.insert(entry.botId)
+                    switch event {
+                    case .entry: messagesFetched += 1
+                    case let .bot(bot): chatsCaughtUp.insert(bot.id)
+                    default: break
                     }
                     // An event that restarted the stream leaves the refetch to the new one.
                     guard !Task.isCancelled else { return }

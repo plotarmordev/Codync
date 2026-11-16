@@ -56,6 +56,11 @@ class AnalyticsTest {
         // Google Search adds whether it was on and how many answers used it, never the query.
         assertEquals("""{"engine":"gemini","reconnects":0,"stuck":"none","failure":"none","ready_ms":900,"google_search":true,"searches":2}""",
             json(AnalyticsEvent.VoiceCallQuality(VoiceEngineKind.Gemini, CallQuality.Report(900, 0, VoiceStuck.None, null, 2))))
+        assertEquals("""{"phase":"catch_up","open":"foreground","ms":1250,"computer":"fbfcd4f4fe9f876c","computers":2,"chats":8,"messages":31}""",
+            json(AnalyticsEvent.OpenTiming(OpenPhase.CatchUp, OpenKind.Foreground, 1_250, "tZ1WMzsVltt-fj7mUDwZsg", 2, chats = 8, messages = 31)))
+        // Milestones without counts leave `chats`/`messages` out.
+        assertEquals("""{"phase":"link_ready","open":"cold","ms":20,"computer":"fbfcd4f4fe9f876c","computers":2}""",
+            json(AnalyticsEvent.OpenTiming(OpenPhase.LinkReady, OpenKind.Cold, 20, "tZ1WMzsVltt-fj7mUDwZsg", 2)))
     }
 
     @Test fun `pairing failures map to the catalog's reasons`() {

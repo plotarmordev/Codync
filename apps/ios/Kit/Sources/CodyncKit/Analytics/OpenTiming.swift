@@ -1,9 +1,12 @@
 import Foundation
+import Observation
 
 /// Milliseconds from each cold or foreground open to its connection and rendering milestones.
+@Observable
 @MainActor
 public final class OpenTiming {
     public static let shared = OpenTiming()
+    public private(set) var opens = 0
 
     private let now: () -> ContinuousClock.Instant
     private let capture: (AnalyticsEvent) -> Void
@@ -26,6 +29,7 @@ public final class OpenTiming {
 
     /// Starts before the saved computers open their streams during app initialization.
     public func beginCold() {
+        opens += 1
         openedAt = now()
         kind = .cold
         sent = []
@@ -38,6 +42,7 @@ public final class OpenTiming {
     public func becameActive(computers: Int) {
         self.computers = computers
         if backgrounded {
+            opens += 1
             openedAt = now()
             kind = .foreground
             sent = []
@@ -47,6 +52,10 @@ public final class OpenTiming {
 
     public func enteredBackground() {
         backgrounded = true
+    }
+
+    public func hasRecorded(_ phase: AnalyticsEvent.OpenPhase, computer: ComputerID) -> Bool {
+        sent.contains(Key(computer: computer, phase: phase))
     }
 
     public func record(_ phase: AnalyticsEvent.OpenPhase, computer: ComputerID,

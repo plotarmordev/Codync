@@ -37,7 +37,7 @@ host answers and sends it once the host is up.
 | Event | Sent by | When | Properties |
 |---|---|---|---|
 | `app_opened` | host `track` (desktop, TUI), iOS, Android | Desktop: each launch, once the host answers. TUI: each start. Phones: each return to the foreground. | desktop `at_login` (opened by the login item); phones `notifications` (`allowed`/`denied`/`not_asked`), `widgets` (count on the Home Screen) |
-| `open_timing` | iOS | One computer reaches a milestone after a cold open or return from the background: `link_ready`, `hello`, `catch_up`, then the newest message shown in `chat_list` or `open_chat`. Once per phase, computer and open. | `phase`, `open` (`cold`/`foreground`), `ms` (since the app opened), `computer` (hashed key), `computers` (count); `catch_up` also has `chats` and `messages` (counts caught up and fetched) |
+| `open_timing` | iOS, Android | One computer reaches a milestone after a cold open or return from the background: `link_ready`, `hello`, `catch_up`, then the newest message shown in `chat_list` or `open_chat`. Once per phase, computer and open. | `phase`, `open` (`cold`/`foreground`), `ms` (since the app opened), `computer` (hashed key), `computers` (count); `catch_up` also has `chats` and `messages` (counts caught up and fetched) |
 | `window_opened` | host `track` (desktop) | The chat window is shown after being hidden (tray, dock, shortcut, second launch). A long-running menu bar app opens it many times per launch. | — |
 | `window_recovery` | host `track` (desktop) | A window's page crashed (`RendererGone` in error tracking): it loaded again, or crashed too often and stays down | `outcome` (`reloaded`/`gave_up`) |
 | `host_started` | host | Each start of the host process | `first_run` (the first start of a new install; `open_store` marks a new host id with an empty `analytics_version`), `updated_from` (the previous version, when it changed), `service` (started by launchd, systemd or the Windows runner: `XPC_SERVICE_NAME`, `SYSTEMD_EXEC_PID`, `CODYNC_SERVICE`), `loopback` (listening on this computer only: `install --bind 127.0.0.1`) |
@@ -85,6 +85,18 @@ host answers and sends it once the host is up.
 | `notification_opened` | iOS, Android | A Codync notification was tapped | `kind` (`done`/`needs_input`/`failed`) |
 | `star_prompt_answered` | host `track` (desktop) | The GitHub star setup invitation or the fifth-prompt invitation was answered or closed | `ask` (`first`/`second`), `starred` |
 | `link_opened` | host `track` (desktop), iOS, Android | An outbound link was opened (`install_command`: an install command copied; `install_link`: the phone's website link copied; `whats_new_film`: a What's new highlight's full video) | `link` (`github`/`docs`/`issues`/`discord`/`app_store`/`demo`/`tailscale`/`privacy`/`support`/`install_command`/`install_link`/`product_hunt`/`whats_new_film`) |
+
+PostHog → SQL editor reads the timing distribution, in milliseconds, for the last seven days:
+
+```sql
+SELECT properties.open, properties.phase, count() AS samples,
+       round(avg(toFloat(properties.ms))) AS average_ms,
+       round(quantile(0.95)(toFloat(properties.ms))) AS p95_ms
+FROM events
+WHERE event = 'open_timing' AND timestamp > now() - INTERVAL 7 DAY
+GROUP BY properties.open, properties.phase
+ORDER BY properties.open, properties.phase
+```
 
 ## Using Codync
 

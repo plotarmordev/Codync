@@ -381,7 +381,7 @@ struct BotListView: View {
     }
 
     private func recordNewestShown(_ bot: Bot, store: BotStore) {
-        guard !app.launching, store.caughtUp, bot.lastMessage != nil,
+        guard !app.launching, store.openTiming.hasRecorded(.catchUp, computer: store.computer.id), bot.lastMessage != nil,
               store.roster.max(by: { $0.lastAt < $1.lastAt })?.id == bot.id else { return }
         store.openTiming.record(.chatList, computer: store.computer.id)
     }
@@ -401,6 +401,7 @@ struct BotListView: View {
         .buttonStyle(.plain)
         .onAppear { recordNewestShown(bot, store: store) }
         .onChange(of: store.catchUpsCompleted) { _, _ in recordNewestShown(bot, store: store) }
+        .onChange(of: store.openTiming.opens) { _, _ in recordNewestShown(bot, store: store) }
         .onChange(of: app.launching) { _, _ in recordNewestShown(bot, store: store) }
         // Lifted, it's a rounded card with room around the avatar.
         .padding(.horizontal, 8)

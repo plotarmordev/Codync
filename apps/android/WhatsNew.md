@@ -22,6 +22,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 重新連線只補上錯過的訊息。
 - 表格長文字會在格子內換行。
 - 滑動訊息即可回覆。
+- 「管理團隊」現在讓 Bot 也能刪除 Bot（不會刪除自己），刪除前一樣可以核准。
 
 ### en-US
 - Bots, routines and bot requests work in the background.
@@ -33,3 +34,4 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Settings says whether the folder is a git repository.
 - Background work can ask or send files.
 - Background work uses fallbacks too; sign-ins it needs show in the chat.
+- Manage the team now lets a bot delete bots too, never itself.

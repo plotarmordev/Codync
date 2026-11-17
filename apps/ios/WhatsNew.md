@@ -48,6 +48,7 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - 等待核准的卡片會一直算在 Bot 的未讀數字裡（顯示為琥珀色），打開聊天或「標示為已讀」都不會讓它消失，直到你回覆為止；收起的分組裡有 Bot 在等你時，分組的數字也會變成琥珀色。
 - 長按 Bot 選「新會話」，就能讓智慧體從新的上下文開始，聊天記錄會保留。
 - 背景工作也會用備援；需要登入時會在聊天裡請你登入。
+- 「管理團隊」現在讓 Bot 也能刪除 Bot（不會刪除自己），刪除前一樣可以核准。
 
 ### en-US
 - Bots do long work in the background, several things at once, and keep answering in the chat.
@@ -86,3 +87,4 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - A waiting approval card stays in the bot's badge, in amber, until you answer it.
 - Touch and hold a bot for New session: a fresh context for its agent; the chat stays.
 - Background work uses fallbacks too; sign-ins it needs show in the chat.
+- Manage the team now lets a bot delete bots too, never itself.

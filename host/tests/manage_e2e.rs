@@ -120,7 +120,7 @@ async fn a_lead_deletes_a_bot_mid_turn_but_never_itself() {
     assert!(host.snapshot().await["bots"].as_array().unwrap().iter().any(|b| b["id"] == lead), "the lead stays");
 
     let reply = manage(&host, &lead, "delete_bot", &json!({"botId": doomed}), "allow", |detail| {
-        assert_eq!(detail, "Name: Doomed");
+        assert_eq!(detail, format!("Name: Doomed\nId: {doomed}"));
     })
     .await;
     assert!(reply.starts_with("Done: "), "{reply}");

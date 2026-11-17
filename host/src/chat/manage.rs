@@ -355,7 +355,8 @@ fn describe(store: &crate::store::Store, fields: &Map<String, Value>, routines: 
     lines.join("\n")
 }
 
-/// What deleting `cfg` takes with it, for its approval card: the bot, and the routines that stop.
+/// What deleting `cfg` takes with it, for its approval card: the bot, by name and by id (two bots may share a name),
+/// and the routines that stop.
 fn describe_deletion(hub: &Hub, cfg: &BotConfig) -> String {
     let routines: Vec<String> = hub.routines.list(&cfg.id)["routines"]
         .as_array()
@@ -367,7 +368,7 @@ fn describe_deletion(hub: &Hub, cfg: &BotConfig) -> String {
             format!("{} ({})", r["name"].as_str().unwrap_or_default(), when.join("; "))
         })
         .collect();
-    let mut lines = vec![format!("Name: {}", cfg.name)];
+    let mut lines = vec![format!("Name: {}", cfg.name), format!("Id: {}", cfg.id)];
     if !routines.is_empty() {
         lines.push(format!("Routines:\n{}", routines.join("\n")));
     }

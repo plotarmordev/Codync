@@ -205,6 +205,30 @@ async fn the_bots_own_agent_without_its_mode_fails_the_turn() {
 }
 
 #[tokio::test]
+async fn a_command_right_after_going_back_leaves_the_catch_up_for_the_next_message() {
+    let host = Host::start().await;
+    let bot =
+        json!({"name": "Relay", "backend": "custom", "command": agent("primary"), "connectors": [], "notify": false});
+    let bot = host.call("createBot", bot).await["bot"]["id"].as_str().unwrap().to_owned();
+    let fallbacks = json!([{"backend": "codex", "command": agent("standin")}]);
+    host.call("updateBot", json!({"id": bot, "fallbacks": fallbacks})).await;
+    let folder = host.home.join("bots").join(&bot).join("workspace");
+    std::fs::write(folder.join("primary.commands"), "").unwrap();
+    std::fs::write(folder.join("primary.limit"), "").unwrap();
+    host.reply(&bot, "Fix the login tests").await;
+    wait_for(&host, &bot, "reply", |e| e["data"]["text"] == "standin answered").await;
+
+    std::fs::remove_file(folder.join("primary.limit")).unwrap();
+    host.call("switchBack", json!({"botId": bot})).await;
+    wait_for(&host, &bot, "back line", |e| e["data"]["text"] == "Back on Custom command.").await;
+    host.reply(&bot, "/review the login tests").await;
+    assert_eq!(last_prompt(&host, &bot, "primary"), "/review the login tests", "the command goes as typed");
+    host.reply(&bot, "Thanks").await;
+    let last = last_prompt(&host, &bot, "primary");
+    assert!(last.contains("<catch_up>") && last.contains("\"standin answered\""), "{last}");
+}
+
+#[tokio::test]
 async fn an_agent_back_in_a_new_session_hears_the_conversation_unless_the_user_started_over() {
     let host = Host::start().await;
     let bot =
@@ -463,6 +487,12 @@ async fn a_process_with_a_replaced_sign_in_starts_again_before_asking_to_sign_in
     }
     assert!(last_prompt(&host, &bot, "primary").contains("Fix the build"));
     assert_eq!(prompts(), 3, "the old process's try and the new one's");
+    let opened = |method: &str| host.log(&bot, "primary.jsonl").iter().filter(|r| r["method"] == method).count();
+    assert_eq!(
+        (opened("session/new"), opened("session/load")),
+        (1, 1),
+        "the new process goes on in the chat's session"
+    );
     let history = host.call("history", json!({"botId": bot})).await;
     assert!(!history["entries"].as_array().unwrap().iter().any(|e| e["data"]["connectionRequest"].is_object()));
 
@@ -472,6 +502,28 @@ async fn a_process_with_a_replaced_sign_in_starts_again_before_asking_to_sign_in
     let card = wait_for(&host, &bot, "sign-in card", |e| e["data"]["connectionRequest"]["kind"] == "agent").await;
     assert_eq!(card["data"]["connectionRequest"]["entryIds"].as_array().map(Vec::len), Some(1), "{card}");
     assert_eq!(prompts(), 5, "tried once more on a new process, then no more");
+}
+
+#[tokio::test]
+async fn a_new_process_that_cant_start_signed_out_keeps_the_chats_session() {
+    let host = Host::start().await;
+    let bot =
+        json!({"name": "Solo", "backend": "kimi", "command": agent("primary"), "connectors": [], "notify": false});
+    let bot = host.call("createBot", bot).await["bot"]["id"].as_str().unwrap().to_owned();
+    let folder = host.home.join("bots").join(&bot).join("workspace");
+    host.reply(&bot, "Hello").await;
+
+    // The running process holds a sign-in replaced since, and the new one quits as it starts: no process is left.
+    std::fs::write(folder.join("primary.revoked"), "").unwrap();
+    std::fs::write(folder.join("primary.nostart"), "").unwrap();
+    host.call("send", json!({"botId": bot, "text": "Fix the build", "clientNonce": "n1"})).await;
+    wait_for(&host, &bot, "sign-in card", |e| e["data"]["connectionRequest"]["kind"] == "agent").await;
+
+    // Signed in, the next process goes on in the chat's session.
+    std::fs::remove_file(folder.join("primary.nostart")).unwrap();
+    host.reply(&bot, "Again").await;
+    let opened = |method: &str| host.log(&bot, "primary.jsonl").iter().filter(|r| r["method"] == method).count();
+    assert_eq!((opened("session/new"), opened("session/load")), (1, 1));
 }
 
 /// #470: pi's model request fails (a 503 after a provider queue), and pi-acp ends the turn as `end_turn` with no

@@ -218,7 +218,9 @@ Claude Code's own memory; the rules live in the `codync-mem` crate, and `chat/me
   holds the session: the host logs which of the user's processes have it open (`lsof`, not on Windows), then a fresh
   agent tries the same session once more; a second timeout fails the turn (a bot with fallbacks moves on to its next
   agent) and the chat keeps its session. Connector or computer changes restart an agent that can resume sessions before
-  its next turn; one that can't keeps its session, and its next new session gets them.
+  its next turn; one that can't keeps its session, and its next new session gets them. An edit to a connector the bot
+  has on restarts that one too, once its turn ends, told the conversation so far
+  ([connector credentials](connector-credentials.md)).
 - *New session* (`newSession`) cancels the running turn as Stop does (a routine's run in the chat too; items that
   turn added to the event box are dropped) but keeps the queue: waiting messages and follow-ups run in the new
   session, waiting routines each in their own, and running tasks report into it. A handoff card still in draft is

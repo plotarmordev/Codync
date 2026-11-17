@@ -41,13 +41,14 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - Bot 設定的「技能」只列出名稱，點旁邊的資訊按鈕可以看完整說明。
 - 裝置上聽寫與語音通話不會再弄丟停頓前說的話。
 - Bot 改用備援時，「智慧體」卡片會說明原本的智慧體為什麼停下（已登出、被限速等），只有用量上限才顯示重設時間；這一行和備援底下的休息時間都會跟著 App 的語言。
-- 輸入 `/` 時，清單最後會列出 Bot 所用智慧體自己的指令（Claude Code、Codex、OpenCode 等），和 Codync 自己的指令、技能分開，標上智慧體的名稱、圖示和說明；選一個會填入 `/<指令>`，送出後由智慧體直接執行。
+- 輸入 `/` 時，清單最後會列出 Bot 所用智慧體自己的指令（Claude Code、Codex、OpenCode 等），和 Codync 自己的指令、技能分開，標上智慧體的名稱、圖示和說明；選一個就會填入那個指令，送出後由智慧體直接執行。
 - 電腦的「網路」頁會列出新的規則等級：「自動」只讓其他電腦的 Bot 做 agent 判斷為安全的事，其餘先問你；「詢問」讓每個變更和指令都等你批准。沒有符合任何規則的電腦預設為「自動」，原本就在網路裡的電腦維持「允許」。
 - 備援直接在「智慧體」卡片裡設定，和 Bot 自己的智慧體一樣：點一列就能換它的智慧體、模型或登入設定，順序不變；按「+」新增的備援會直接展開。
 - 聽寫中直接按「傳送」，會等說的話轉成文字，再和打好的字一起送出，不會再丟掉。
 - 等待核准的卡片會一直算在 Bot 的未讀數字裡（顯示為琥珀色），打開聊天或「標示為已讀」都不會讓它消失，直到你回覆為止；收起的分組裡有 Bot 在等你時，分組的數字也會變成琥珀色。
 - 長按 Bot 選「新會話」，就能讓智慧體從新的上下文開始，聊天記錄會保留。
 - 背景工作也會用備援；需要登入時會在聊天裡請你登入。
+- 轉寫中、資料夾、雲端電腦更新等幾段介面文字，現在會以你選的語言顯示。
 
 ### en-US
 - Bots do long work in the background, several things at once, and keep answering in the chat.
@@ -70,7 +71,7 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - Choice cards show numbered options; the last row, Something else, takes your own answer.
 - A bot that says it will check back later sets a follow-up ("Follow-up in 20 minutes") and tells you what it found when it's due. Waiting ones are above its routines.
 - A routine remembers where its last run stopped, so work done in parts carries on from there.
-- A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.
+- Long text in a table wraps inside its cells instead of being cut off.
 - Optional Google Search in Gemini realtime calls, off by default.
 - Voice chat settings show which Server the computer's OpenAI engine uses: OpenAI, or your own speech server (Mode then stays on Speech).
 - Swipe sideways on a message to reply.
@@ -86,3 +87,4 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - A waiting approval card stays in the bot's badge, in amber, until you answer it.
 - Touch and hold a bot for New session: a fresh context for its agent; the chat stays.
 - Background work uses fallbacks too; sign-ins it needs show in the chat.
+- More interface text shows in your language.

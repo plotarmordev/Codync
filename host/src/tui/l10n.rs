@@ -133,20 +133,6 @@ static IT: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
 
 static PREFERENCE: LazyLock<Mutex<AppLanguage>> = LazyLock::new(|| Mutex::new(read_preference()));
 
-#[cfg(test)]
-thread_local! {
-    /// A test's language, on its own thread so parallel render tests don't switch each other's.
-    static TEST_LANGUAGE: std::cell::Cell<Option<AppLanguage>> = const { std::cell::Cell::new(None) };
-}
-
-fn preference() -> AppLanguage {
-    #[cfg(test)]
-    if let Some(language) = TEST_LANGUAGE.get() {
-        return language;
-    }
-    *PREFERENCE.locked()
-}
-
 const FILE: &str = "tui-language";
 
 fn read_preference() -> AppLanguage {
@@ -193,7 +179,7 @@ fn resolved_language(preference: AppLanguage, locale: &str) -> AppLanguage {
 }
 
 fn active_phrases() -> Option<&'static HashMap<String, String>> {
-    match resolved_language(preference(), &system_locale().unwrap_or_default()) {
+    match resolved_language(*PREFERENCE.locked(), &system_locale().unwrap_or_default()) {
         AppLanguage::Zh => Some(&HANS),
         AppLanguage::ZhHant => Some(&HANT),
         AppLanguage::Ja => Some(&JA),
@@ -448,7 +434,10 @@ fn translate_with<'a>(text: &'a str, table: &HashMap<String, String>) -> Cow<'a,
 
 /// The choice shown beside the palette row.
 pub(in crate::tui) fn language_title() -> Cow<'static, str> {
-    match preference() {
+    // Copy the choice out first. A second lock of `PREFERENCE` while this one is held freezes
+    // the terminal, and the palette asks for this title on every row.
+    let preference = *PREFERENCE.locked();
+    match preference {
         AppLanguage::Zh => Cow::Borrowed("简体中文"),
         AppLanguage::ZhHant => Cow::Borrowed("繁體中文"),
         AppLanguage::En => Cow::Borrowed("English"),
@@ -478,13 +467,10 @@ pub(in crate::tui) fn cycle_language() -> Cow<'static, str> {
     language_title()
 }
 
-/// Renders `f` in the language `identifier` names, on this thread only.
+/// Sets the language for a test; returns the previous choice's identifier to put back.
 #[cfg(test)]
-pub(in crate::tui) fn with_language<T>(identifier: &str, f: impl FnOnce() -> T) -> T {
-    let previous = TEST_LANGUAGE.replace(Some(AppLanguage::parse(identifier)));
-    let result = f();
-    TEST_LANGUAGE.set(previous);
-    result
+pub(in crate::tui) fn set_language(identifier: &str) -> &'static str {
+    std::mem::replace(&mut *PREFERENCE.locked(), AppLanguage::parse(identifier)).stored()
 }
 
 #[cfg(test)]

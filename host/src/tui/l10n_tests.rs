@@ -1,4 +1,5 @@
-use super::{AppLanguage, HANS, fill, language_title, resolved_language, tr, translate, translate_with, with_language};
+use super::{AppLanguage, HANS, PREFERENCE, fill, language_title, resolved_language, tr, translate, translate_with};
+use crate::LockExt;
 
 #[test]
 fn what_fill_puts_in_stays_as_written() {
@@ -51,14 +52,18 @@ fn the_language_cycle_appends_portuguese_after_spanish() {
 
 #[test]
 fn portuguese_selection_shows_its_native_title_and_loads_its_catalog() {
-    let (title, uses_portuguese_catalog, settings, unknown) = with_language("pt-BR", || {
-        (
-            language_title(),
-            super::active_phrases().is_some_and(|table| std::ptr::eq(table, &raw const *super::PT_BR)),
-            tr("Settings"),
-            tr("Unknown phrase"),
-        )
-    });
+    let previous = {
+        let mut choice = PREFERENCE.locked();
+        let previous = *choice;
+        *choice = AppLanguage::parse("pt-BR");
+        previous
+    };
+    let title = language_title();
+    let uses_portuguese_catalog =
+        super::active_phrases().is_some_and(|table| std::ptr::eq(table, &raw const *super::PT_BR));
+    let settings = tr("Settings");
+    let unknown = tr("Unknown phrase");
+    *PREFERENCE.locked() = previous;
     assert_eq!(title, "Português (Brasil)");
     assert!(uses_portuguese_catalog);
     assert_ne!(settings, "Settings");

@@ -274,15 +274,9 @@ mod tests {
         section_row(&mut buf, row, None, &"n".repeat(40), 12, Some((7, badge_style(true))), true);
         let text = (0..row.width).map(|x| buf[(x, 0)].symbol()).collect::<String>();
         assert_eq!(text, " ▸ nnnnnnnnnn… (12)  7  ");
-        // It counts a card waiting on the user (#366): the needs-you style, amber where the theme has colour (a
-        // monochrome one, from `NO_COLOR`, has none to tell the two badges apart).
-        let waiting = badge_style(true);
-        let mut expected = Buffer::empty(Rect::new(0, 0, 1, 1));
-        put(&mut expected, 0, 0, 1, " ", waiting);
-        assert_eq!(buf[(row.width - 2, 0)], expected[(0, 0)]);
-        if theme().color {
-            assert_ne!(waiting, badge_style(false));
-        }
+        // It counts a card waiting on the user (#366): the needs-you colour, not the plain badge's.
+        assert_eq!(buf[(row.width - 2, 0)].fg, badge_style(true).fg.expect("amber"));
+        assert_ne!(badge_style(true), badge_style(false));
     }
 
     #[test]

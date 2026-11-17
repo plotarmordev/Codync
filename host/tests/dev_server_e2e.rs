@@ -66,10 +66,14 @@ async fn wait_for<F: Fn(&[Value]) -> bool>(host: &Host, bot: &str, what: &str, d
     }
 }
 
-/// Waits until the first server runs on `port`.
+/// Waits until the first server runs with `port` among its ports. Another process of its session can listen too (a
+/// session id reused under load), so the port is looked for wherever it comes in the list.
 async fn wait_running(host: &Host, bot: &str, port: u16) {
     wait_for(host, bot, "running with its port", |list| {
-        list.first().is_some_and(|s| s["status"] == "running" && s["ports"][0]["port"] == port)
+        list.first().is_some_and(|s| {
+            s["status"] == "running"
+                && s["ports"].as_array().is_some_and(|ports| ports.iter().any(|p| p["port"] == port))
+        })
     })
     .await;
 }

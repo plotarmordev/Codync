@@ -1628,6 +1628,7 @@
   "Deliveries wait up to 72 hours while this computer is off. They pass through the Codync cloud, which can read them.": "이 컴퓨터가 꺼져 있는 동안 전달은 최대 72시간 대기합니다. 전달 내용은 Codync 클라우드를 거치며, 클라우드에서 내용을 읽을 수 있습니다.",
   "Denied": "거부됨",
   "Dictate": "받아쓰기",
+  "Dictating with a provider needs the chat window.": "제공자를 사용한 받아쓰기에는 채팅 창이 필요합니다.",
   "Dictation engine": "받아쓰기 엔진",
   "Didn't complete.": "완료되지 않았습니다.",
   "Download": "다운로드",
@@ -2211,7 +2212,5 @@
   "{name} remembered it": "{name}이(가) 기억함",
   "Codync {version} is available": "Codync {version}을(를) 사용할 수 있습니다",
   "You have {version}.": "현재 버전은 {version}입니다.",
-  "Couldn't restore sign-in. Check your connection and retry.": "로그인을 복원하지 못했습니다. 연결을 확인하고 다시 시도하세요.",
-  "Dictating on a host needs the chat window.": "호스트에서 받아쓰기를 하려면 채팅 창이 필요합니다.",
-  "{error} Pick another engine beside the mic.": "{error} 마이크 옆에서 다른 엔진을 선택하세요."
+  "Couldn't restore sign-in. Check your connection and retry.": "로그인을 복원하지 못했습니다. 연결을 확인하고 다시 시도하세요."
 }

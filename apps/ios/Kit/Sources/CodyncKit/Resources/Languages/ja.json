@@ -1628,6 +1628,7 @@
   "Deliveries wait up to 72 hours while this computer is off. They pass through the Codync cloud, which can read them.": "このコンピューターがオフの間、配信は最大 72 時間待機します。配信は Codync のクラウドを経由し、クラウド側で内容を読み取れます。",
   "Denied": "拒否済み",
   "Dictate": "音声入力",
+  "Dictating with a provider needs the chat window.": "プロバイダーを使った音声入力には、チャットウィンドウが必要です。",
   "Dictation engine": "音声入力エンジン",
   "Didn't complete.": "完了しませんでした。",
   "Download": "ダウンロード",
@@ -2211,7 +2212,5 @@
   "{name} remembered it": "{name} が記憶しました",
   "Codync {version} is available": "Codync {version} が利用可能です",
   "You have {version}.": "現在のバージョンは {version} です。",
-  "Couldn't restore sign-in. Check your connection and retry.": "サインインを復元できませんでした。接続を確認して、もう一度お試しください。",
-  "Dictating on a host needs the chat window.": "ホストでの音声入力には、チャットウィンドウが必要です。",
-  "{error} Pick another engine beside the mic.": "{error} マイクの横で別のエンジンを選んでください。"
+  "Couldn't restore sign-in. Check your connection and retry.": "サインインを復元できませんでした。接続を確認して、もう一度お試しください。"
 }

@@ -6,7 +6,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::Span;
 
-use super::super::app::{App, Background, Bot, Entry, Source, WorkItem, WorkStatus, word};
+use super::super::app::{App, Background, Bot, Source, WorkItem, WorkStatus, word};
 use super::super::l10n::{fill, tr};
 use super::super::manage::{CutIn, DetailRow, giving_way};
 use super::super::md::{self, truncate, width as w};
@@ -70,11 +70,10 @@ pub(super) fn standing(item: &WorkItem) -> String {
     if time.is_empty() { status.into_owned() } else { format!("{status} · {time}") }
 }
 
-/// What the card of `item`, waiting in `bot`'s chat, asks: an approval's title, a choice's question, the agent a
-/// sign-in waits on.
+/// What the card of `item` waiting in `bot`'s chat (`App::card_of`) asks: an approval's title, a choice's question, the
+/// agent a sign-in waits on.
 fn asks(app: &App, bot: &str, item: &WorkItem) -> Option<String> {
-    let waits = |e: &&Entry| (e.pending() || e.waits_for_sign_in()) && e.data["item"] == item.id.as_str();
-    let card = app.entries.get(bot)?.values().rev().find(waits)?;
+    let card = app.card_of(bot, item)?;
     if let Some(agent) = card.data["connectionRequest"]["title"].as_str() {
         return Some(fill(&tr("Needs {agent} sign-in"), &[("agent", agent)]));
     }
@@ -246,7 +245,12 @@ mod tests {
                 {"id": "f", "title": "Broken", "status": "failed", "result": "it could not start: no agent\nmore"},
             ]),
         );
-        app.on_msg(Msg::Event(json!({"type": "entry", "entry": {"id": "card", "botId": "a", "seq": 1,
+        // A sign-in card that holds the item's message, older than the approval its running turn now waits on.
+        app.on_msg(Msg::Event(json!({"type": "entry", "entry": {"id": "sign-in", "botId": "a", "seq": 1,
+            "kind": "notice", "turn": 1, "data": {"text": "Needs you to sign in.", "item": "n",
+            "connectionRequest": {"kind": "agent", "status": "pending", "title": "Kimi Code", "botId": "a",
+            "entryIds": ["m1"]}}}})));
+        app.on_msg(Msg::Event(json!({"type": "entry", "entry": {"id": "card", "botId": "a", "seq": 2,
             "kind": "permission", "turn": 1, "data": {"status": "pending", "title": "Run tests", "options": [],
             "task": {"id": "task-n", "title": "Fix login"}, "item": "n"}}})));
         let work = app.bots["a"].work.clone();
@@ -288,7 +292,13 @@ mod tests {
         );
         app.on_msg(Msg::Event(json!({"type": "entry", "entry": {"id": "sign-in", "botId": "a", "seq": 2,
             "kind": "notice", "turn": 1, "data": {"text": "Needs you to sign in.", "item": "s",
-            "connectionRequest": {"kind": "agent", "status": "pending", "title": "Kimi Code", "botId": "a"}}}})));
+            "connectionRequest": {"kind": "agent", "status": "pending", "title": "Kimi Code", "botId": "a",
+            "entryIds": ["m1"]}}}})));
+        // Its fallback was signed out too: a newer card, but Kimi Code's holds the item's message.
+        app.on_msg(Msg::Event(json!({"type": "entry", "entry": {"id": "sign-in-2", "botId": "a", "seq": 3,
+            "kind": "notice", "turn": 1, "data": {"text": "Needs you to sign in.", "item": "s",
+            "connectionRequest": {"kind": "agent", "status": "pending", "title": "Codex", "botId": "a",
+            "entryIds": []}}}})));
         app.on_msg(Msg::Event(json!({"type": "entry", "entry": {"id": "card", "botId": "a", "seq": 1,
             "kind": "notice", "turn": 1, "data": {"decision": true, "status": "pending", "question": "Squash or merge?",
             "choices": ["Squash", "Merge"], "task": {"id": "task-m", "title": "Review the PR"}, "item": "m"}}})));

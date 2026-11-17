@@ -1,7 +1,8 @@
 //! Artifacts, Grok Bot's way: a self-contained HTML document a bot publishes for the user to come back to (a report,
 //! a tracker, a dashboard). The host keeps each artifact's latest HTML and title; publishing again with its id replaces
-//! it, and the apps show the newest. A publish in the bot's own chat also posts an artifact card there, and the user's
-//! replies to that card reach the bot as messages about the artifact (`chat::replies`).
+//! it, and the apps show the newest. A publish in the bot's own chat also posts an artifact card there — and so does a
+//! publish in a routine's run, which writes in that chat — and the user's replies to that card reach the bot as messages
+//! about the artifact (`chat::replies`).
 
 use crate::agent::bot::Cmd;
 use crate::chat::files;

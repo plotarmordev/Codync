@@ -133,6 +133,20 @@ static IT: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
 
 static PREFERENCE: LazyLock<Mutex<AppLanguage>> = LazyLock::new(|| Mutex::new(read_preference()));
 
+#[cfg(test)]
+thread_local! {
+    /// A test's language, on its own thread so parallel render tests don't switch each other's.
+    static TEST_LANGUAGE: std::cell::Cell<Option<AppLanguage>> = const { std::cell::Cell::new(None) };
+}
+
+fn preference() -> AppLanguage {
+    #[cfg(test)]
+    if let Some(language) = TEST_LANGUAGE.get() {
+        return language;
+    }
+    *PREFERENCE.locked()
+}
+
 const FILE: &str = "tui-language";
 
 fn read_preference() -> AppLanguage {
@@ -179,7 +193,7 @@ fn resolved_language(preference: AppLanguage, locale: &str) -> AppLanguage {
 }
 
 fn active_phrases() -> Option<&'static HashMap<String, String>> {
-    match resolved_language(*PREFERENCE.locked(), &system_locale().unwrap_or_default()) {
+    match resolved_language(preference(), &system_locale().unwrap_or_default()) {
         AppLanguage::Zh => Some(&HANS),
         AppLanguage::ZhHant => Some(&HANT),
         AppLanguage::Ja => Some(&JA),
@@ -375,6 +389,15 @@ fn substitute(phrase: &str, values: &HashMap<String, String>) -> String {
     result
 }
 
+/// A version slot holds only a version ("2.47.0", "2.47.0-dev"), so "You have reached your limit."
+/// never fills "You have {version}.".
+fn version_shaped(value: &str) -> bool {
+    let (core, suffix) = value.split_once('-').map_or((value, None), |(core, suffix)| (core, Some(suffix)));
+    core.split('.').all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        && suffix
+            .is_none_or(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.'))
+}
+
 fn captures(text: &str, pieces: &[Piece]) -> Option<Vec<(String, String)>> {
     let mut pos = 0;
     let mut caps = Vec::new();
@@ -398,6 +421,9 @@ fn captures(text: &str, pieces: &[Piece]) -> Option<Vec<(String, String)>> {
         } else {
             text.len()
         };
+        if token == "{version}" && !version_shaped(&text[pos..end]) {
+            return None;
+        }
         caps.push((token.to_owned(), text[pos..end].to_owned()));
         pos = end;
     }
@@ -422,10 +448,7 @@ fn translate_with<'a>(text: &'a str, table: &HashMap<String, String>) -> Cow<'a,
 
 /// The choice shown beside the palette row.
 pub(in crate::tui) fn language_title() -> Cow<'static, str> {
-    // Copy the choice out first. A second lock of `PREFERENCE` while this one is held freezes
-    // the terminal, and the palette asks for this title on every row.
-    let preference = *PREFERENCE.locked();
-    match preference {
+    match preference() {
         AppLanguage::Zh => Cow::Borrowed("简体中文"),
         AppLanguage::ZhHant => Cow::Borrowed("繁體中文"),
         AppLanguage::En => Cow::Borrowed("English"),
@@ -453,6 +476,15 @@ pub(in crate::tui) fn cycle_language() -> Cow<'static, str> {
         tracing::warn!(%error, "couldn't save the terminal language");
     }
     language_title()
+}
+
+/// Renders `f` in the language `identifier` names, on this thread only.
+#[cfg(test)]
+pub(in crate::tui) fn with_language<T>(identifier: &str, f: impl FnOnce() -> T) -> T {
+    let previous = TEST_LANGUAGE.replace(Some(AppLanguage::parse(identifier)));
+    let result = f();
+    TEST_LANGUAGE.set(previous);
+    result
 }
 
 #[cfg(test)]

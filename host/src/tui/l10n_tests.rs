@@ -1,5 +1,4 @@
-use super::{AppLanguage, HANS, PREFERENCE, fill, language_title, resolved_language, tr, translate, translate_with};
-use crate::LockExt;
+use super::{AppLanguage, HANS, fill, language_title, resolved_language, tr, translate, translate_with, with_language};
 
 #[test]
 fn what_fill_puts_in_stays_as_written() {
@@ -52,18 +51,14 @@ fn the_language_cycle_appends_portuguese_after_spanish() {
 
 #[test]
 fn portuguese_selection_shows_its_native_title_and_loads_its_catalog() {
-    let previous = {
-        let mut choice = PREFERENCE.locked();
-        let previous = *choice;
-        *choice = AppLanguage::parse("pt-BR");
-        previous
-    };
-    let title = language_title();
-    let uses_portuguese_catalog =
-        super::active_phrases().is_some_and(|table| std::ptr::eq(table, &raw const *super::PT_BR));
-    let settings = tr("Settings");
-    let unknown = tr("Unknown phrase");
-    *PREFERENCE.locked() = previous;
+    let (title, uses_portuguese_catalog, settings, unknown) = with_language("pt-BR", || {
+        (
+            language_title(),
+            super::active_phrases().is_some_and(|table| std::ptr::eq(table, &raw const *super::PT_BR)),
+            tr("Settings"),
+            tr("Unknown phrase"),
+        )
+    });
     assert_eq!(title, "Português (Brasil)");
     assert!(uses_portuguese_catalog);
     assert_ne!(settings, "Settings");
@@ -160,6 +155,8 @@ fn chinese_replaces_a_known_phrase_and_leaves_the_rest() {
     assert_eq!(translate("Add connector", true).as_ref(), "添加连接器");
     assert_eq!(translate("Name your group", true).as_ref(), "给群聊起个名字");
     assert_eq!(translate("Nothing installed", true).as_ref(), "还没有安装");
+    assert_eq!(translate("Codync 2.47.0 is available", true).as_ref(), "Codync 2.47.0 已推出");
+    assert_eq!(translate("You have reached your limit.", true).as_ref(), "You have reached your limit.");
     assert_eq!(translate("No setup needed.", true).as_ref(), "无需设置。");
     assert_eq!(
         translate("Runs the official installer on this Mac.", true).as_ref(),

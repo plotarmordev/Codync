@@ -181,7 +181,7 @@ fn preview_raw(b: &Bot) -> (String, Style) {
     let background = counts(&b.work);
     match b.mark() {
         Mark::Need => (
-            if b.activity.is_empty() { tr("Needs your approval").into_owned() } else { tr(&b.activity).into_owned() },
+            if b.activity.is_empty() { tr("Needs approval").into_owned() } else { tr(&b.activity).into_owned() },
             t.amber,
         ),
         _ if b.work.iter().any(|i| i.status == WorkStatus::NeedsYou) => (tr("Needs you").into_owned(), t.amber),
@@ -195,7 +195,7 @@ fn preview_raw(b: &Bot) -> (String, Style) {
             t.red,
         ),
         Mark::Unread => (b.last_message.clone(), t.text),
-        Mark::Idle if b.last_message.is_empty() => (tr("No messages yet").into_owned(), t.dim),
+        Mark::Idle if b.last_message.is_empty() => (tr("No messages yet.").into_owned(), t.dim),
         Mark::Idle => (b.last_message.clone(), t.secondary),
     }
 }
@@ -274,9 +274,15 @@ mod tests {
         section_row(&mut buf, row, None, &"n".repeat(40), 12, Some((7, badge_style(true))), true);
         let text = (0..row.width).map(|x| buf[(x, 0)].symbol()).collect::<String>();
         assert_eq!(text, " ▸ nnnnnnnnnn… (12)  7  ");
-        // It counts a card waiting on the user (#366): the needs-you colour, not the plain badge's.
-        assert_eq!(buf[(row.width - 2, 0)].fg, badge_style(true).fg.expect("amber"));
-        assert_ne!(badge_style(true), badge_style(false));
+        // It counts a card waiting on the user (#366): the needs-you style, amber where the theme has colour (a
+        // monochrome one, from `NO_COLOR`, has none to tell the two badges apart).
+        let waiting = badge_style(true);
+        let mut expected = Buffer::empty(Rect::new(0, 0, 1, 1));
+        put(&mut expected, 0, 0, 1, " ", waiting);
+        assert_eq!(buf[(row.width - 2, 0)], expected[(0, 0)]);
+        if theme().color {
+            assert_ne!(waiting, badge_style(false));
+        }
     }
 
     #[test]
@@ -307,7 +313,7 @@ mod tests {
         assert_eq!(line("idle", &["working", "working", "waiting", "waiting", "waiting"]), "2 working · 3 waiting");
         assert_eq!(line("idle", &["working", "done"]), "1 working", "either part alone when the other is zero");
         assert_eq!(line("idle", &["waiting", "waiting", "failed"]), "2 waiting");
-        assert_eq!(line("needsInput", &["needsYou", "working"]), "Needs your approval", "the chat's own card first");
+        assert_eq!(line("needsInput", &["needsYou", "working"]), "Needs approval", "the chat's own card first");
         assert_eq!(line("idle", &["working", "needsYou", "waiting"]), "Needs you", "then an item that needs you");
         assert_eq!(line("working", &["working", "needsYou"]), "Needs you");
         assert_eq!(line("working", &["working", "waiting"]), "Working…", "then the chat's own activity");

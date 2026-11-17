@@ -69,6 +69,31 @@ internal fun AppStore.takeCardRequest(botId: String): Boolean {
     return true
 }
 
+/**
+ * Pages [botId]'s open chat back for the card its [item] waits on while the rows loaded don't hold it (iOS
+ * `card(for:in:)`); the chat takes the request once it holds the card. One it can't find drops the request, and the
+ * chat stays where it was.
+ */
+internal fun AppStore.pageToCard(botId: String, item: WorkItem) = action(historyKey(botId)) {
+    val found = { pendingCard(state.value.entries.filter { it.botId == botId }, item) != null }
+    try {
+        pageUntil(found, more = { state.value.selectedBot == botId && botId !in state.value.historyEnd }) { pageHistory(botId) }
+    } finally {
+        if (!found() && state.value.cardRequest == (botId to item)) takeCardRequest(botId)
+    }
+}
+
+/** How many older pages opening an item's card loads to find it, like the iPhone. */
+private const val CARD_PAGES = 5
+
+/** Pages back ([page]) until [found], while [more] can come, [CARD_PAGES] pages at most. */
+internal suspend fun pageUntil(found: () -> Boolean, more: () -> Boolean, page: suspend () -> Unit) {
+    repeat(CARD_PAGES) {
+        if (found() || !more()) return
+        page()
+    }
+}
+
 /** Once: a chat that already has a call takes it too, so it can't start one later. */
 fun AppStore.takeCallRequest(botId: String): Boolean {
     if (state.value.callRequest != botId) return false
@@ -89,6 +114,18 @@ internal fun readAfter(events: List<MirrorEvent>, chats: List<String>): List<Str
         }
     }
 }
+
+/** The chats whose alert (`alerts`: bot → the alert's kind) events have dealt with, here or on another device: a reply
+ *  once nothing is unread, a question once the bot (or a task of its) no longer waits. A failure never counted unread, so it stays. */
+internal fun readChats(events: List<MirrorEvent>, alerts: Map<String, String>): List<String> =
+    events.filterIsInstance<MirrorEvent.BotChanged>().associateBy { it.bot.id }.values.map { it.bot }.filter { bot ->
+        bot.unread == 0 && when (alerts[bot.id]) {
+            "done" -> true
+            // A background task's question waits outside the chat.
+            "needsInput" -> "needsInput" !in setOf(bot.status, bot.outsideStatus)
+            else -> false
+        }
+    }.map { it.id }
 
 /** Marks the chats on screen read (`chats`: only these); the host ignores it when nothing there is unread. */
 internal fun AppStore.acknowledgeVisible(chats: List<String> = state.value.readingChats) {

@@ -43,8 +43,8 @@ impl Actor {
         if crate::agent::backends::harness(&backend).is_none() || !crate::agent::acp::needs_sign_in(e) {
             return false;
         }
-        // The process keeps the credentials it started with (Claude's revoked token): the next turn starts a new one.
-        self.restart_after_turn = true;
+        // The process keeps the credentials it started with (Claude's revoked token).
+        self.restart_stale();
         let held = self.held_for_sign_in().to_vec();
         if self.process_predates_turn() && !held.is_empty() {
             match agent_sign_in::send_again(&self.hub, held.iter().map(String::as_str)) {

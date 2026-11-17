@@ -137,12 +137,13 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         files: files::FileShares::default(),
         perms: HashMap::new(),
         asked: HashMap::new(),
+        open_card: None,
         stop_requested: false,
         stopped_for_message: false,
         cancel_deadline: None,
         exit_tail: None,
         agent_error: None,
-        tools_changed: false,
+        restart_before_turn: false,
         restart_after_turn: false,
         fast_support,
         idle_checked: Instant::now(),
@@ -170,6 +171,8 @@ struct SessionCaps {
     steering: bool,
     /// `session/fork`: a new session that starts as a copy of another, which a task's does (`chat::tasks`).
     fork: bool,
+    /// `session/delete`: a background job's session leaves the agent's saved history (`chat::oneshot`).
+    delete: bool,
 }
 
 /// How the bot's instructions (identity and memory) reach the agent.
@@ -216,7 +219,8 @@ pub(crate) struct Conn {
     mode_set: HashSet<String>,
     /// The agent reports compactions (`compaction_update`); until it does, a fall in usage stands in for them.
     reports_compaction: bool,
-    /// Each session's context use and window size at its last `usage_update`.
+    /// Each session's context use and window size at its last `usage_update` that reported use (a stream's
+    /// provisional zero is skipped, see `record_usage`).
     usage: HashMap<String, (u64, u64)>,
     /// Codync's MCP servers each session knows by another name (`codex_names`), as it was created or loaded with.
     renamed: HashMap<String, codex_names::Renamed>,
@@ -225,6 +229,10 @@ pub(crate) struct Conn {
 }
 
 impl Conn {
+    pub(crate) fn deletes_sessions(&self) -> bool {
+        self.sessions.delete
+    }
+
     pub(crate) fn instructions(&self) -> Instructions {
         // Claude's adapter rebuilds the standard field without the `_meta` object's options, so Claude stays on it.
         if self.adapter == Adapter::Claude {
@@ -345,6 +353,8 @@ struct Actor {
     perms: HashMap<String, updates::Answer>,
     /// Decision card id -> the live tool call waiting for this turn's choice.
     asked: HashMap<String, decisions::Asked>,
+    /// The chat's choice card whose call stopped waiting: the user's press or next message still answers it.
+    open_card: Option<String>,
     stop_requested: bool,
     /// Send now stopped the turn for a waiting message (`steer`): that message going out says so, not a `Stopped.`
     /// line drawn under it.
@@ -355,9 +365,9 @@ struct Actor {
     exit_tail: Option<String>,
     /// The error the agent said its turn ended in while answering it as a success (pi, `pi_tools::turn_result`).
     agent_error: Option<String>,
-    /// Connectors changed: restart the agent before the next turn so the
-    /// session is resumed with the new MCP servers.
-    tools_changed: bool,
+    /// The agent's process is stale (its tools changed, or the grants or sign-in it started with are gone): a new one
+    /// starts before the next turn, which reopens its session. An agent that can't reopen one keeps its process.
+    restart_before_turn: bool,
     /// A change that restarts the agent (`restart_agent`) came during a turn: it restarts once the turn ends.
     restart_after_turn: bool,
     /// What the agent says about Fast mode; clients see it in the bot's runtime.

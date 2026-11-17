@@ -126,7 +126,10 @@ bot can say what it is doing and place an `after` without a tool call.
 - **Drop** (`dropWork`): a waiting or ended item leaves the box. A working one is refused: stop it first.
 - **Try again** (`retryWork`): a stopped or failed item goes back to waiting, last, and starts in a new task.
 
-A task that gives its item up is told to stop; when its turn has ended, the dispatcher clears it away.
+A task that gives its item up is told to stop; when its turn has ended, the dispatcher clears it away. Until then it
+keeps its place (`dispatch::places` counts a task whose turn runs with no item at work), so the item that replaces it
+waits rather than run beside it. The dispatcher starts a planned task, and hands work to one, under the box's lock and
+only while the item is still on it, so a Stop that came in between wins.
 
 ## Talking to a thread
 
@@ -254,11 +257,20 @@ computer's, so the chat and every task skip a resting login together.
   message to the chat it was written in; only the chat's own expire after a day), and the item goes on in its
   session. A message that went out again at once (a process older than the turn) keeps the item going too. A task
   whose item was stopped or went back to the box gets nothing sent; its Stop ends the wait, and the task.
+- **A sign-in keeps the session.** A refused sign-in starts a new agent process before the next turn (the old one
+  holds the old credentials), as it does for the chat: an agent that can reopen its session goes on in it
+  (`restart_before_turn`), so a task keeps its fork or brief and what it did; one that can't starts a new session,
+  told the conversation so far as after a move to another agent (`owe_recap`; a task's, the chat it comes from too).
+  With no process left (it quit, or the new one couldn't start), the next turn starts one and reopens the session,
+  as after any exit.
 - **The usage gate looks past a resting agent.** The dispatcher's "near its usage limit" reads the agent a new task
   would start on (`fallback::starting`: the first step that isn't resting), not only the bot's own.
 
 The apps show the item line on the sign-in card and on the failure, and a needs-you row reads the card's ask
-(`Needs <agent> sign-in`) and opens the chat at the card, as for an approval. In the item's
+(`Needs <agent> sign-in`) and opens the chat at the card, as for an approval. When the turn left its agent signed
+out and a fallback was signed out too, there are two cards: the row names, and opens, the one that holds the item's
+message (`connectionRequest.entryIds`), whose sign-in is what sends the work again; an approval or choice newer than
+it comes first, as what the running turn waits on. In the item's
 [thread](#talking-to-a-thread) the sign-in card is one quiet line beside that transcript line, as the card stands
 (`Needs <agent> sign-in`, then `Signed in` or `Cancelled`), which opens the chat at the card; the failure that offers
 **Add a fallback** has no line there, since the transcript holds the failure itself.
@@ -284,8 +296,9 @@ A card that belongs to a task, case by case:
 | The user types a message | It answers the card, or ends it (`other_message`) | Nothing: in the chat the message is for the bot, and in the task's [thread](#talking-to-a-thread) it waits behind the card's turn. Only a press answers, so the card's text doesn't ask for a typed reply |
 | Stop in the chat | Ends it (`stopped`) | Nothing: the chat's Stop is the chat's turn. Stopping the item (`stopWork`, the bot's `steer_work stop`) ends it |
 | The item gives way or gets a new brief | | Ends it (`stopped`): its task is closed |
-| The turn ends | Ends it (`turn_ended`) | The task's turn, not the chat's: a card the task left open ends with the item |
-| Four and a half minutes | Ends it (`timeout`), the call returns | The same; the task goes on without an answer |
+| The turn ends | Ends it (`turn_ended`), unless its call already ran out (the card is open) | The task's turn, not the chat's: a card the task left open ends with the item |
+| Four and a half minutes | The call returns `answered: false` and the card stays open: a press or the user's next message answers it later as their next message ([choice cards](chat-messages.md)) | Ends it (`timeout`), the call returns an error; the task goes on without an answer, since a press there has no next message to become |
+| The bot asks again | Ends the open card (`asked_again`) | One card per task, as below |
 | Host restart | Ends it (`restart`) | The same: the resumed task has no call waiting |
 | One at a time | One card per bot | One card per task; two tasks may each have one open in the chat |
 | Alert | *needs you*, the bot's chat | The same, named for the bot |
@@ -381,7 +394,10 @@ of the bot's own items that starts **while another task of the bot is working** 
   `git branch -d`, neither forced), and the report says so. Anything else is kept, with its branch, and the
   item's report to the chat names the branch and the folder, for the bot to tell the user and merge when asked.
   An item the user stopped is looked over once its task's turn has ended; it reports nothing.
-- An item that gave way, got a new brief or is tried again starts again in the worktree it had.
+- An item that gave way, got a new brief or is tried again starts again in the worktree it had. While an ended
+  item's worktree is being looked over (`Left::Settling`) the item tried again waits; the look notes kept or removed
+  and runs the dispatcher again. A message to the item's thread meanwhile takes the worktree back as in use, which
+  the look then leaves as it is.
 - **Codync never merges, rebases, resets, forces or deletes a branch that has work on it**, and never touches a
   worktree it didn't make: what a box says is checked first (the folder is `~/.codync/worktrees/<id>/<id>`, the
   branch `codync/…`). Git runs with an argument list, never through a shell, each command for at most a minute.
@@ -470,7 +486,7 @@ code only: no agent is woken unless an item was lost.
 - A worktree is a new checkout: what git ignores in the bot's folder (installed packages, build output, local env
   files) isn't in it, and removing an untouched one deletes what its task left there ignored.
 - On Windows a worktree whose agent process is still in it can't be removed and stays (kept). A host that stops
-  while it looks a worktree over leaves it, marked kept.
+  while it looks a worktree over leaves it, marked kept at its next start (`worktree::unsettled`).
 - A turn of the chat that ends while items still work alerts as done with the bot's words; the Live Activity goes
   on.
 - A Live Activity or ongoing notification updated by a push shows the status only; the counts line needs the app

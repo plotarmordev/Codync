@@ -6,6 +6,17 @@ any left). tools/asc-submit.py reads the released version's section;
 a version without one gets a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.49.2
+### zh-Hant
+- 主畫面的 Codync 圖示會顯示未讀數量，和 App 內各聊天的未讀數相加一致，讀完就會消失。
+- Bot 在做事時旁邊的小圖示換成跟頭像同一種點陣：工作中、搜尋、等你回覆、連線和編輯檔案各有自己的動作，小尺寸也看得清楚。
+- 動態島上工作中的 Bot 臉和旁邊的小圖示，點陣現在會對齊，不再錯位。
+
+### en-US
+- The Codync icon on the Home Screen shows your unread count, the same number your chats' badges add up to, and clears as you read them.
+- The small icon beside a busy bot now uses the same dot grid as the avatars: working, searching, waiting for you, connecting and editing files each move their own way, and stay clear at small sizes.
+- In the Dynamic Island, a working bot's face and the icon beside it now draw their dots lined up instead of shifted.
+
 ## 2.49.1
 ### zh-Hant
 - Bot 會把比較久的工作交給背景進行，而且可以同時做好幾件：聊天不會被占住，你可以繼續傳訊息，它也會照常回答。
@@ -41,13 +52,14 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - Bot 設定的「技能」只列出名稱，點旁邊的資訊按鈕可以看完整說明。
 - 裝置上聽寫與語音通話不會再弄丟停頓前說的話。
 - Bot 改用備援時，「智慧體」卡片會說明原本的智慧體為什麼停下（已登出、被限速等），只有用量上限才顯示重設時間；這一行和備援底下的休息時間都會跟著 App 的語言。
-- 輸入 `/` 時，清單最後會列出 Bot 所用智慧體自己的指令（Claude Code、Codex、OpenCode 等），和 Codync 自己的指令、技能分開，標上智慧體的名稱、圖示和說明；選一個會填入 `/<指令>`，送出後由智慧體直接執行。
+- 輸入 `/` 時，清單最後會列出 Bot 所用智慧體自己的指令（Claude Code、Codex、OpenCode 等），和 Codync 自己的指令、技能分開，標上智慧體的名稱、圖示和說明；選一個就會填入那個指令，送出後由智慧體直接執行。
 - 電腦的「網路」頁會列出新的規則等級：「自動」只讓其他電腦的 Bot 做 agent 判斷為安全的事，其餘先問你；「詢問」讓每個變更和指令都等你批准。沒有符合任何規則的電腦預設為「自動」，原本就在網路裡的電腦維持「允許」。
 - 備援直接在「智慧體」卡片裡設定，和 Bot 自己的智慧體一樣：點一列就能換它的智慧體、模型或登入設定，順序不變；按「+」新增的備援會直接展開。
 - 聽寫中直接按「傳送」，會等說的話轉成文字，再和打好的字一起送出，不會再丟掉。
 - 等待核准的卡片會一直算在 Bot 的未讀數字裡（顯示為琥珀色），打開聊天或「標示為已讀」都不會讓它消失，直到你回覆為止；收起的分組裡有 Bot 在等你時，分組的數字也會變成琥珀色。
 - 長按 Bot 選「新會話」，就能讓智慧體從新的上下文開始，聊天記錄會保留。
 - 背景工作也會用備援；需要登入時會在聊天裡請你登入。
+- 轉寫中、資料夾、雲端電腦更新等幾段介面文字，現在會以你選的語言顯示。
 - 「管理團隊」現在讓 Bot 也能刪除 Bot（不會刪除自己），刪除前一樣可以核准。
 
 ### en-US
@@ -87,4 +99,5 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - A waiting approval card stays in the bot's badge, in amber, until you answer it.
 - Touch and hold a bot for New session: a fresh context for its agent; the chat stays.
 - Background work uses fallbacks too; sign-ins it needs show in the chat.
+- A few more interface texts (transcribing, folders, cloud computer updates) now show in your language.
 - Manage the team now lets a bot delete bots too, never itself.

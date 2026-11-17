@@ -51,7 +51,7 @@ extension BotStore {
                         continue
                     }
                     if catchUpLeft == 0 {
-                        finishRefetch()
+                        finishCatchUp()
                         caughtUpSubscription = subscription
                         catchUpsCompleted += 1
                         openTiming.record(.catchUp, computer: computer.id, chats: chatsCaughtUp.count, messages: messagesFetched)
@@ -67,6 +67,8 @@ extension BotStore {
                     return
                 }
             }
+            // Waiting for the next stream, the roster can fall behind. A cancelled task's stream is already replaced.
+            if !Task.isCancelled { streamCaughtUp = false }
             try? await Task.sleep(for: .seconds(backoff))
             backoff = min(backoff * 2, 20)
         }
@@ -248,6 +250,14 @@ extension BotStore {
     private func bump(_ r: Int64) {
         rev = max(rev, r)
         if !caughtUp && rev >= catchUpRev { caughtUp = true }
+    }
+
+    /// This stream's catch-up is over: what was cut short is dropped, and the roster matches the host.
+    private func finishCatchUp() {
+        finishRefetch()
+        streamCaughtUp = true
+        // `rosterIsCurrent` turned true even if no bot changed.
+        onRosterChanged?()
     }
 
     /// Per bot, the lowest synced `seq` in the mirror (optimistic entries don't count).

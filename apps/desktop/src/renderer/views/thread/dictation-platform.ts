@@ -14,7 +14,7 @@ import { trNow } from '../../lib/l10n.ts'
  */
 export function dictationPlatform(host: (() => Promise<HostClient>) | null = null, report: (message: string) => void = () => {}, configureKey: () => void = () => {}): DictationPlatform {
   const client = async () => {
-    if (!host) throw new Error(trNow('Dictating on a host needs the chat window.'))
+    if (!host) throw new Error(trNow('Dictating with a provider needs the chat window.'))
     return host()
   }
   return {

@@ -13,7 +13,7 @@ const steerAgent = join(root, 'host/tests/fixtures/steer_agent.py')
 // A scripted agent that answers each message with its text (host/tests/fixtures/mode_agent.py).
 const echoAgent = join(root, 'host/tests/fixtures/mode_agent.py')
 // A scripted agent that puts items in its box and is the task that works them (host/tests/fixtures/task_agent.py).
-const taskAgent = join(root, 'host/tests/fixtures/task_agent.py')
+export const taskAgent = join(root, 'host/tests/fixtures/task_agent.py')
 // The stand-in agent CLIs a `--cdp` sandbox's host finds first on its PATH (host/tests/fixtures/bin/README.md).
 const standIns = join(root, 'host/tests/fixtures/bin')
 
@@ -61,9 +61,12 @@ export async function attach(): Promise<{ browser: Browser; page: Page }> {
     .find((p) => !p.url().startsWith('devtools://'))
   if (!page) throw new Error('The sandbox app has no window open.')
   await setPref(page, 'githubStarAsk', { kind: 'done' }) // Its sheet would cover what a test clicks.
-  // So would the ask to add a computer in no account, on a signed-in `--cloud` sandbox.
-  const notNow = page.getByRole('alertdialog').getByRole('button', { name: 'Not now' })
-  if (await notNow.isVisible()) await notNow.click()
+  await setPref(page, 'kofiAsk', { asked: 3, day: 0 }) // So would the Ko-fi invitation's, on a sandbox used for days.
+  // So would the ask to add a computer in no account, on a signed-in `--cloud` sandbox, and a Ko-fi invitation already up.
+  for (const sheet of [page.getByRole('alertdialog'), page.getByRole('dialog', { name: 'Support Codync' })]) {
+    const notNow = sheet.getByRole('button', { name: 'Not now' })
+    if (await notNow.isVisible()) await notNow.click()
+  }
   return { browser, page }
 }
 

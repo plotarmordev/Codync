@@ -17,15 +17,15 @@ actor FakeRemote: RemoteTransport {
     private var mailboxSinks: [AsyncStream<MailboxEvent>.Continuation] = []
     private(set) var sent: [String] = []
     /// JSON bodies of `call`s, in order (what a test asserts a host call carried).
-    private var bodies: [[String: Any]] = []
+    private var callBodies: [[String: Any]] = []
     /// Answers for calls the switch below doesn't know; a `HostError` throws it instead.
     private var canned: [String: Result<Data, any Error>] = [:]
     func setCanned(_ method: String, _ json: String) { canned[method] = .success(Data(json.utf8)) }
     /// The method fails like a host that doesn't know it.
     func setCanned(_ method: String, throwing error: any Error) { canned[method] = .failure(error) }
     /// The `key` string each `call`'s JSON body carried, per call, in order.
-    func bodies(_ key: String) async -> [String?] {
-        bodies.map { $0[key] as? String }
+    func sentValues(_ key: String) async -> [String?] {
+        callBodies.map { $0[key] as? String }
     }
     /// Each `send`'s quoted message, in order.
     private(set) var replyTos: [String?] = []
@@ -121,7 +121,7 @@ actor FakeRemote: RemoteTransport {
     private func respond(_ method: String, _ body: Data) throws -> Data {
         guard !isShutdown else { throw HostError.unreachable }
         calls.append(method)
-        bodies.append((try? JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:])
+        callBodies.append((try? JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:])
         record(.called(method))
         bodies[method] = (try? JSONSerialization.jsonObject(with: body)) as? [String: String]
         if let sentence = refusals[method] { throw HostError.http(400, sentence) }

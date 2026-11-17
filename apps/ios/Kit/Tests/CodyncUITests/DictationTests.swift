@@ -303,7 +303,7 @@ private extension Dictation {
     #expect(await !remote.calls.contains("voiceStatus"))
     #expect(await until { await remote.calls.contains("voiceTranscribe") })
     let calls = await remote.calls
-    let providers = await remote.bodies("provider"), models = await remote.bodies("model")
+    let providers = await remote.sentValues("provider"), models = await remote.sentValues("model")
     #expect(calls.enumerated().contains { calls[$0.offset] == "voiceTranscribe"
         && providers[$0.offset] == "local" && models[$0.offset] == "" })
 

@@ -45,6 +45,11 @@ public final class BotStore {
     var eventSubscription = 0
     var caughtUpSubscription = 0
     var catchUpRev = Int64.max
+    /// This events stream has delivered its whole catch-up; false again as soon as the stream stops or is replaced.
+    var streamCaughtUp = false
+    /// Online and caught up on this stream: the roster matches the host, so the icon badge stops using
+    /// the computer's alert counts.
+    var rosterIsCurrent: Bool { connection == .online && streamCaughtUp }
     /// The `since` this connection's events stream was opened with; the `hello` that opens its
     /// catch-up reads it (after a mirror reset `rev` no longer says what was requested).
     var requestedSince: Int64 = 0
@@ -119,7 +124,7 @@ public final class BotStore {
     public var onSent: (@MainActor (Bot, SendProgress) -> Void)?
     /// A prompt reached the computer or its mailbox.
     var onPromptSent: @MainActor () -> Void = { ReviewInvitation.shared.sent() }
-    /// A bot appeared, changed or went away.
+    /// A bot appeared, changed or went away, or this stream's catch-up finished (`rosterIsCurrent`).
     var onRosterChanged: (@MainActor () -> Void)?
     /// The computer's addresses or keys changed (merged from its `hello`); persist it.
     var onComputerChanged: (@MainActor (Computer) -> Void)?
@@ -139,7 +144,8 @@ public final class BotStore {
     var rev: Int64 = 0
     var hostId: String?
     var streamTask: Task<Void, Never>?
-    var eventsTask: Task<Void, Never>?
+    /// Replacing or dropping it clears `streamCaughtUp`: no new stream has caught up yet.
+    var eventsTask: Task<Void, Never>? { didSet { streamCaughtUp = false } }
     var isActive = true
     /// A call's audio: what the computer tells its voice (`CallCue`), and its end.
     struct VoiceCall {

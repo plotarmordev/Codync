@@ -6,6 +6,13 @@ any left). tools/asc-submit.py reads the released version's section;
 a version without one gets a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.49.2
+### zh-Hant
+- 主畫面的 Codync 圖示會顯示未讀數量，和 App 內各聊天的未讀數相加一致，讀完就會消失。
+
+### en-US
+- The Codync icon on the Home Screen shows your unread count, the same number your chats' badges add up to, and clears as you read them.
+
 ## 2.49.1
 ### zh-Hant
 - Bot 會把比較久的工作交給背景進行，而且可以同時做好幾件：聊天不會被占住，你可以繼續傳訊息，它也會照常回答。
@@ -72,7 +79,7 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - Choice cards show numbered options; the last row, Something else, takes your own answer.
 - A bot that says it will check back later sets a follow-up ("Follow-up in 20 minutes") and tells you what it found when it's due. Waiting ones are above its routines.
 - A routine remembers where its last run stopped, so work done in parts carries on from there.
-- Long text in a table wraps inside its cells instead of being cut off.
+- A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.
 - Optional Google Search in Gemini realtime calls, off by default.
 - Voice chat settings show which Server the computer's OpenAI engine uses: OpenAI, or your own speech server (Mode then stays on Speech).
 - Swipe sideways on a message to reply.
@@ -88,5 +95,5 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - A waiting approval card stays in the bot's badge, in amber, until you answer it.
 - Touch and hold a bot for New session: a fresh context for its agent; the chat stays.
 - Background work uses fallbacks too; sign-ins it needs show in the chat.
-- More interface text shows in your language.
+- A few more interface texts (transcribing, folders, cloud computer updates) now show in your language.
 - Manage the team now lets a bot delete bots too, never itself.

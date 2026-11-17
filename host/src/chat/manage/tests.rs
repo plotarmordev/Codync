@@ -131,13 +131,20 @@ async fn a_manager_deletes_a_bot_as_the_team_list_does_but_never_itself() {
         .unwrap();
     let id = made["bot"]["id"].as_str().unwrap().to_owned();
     let target = hub.store.bot(&id).unwrap().unwrap().config;
-    assert_eq!(describe_deletion(&hub, &target), "Name: Scout\nRoutines:\nScan (Every 30 minutes)");
+    assert_eq!(describe_deletion(&hub, &target), format!("Name: Scout\nId: {id}\nRoutines:\nScan (Every 30 minutes)"));
+    // A namesake's card tells the two apart.
+    let twin = call(&hub, "lead", "create_bot", &json!({"name": "Scout", "agent": "claude"})).await.unwrap();
+    let twin = hub.store.bot(twin["bot"]["id"].as_str().unwrap()).unwrap().unwrap().config;
+    assert_eq!(describe_deletion(&hub, &twin), format!("Name: Scout\nId: {}", twin.id));
     assert_eq!(call(&hub, "lead", "delete_bot", &json!({"botId": id})).await.unwrap(), json!({"deleted": id}));
     assert!(hub.store.bot(&id).unwrap().unwrap().deleted, "gone the way the team list deletes it");
     assert_eq!(hub.routines.list(&id)["routines"], json!([]), "its routines go with it");
     let team = call(&hub, "lead", "list_team", &json!({})).await.unwrap();
     assert!(team["bots"].as_array().unwrap().iter().all(|b| b["id"] != id.as_str()), "{team}");
-    assert_eq!(notices(&hub, "lead"), [json!("Created bot Scout"), json!("Deleted bot Scout")]);
+    assert_eq!(
+        notices(&hub, "lead"),
+        [json!("Created bot Scout"), json!("Created bot Scout"), json!("Deleted bot Scout")]
+    );
     // A manager can't delete itself, whatever it approves by itself.
     let refused = call(&hub, "lead", "delete_bot", &json!({"botId": "lead"})).await.unwrap_err().to_string();
     assert!(refused.contains("can't delete yourself"), "{refused}");

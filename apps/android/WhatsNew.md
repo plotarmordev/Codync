@@ -7,6 +7,13 @@ released version's section; a version without one gets the PRs' "What's New: And
 else a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.49.2
+### zh-Hant
+- 「管理團隊」現在讓 Bot 也能刪除 Bot（不會刪除自己），刪除前一樣可以核准。
+
+### en-US
+- Manage the team now lets a bot delete bots too, never itself.
+
 ## 2.49.1
 ### zh-Hant
 - Bot、例行任務和其他 Bot 的請求在背景工作，聊天照常回你。

@@ -6,6 +6,13 @@ any left). tools/asc-submit.py reads the released version's section;
 a version without one gets a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.49.2
+### zh-Hant
+- 「管理團隊」現在讓 Bot 也能刪除 Bot（不會刪除自己），刪除前一樣可以核准。
+
+### en-US
+- Manage the team now lets a bot delete bots too, never itself.
+
 ## 2.49.1
 ### zh-Hant
 - Bot 會把比較久的工作交給背景進行，而且可以同時做好幾件：聊天不會被占住，你可以繼續傳訊息，它也會照常回答。

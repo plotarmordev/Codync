@@ -23,6 +23,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 表格長文字會在格子內換行。
 - 滑動訊息即可回覆。
 - 轉寫中、雲端電腦更新等幾段介面文字，現在會以你選的語言顯示。
+- 「管理團隊」現在讓 Bot 也能刪除 Bot（不會刪除自己），刪除前一樣可以核准。
 
 ### en-US
 - Bots, routines and bot requests work in the background.
@@ -35,3 +36,4 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Background work can ask or send files.
 - Background work uses fallbacks; sign-ins show in the chat.
 - More interface text shows in your language.
+- Manage the team now lets a bot delete bots too, never itself.

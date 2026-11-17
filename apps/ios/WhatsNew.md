@@ -49,6 +49,7 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - 長按 Bot 選「新會話」，就能讓智慧體從新的上下文開始，聊天記錄會保留。
 - 背景工作也會用備援；需要登入時會在聊天裡請你登入。
 - 轉寫中、資料夾、雲端電腦更新等幾段介面文字，現在會以你選的語言顯示。
+- 「管理團隊」現在讓 Bot 也能刪除 Bot（不會刪除自己），刪除前一樣可以核准。
 
 ### en-US
 - Bots do long work in the background, several things at once, and keep answering in the chat.
@@ -88,3 +89,4 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - Touch and hold a bot for New session: a fresh context for its agent; the chat stays.
 - Background work uses fallbacks too; sign-ins it needs show in the chat.
 - More interface text shows in your language.
+- Manage the team now lets a bot delete bots too, never itself.

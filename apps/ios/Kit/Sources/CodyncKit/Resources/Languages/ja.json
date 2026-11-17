@@ -475,7 +475,7 @@
   "Agent": "エージェント",
   "Manage the team": "チームを管理する",
   "Manage team": "チームの管理",
-  "Let this bot create bots and change any bot's setup, its own included. The bots it creates can too.": "このボットにボットを作成させ、ボット自身を含む任意のボットの設定を変更させます。作成されるボットも同様です。",
+  "Let this bot create, change and delete bots, its own setup included; it never deletes itself. The bots it creates can too.": "このボットにボットの作成、変更、削除を許可します（自身の設定を含む）。自分自身は削除しません。作成されるボットも同様です。",
   "Let this bot see the screen and use the mouse and keyboard. You can watch and take over from your phone.": "このボットに画面を表示させ、マウスとキーボードを使用させます。携帯電話からも視聴・引き継ぎが可能です。",
   "Let this bot see the screen and use the mouse and keyboard.": "このボットに画面を表示させ、マウスとキーボードを使用させます。",
   "Let this bot see the screen and use the mouse and keyboard. On that computer, open Codync → Settings → Computer access to set up permissions first.": "このボットに画面を表示させ、マウスとキーボードを使用させます。そのコンピュータで、「Codync」→「設定」→「コンピュータ アクセス」を開き、最初にアクセス許可を設定します。",

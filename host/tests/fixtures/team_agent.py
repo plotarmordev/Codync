@@ -258,3 +258,6 @@ for line in sys.stdin:
         permission.set()
     elif "id" in request:
         send({"id": request["id"], "result": {}})
+
+# The host closed the agent's stdin: it is stopping this bot (its turn ended, or the bot was deleted).
+pathlib.Path("exited").write_text("exited", encoding="utf-8")

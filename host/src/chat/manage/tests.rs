@@ -119,6 +119,33 @@ async fn a_manager_creates_and_changes_bots_that_record_who_made_them() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+#[tokio::test]
+async fn a_manager_deletes_a_bot_as_the_team_list_does_but_never_itself() {
+    let dir = std::env::temp_dir().join(format!("codync-manage-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let hub = hub(&dir);
+    let routine =
+        json!({"name": "Scan", "instruction": "Scan the repo", "triggers": [{"type": "interval", "seconds": 1800}]});
+    let made = call(&hub, "lead", "create_bot", &json!({"name": "Scout", "agent": "claude", "routines": [routine]}))
+        .await
+        .unwrap();
+    let id = made["bot"]["id"].as_str().unwrap().to_owned();
+    let target = hub.store.bot(&id).unwrap().unwrap().config;
+    assert_eq!(describe_deletion(&hub, &target), "Name: Scout\nRoutines:\nScan (Every 30 minutes)");
+    assert_eq!(call(&hub, "lead", "delete_bot", &json!({"botId": id})).await.unwrap(), json!({"deleted": id}));
+    assert!(hub.store.bot(&id).unwrap().unwrap().deleted, "gone the way the team list deletes it");
+    assert_eq!(hub.routines.list(&id)["routines"], json!([]), "its routines go with it");
+    let team = call(&hub, "lead", "list_team", &json!({})).await.unwrap();
+    assert!(team["bots"].as_array().unwrap().iter().all(|b| b["id"] != id.as_str()), "{team}");
+    assert_eq!(notices(&hub, "lead"), [json!("Created bot Scout"), json!("Deleted bot Scout")]);
+    // A manager can't delete itself, whatever it approves by itself.
+    let refused = call(&hub, "lead", "delete_bot", &json!({"botId": "lead"})).await.unwrap_err().to_string();
+    assert!(refused.contains("can't delete yourself"), "{refused}");
+    assert!(!hub.store.bot("lead").unwrap().unwrap().deleted);
+    assert!(call(&hub, "lead", "delete_bot", &json!({"botId": "missing"})).await.is_err());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 #[test]
 fn a_card_lists_the_routines_before_the_instructions() {
     let fields = setup_patch(&json!({"name": "Scout", "instructions": "Watches the repo."}), &[]).unwrap();

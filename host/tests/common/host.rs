@@ -159,8 +159,8 @@ impl Host {
         self.call("createBot", bot).await["bot"]["id"].as_str().unwrap().to_owned()
     }
 
-    /// Sends `text` and waits for the bot's reply.
-    pub async fn reply(&self, bot: &str, text: &str) {
+    /// Sends `text` and waits for the bot's reply, which it returns.
+    pub async fn reply(&self, bot: &str, text: &str) -> String {
         let finals = |history: &Value| {
             history["entries"]
                 .as_array()
@@ -176,16 +176,28 @@ impl Host {
         loop {
             let history = self.call("history", json!({"botId": bot})).await;
             if finals(&history) > before {
-                return;
+                let reply = history["entries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .rev()
+                    .find(|e| e["kind"] == "agent" && e["data"]["final"] == true)
+                    .unwrap();
+                return reply["data"]["text"].as_str().unwrap().to_owned();
             }
             assert!(Instant::now() < deadline, "{bot} didn't answer {text:?}: {history}");
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
 
+    /// `bot`'s folder, where its fixture agent runs.
+    pub fn workspace(&self, bot: &str) -> PathBuf {
+        self.home.join("bots").join(bot).join("workspace")
+    }
+
     /// The JSON lines a fixture agent logged to `file` in a bot's workspace (none before it started).
     pub fn log(&self, bot: &str, file: &str) -> Vec<Value> {
-        let log = std::fs::read_to_string(self.home.join("bots").join(bot).join("workspace").join(file));
+        let log = std::fs::read_to_string(self.workspace(bot).join(file));
         log.unwrap_or_default().lines().map(|l| serde_json::from_str::<Value>(l).unwrap()).collect()
     }
 

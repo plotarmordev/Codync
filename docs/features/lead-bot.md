@@ -17,8 +17,9 @@ initiative instead of waiting to be asked. Everything about it lives in the host
   lead. Nothing else sets `lead`: `createBot`, `updateBot` and a managing bot's `create_bot` / `update_bot` can't make
   or unmake one (`new_bot::with_defaults` clears it, `hub::patch` ignores it). The *Check in* routine stays with the
   bot it was made for; `setLead` rewords one made before 2.33.0, which said it ran as the lead.
-- **Deletable, never hidden.** `deleteBot` works on the lead like on any bot; the computer then has none until the user
-  picks one. A lead can't be hidden (`hub::validate`), so the bot the shortcuts call is always in the list.
+- **Deletable, never hidden.** `deleteBot` works on the lead like on any bot, and so does a manager's
+  `delete_bot`; no bot deletes itself, so the lead can't go through its own. The computer then has none until the
+  user picks one. A lead can't be hidden (`hub::validate`), so the bot the shortcuts call is always in the list.
   Everything else is set up as on any bot: name, avatar, agent and model, folder, connectors, skills, memory, routines.
 - **Placed like any bot.** The lead has no place of its own in the roster: the user drags, pins and moves it to a
   section like any other bot (a host-made lead starts where any new bot does). Its row shows a gold `star.fill` badge

@@ -1628,7 +1628,6 @@
   "Deliveries wait up to 72 hours while this computer is off. They pass through the Codync cloud, which can read them.": "Доставка ждёт до 72 часов, пока этот компьютер выключен. Она проходит через облако Codync, которое может её прочитать.",
   "Denied": "Отклонено",
   "Dictate": "Диктовать",
-  "Dictating with a provider needs the chat window.": "Диктовка через провайдера требует окна чата.",
   "Dictation engine": "Движок диктовки",
   "Didn't complete.": "Не выполнено.",
   "Download": "Скачать",
@@ -2212,5 +2211,7 @@
   "{name} remembered it": "Запомнил(а) {name}",
   "Codync {version} is available": "Доступен Codync {version}",
   "You have {version}.": "У вас версия {version}.",
-  "Couldn't restore sign-in. Check your connection and retry.": "Не удалось восстановить вход. Проверьте подключение и попробуйте снова."
+  "Couldn't restore sign-in. Check your connection and retry.": "Не удалось восстановить вход. Проверьте подключение и попробуйте снова.",
+  "Dictating on a host needs the chat window.": "Диктовка на хосте требует окна чата.",
+  "{error} Pick another engine beside the mic.": "{error} Выберите другой движок рядом с микрофоном."
 }

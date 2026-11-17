@@ -1628,7 +1628,6 @@
   "Deliveries wait up to 72 hours while this computer is off. They pass through the Codync cloud, which can read them.": "Les livraisons attendent jusqu'à 72 heures pendant que cet ordinateur est éteint. Elles transitent par le cloud Codync, qui peut les lire.",
   "Denied": "Refusé",
   "Dictate": "Dicter",
-  "Dictating with a provider needs the chat window.": "La dictée via un fournisseur nécessite la fenêtre de chat.",
   "Dictation engine": "Moteur de dictée",
   "Didn't complete.": "Non terminé.",
   "Download": "Télécharger",
@@ -2212,5 +2211,7 @@
   "{name} remembered it": "Retenu par {name}",
   "Codync {version} is available": "Codync {version} est disponible",
   "You have {version}.": "Vous avez la version {version}.",
-  "Couldn't restore sign-in. Check your connection and retry.": "Impossible de restaurer la connexion. Vérifiez votre connexion réseau et réessayez."
+  "Couldn't restore sign-in. Check your connection and retry.": "Impossible de restaurer la connexion. Vérifiez votre connexion réseau et réessayez.",
+  "Dictating on a host needs the chat window.": "La dictée sur un hôte nécessite la fenêtre de chat.",
+  "{error} Pick another engine beside the mic.": "{error} Choisissez un autre moteur à côté du micro."
 }

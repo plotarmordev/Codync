@@ -1628,7 +1628,6 @@
   "Deliveries wait up to 72 hours while this computer is off. They pass through the Codync cloud, which can read them.": "这台电脑关机时，投递最多等待 72 小时。投递会经过 Codync 云端，云端可以读取其内容。",
   "Denied": "已拒绝",
   "Dictate": "听写",
-  "Dictating with a provider needs the chat window.": "通过服务商听写需要使用聊天窗口。",
   "Dictation engine": "听写引擎",
   "Didn't complete.": "未完成。",
   "Download": "下载",
@@ -2212,5 +2211,7 @@
   "{name} remembered it": "{name} 记下的",
   "Codync {version} is available": "Codync {version} 已推出",
   "You have {version}.": "你目前是 {version}。",
-  "Couldn't restore sign-in. Check your connection and retry.": "无法恢复登录。检查网络后重试。"
+  "Couldn't restore sign-in. Check your connection and retry.": "无法恢复登录。检查网络后重试。",
+  "Dictating on a host needs the chat window.": "在主机上听写需要使用聊天窗口。",
+  "{error} Pick another engine beside the mic.": "{error} 请在麦克风旁换一个引擎。"
 }

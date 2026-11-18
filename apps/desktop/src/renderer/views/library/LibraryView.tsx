@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Artifact, LibraryItem } from '@shared/artifacts'
 import { filePreview } from '@shared/file-preview'
+import { fill } from '@shared/fill'
 import { isImageName, type Attachment, type SharedFile } from '@shared/models'
 import { DropdownMenu, IconButton } from '../../components/Controls'
 import { Icon } from '../../components/Icon'
@@ -44,7 +45,7 @@ export function LibraryView({ botId, openArtifact }: { botId: string; openArtifa
       {items.length === 0 ? (
         <VStack gap={4} className="outlined-card library-empty">
           <Text size="callout" weight="semibold">{tr('Library is empty')}</Text>
-          <Text size="callout" tone="secondary">{tr('Artifacts {name} makes and files shared in this chat show here.').replace('{name}', store.bots.get(botId)?.name ?? '')}</Text>
+          <Text size="callout" tone="secondary">{fill(tr('Artifacts {name} makes and files shared in this chat show here.'), { name: store.bots.get(botId)?.name ?? '' })}</Text>
         </VStack>
       ) : (
         libraryGroups(items).map(({ group, items }) => (

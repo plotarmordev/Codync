@@ -1,6 +1,6 @@
 # A sound a bot sends on its own (send_file with no text), on the phones: the same player as a voice note inside a
 # message, the file's name under the row, and no Download button on the row — Download is in the message's menu, as
-# for a voice note in a message (card 31). The phone must already be signed in and paired with the host (a worktree's
+# for a voice note inside a message. The phone must already be signed in and paired with the host (a worktree's
 # sandbox, docs/guides/dev-app.md#worktree-sandboxes), so run it apart from `welcome`, whose clearState undoes that;
 # the flow makes its own bot there:
 #   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags attachments \

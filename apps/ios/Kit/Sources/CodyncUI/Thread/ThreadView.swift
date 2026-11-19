@@ -316,6 +316,7 @@ public struct ThreadView: View {
     }
 
     private var connectionDescription: String {
+        if model.isWaking { return "Waking the computer…" }
         if model.isAsleep { return "Sleeping · wakes when you message" }
         switch model.shownConnection {
         case .connecting: return "Connecting"

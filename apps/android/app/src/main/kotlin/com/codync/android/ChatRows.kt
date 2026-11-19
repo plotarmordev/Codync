@@ -114,7 +114,7 @@ internal fun chatItems(entries: List<Entry>, pending: List<PendingSend>, busy: B
     return out
 }
 
-/** The text find searches (iOS `ChatView.findable`): each message's own words, not separators, notices or exchanges. */
+/** The text find searches (iOS `ThreadView.findable`): each message's own words, not separators, notices or exchanges. */
 internal fun findable(items: List<ChatItem>): List<Pair<String, String>> =
     items.mapNotNull { item -> (item as? ChatItem.Message)?.takeIf { it.entry.kind == "user" || it.entry.kind == "agent" }?.let { it.id to it.entry.text } }
 
@@ -227,8 +227,8 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
 }
 
 /**
- * A message of a thread's own transcript ([WorkThreadView]): the chat's bubble with Copy alone in its menu.
- * Those entries are the thread's, never the chat's, so the chat's reactions and replies don't reach them.
+ * A message of a task's own transcript in its thread ([WorkThreadView]): the chat's bubble with Copy alone in its menu.
+ * Those entries are the task's, never the chat's, so the chat's reactions and replies don't reach them.
  */
 @Composable internal fun PlainMessageRow(entry: Entry) {
     val context = LocalContext.current
@@ -304,7 +304,7 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
             .contextActions(reactions = menu.reactions, onClick = { focus.clearFocus() }, preview = { AgentText(entry.text, selectable = true) }, items = textMenu)) {
             AgentText(entry.text, selectable = false)
         }
-        WorkThreadLine(entry, Modifier.padding(start = 4.dp))
+        TaskLine(entry, Modifier.padding(start = 4.dp))
     }
 }
 
@@ -323,7 +323,9 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
     Box(Modifier.clip(RoundedRectangle(18.dp)).background(Palette.bubbleAgent)
         .contextActions(reactions = menu.reactions, onClick = { focus.clearFocus() },
             preview = { AudioMessage(entry, file, player, state, store, attachment, selectable = true) },
-            items = { menu.textItems(textCopyItem(context, entry.text), listOf(downloadItem)) })) {
+            // A sound on its own has no text of its own (the file's name is), so its menu offers no Select Text.
+            items = if (attachment) { { menu.items(listOf(textCopyItem(context, entry.text), downloadItem)) } }
+                else { { menu.textItems(textCopyItem(context, entry.text), listOf(downloadItem)) } })) {
         AudioMessage(entry, file, player, state, store, attachment, selectable = false)
     }
 }
@@ -415,7 +417,7 @@ internal val Entry.botReactions: Map<String, List<String>> get() =
             Symbol("exclamationmark.triangle.fill", size = 16.dp, tint = Palette.danger)
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SelectionContainer { Text(tr(text), style = Type.footnote, color = Palette.text) }
-                WorkThreadLine(entry)
+                TaskLine(entry)
                 if (addFallback != null && entry.data["addFallback"]?.jsonPrimitive?.booleanOrNull == true) SecondaryButton("Add a fallback", action = addFallback)
             }
         }

@@ -5,7 +5,6 @@ pub mod acp;
 pub mod auth;
 pub mod backends;
 pub mod bot;
-pub mod codex_app;
 pub mod config;
 pub mod fallback;
 pub mod gear;

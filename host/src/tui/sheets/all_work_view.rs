@@ -11,7 +11,7 @@ use crate::tui::view::work_row;
 fn keys(picked: Option<&AllWorkRow<'_>>) -> String {
     let own = match picked {
         Some(AllWorkRow::Bot(_)) => vec![tr("↵ opens").into_owned()],
-        Some(AllWorkRow::Task(bot, row)) => WorkAct::keys(row, can_cut_in(&bot.work, bot.max_threads)),
+        Some(AllWorkRow::Item(bot, row)) => WorkAct::keys(row, can_cut_in(&bot.work, bot.max_agents)),
         None => vec![],
     };
     own.into_iter().chain(["esc".into()]).collect::<Vec<_>>().join(" · ")
@@ -46,9 +46,9 @@ pub fn draw(buf: &mut Buffer, area: Rect, app: &App, p: &AllWork) {
                 let x = put(buf, inner.x, y, inner.width, &name, t.bold.patch(base));
                 put(buf, x + 2, y, inner.right().saturating_sub(x + 2), &counts(&bot.work), t.dim.patch(base));
             }
-            AllWorkRow::Task(bot, task) => {
+            AllWorkRow::Item(bot, item) => {
                 let under = Rect::new(inner.x + 2, inner.y, inner.width.saturating_sub(2), inner.height);
-                work_row(buf, under, y, (selected, base), app, &bot.id, task);
+                work_row(buf, under, y, (selected, base), app, &bot.id, item);
             }
         }
     }
@@ -63,7 +63,7 @@ mod tests {
     use crate::tui::app::{Msg, screen, test_app};
 
     fn bot(app: &mut App, id: &str, position: i64, work: &Value) {
-        let bot = json!({"id": id, "name": id.to_uppercase(), "position": position, "work": work, "maxThreads": 1});
+        let bot = json!({"id": id, "name": id.to_uppercase(), "position": position, "work": work, "maxAgents": 1});
         app.on_msg(Msg::Event(json!({"type": "bot", "bot": bot})));
     }
 
@@ -86,7 +86,7 @@ mod tests {
             "ada",
             1,
             &json!([
-                {"id": "w", "title": "Write docs", "status": "working", "activity": "Reading files", "thread": "thread-w"},
+                {"id": "w", "title": "Write docs", "status": "working", "activity": "Reading files", "task": "task-w"},
                 {"id": "n", "title": "Review the PR", "status": "needsYou", "source": {"kind": "request", "id": "mika"}},
                 {"id": "q1", "title": "Refactor", "status": "waiting", "wait": {"kind": "next"}},
                 {"id": "q2", "title": "Summary", "status": "waiting", "wait": {"kind": "behind", "ahead": 1},

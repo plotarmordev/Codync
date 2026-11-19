@@ -185,24 +185,22 @@ async fn dreaming_keeps_only_what_the_user_typed() {
         assert!(Instant::now() < deadline, "agent did not finish: {history}");
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    // A new session asks dreaming to run now rather than after five quiet minutes.
+    // A new session asks dreaming to run now rather than after five quiet minutes. `memory` reads the bot's
+    // MEMORY.md before the dream log, so wait until one response holds both.
     host.call("newSession", json!({"botId": bot})).await;
+    let learned = "Prefers concise Traditional Chinese explanations";
     let view = loop {
         let view = host.memory(&bot).await;
-        // Waits for its added lines, logged with MEMORY.md's origins, not its files: the note is logged before MEMORY.md
-        // is written (#375).
-        if view["dreams"][0]["added"].as_array().is_some_and(|a| !a.is_empty()) {
+        if texts(&view["bot"]) == [learned] && view["dreams"][0]["added"][0]["text"] == learned {
             break view;
         }
         assert!(Instant::now() < deadline, "dreaming didn't run: {view}");
         tokio::time::sleep(Duration::from_millis(100)).await;
     };
-    assert_eq!(texts(&view["bot"]), ["Prefers concise Traditional Chinese explanations"]);
     let entry = &view["bot"]["entries"][0];
     assert_eq!(entry["author"], "dream");
     assert_eq!(entry["evidence"], json!([message]), "it cites the message it learned from");
     assert!(!view.to_string().contains("durian"), "pasted text isn't the user's own words");
-    assert_eq!(view["dreams"][0]["added"][0]["text"], "Prefers concise Traditional Chinese explanations");
     // The review's session is deleted, or it would show in the harness's own history (Codex, ChatGPT: #346).
     let log = std::fs::read_to_string(host.home.join("background/dreams.log")).unwrap();
     assert!(log.contains("dream\ndeleted "), "{log}");

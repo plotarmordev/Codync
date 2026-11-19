@@ -1,22 +1,22 @@
 import CodyncKit
 import SwiftUI
 
-/// What a bot does, on its details: Threads (the ones that run now, and the ones not in use) and the event
+/// What a bot does, on its details: Threads (the sessions that run now, and the places not in use) and the event
 /// box (what waits for one) above `between` (what it does later and keeps running), Recent below. A row opens its
 /// task's thread (`openThread`); one that needs the user goes to its card in the chat. `plain` (the view of all bots' work):
 /// only the rows of what runs and what waits, in one card.
 struct WorkTimeline<Between: View>: View {
     let bot: Bot
-    /// Shows the bot's chat at the card a task waits on; nil where the details aren't over that chat.
-    let openCard: ((WorkTask) -> Void)?
-    /// Shows the thread that has or had a task.
-    let openThread: (WorkTask) -> Void
+    /// Shows the bot's chat at the card an item waits on; nil where the details aren't over that chat.
+    let openCard: ((WorkItem) -> Void)?
+    /// Shows the thread of an item a task has or had.
+    let openThread: (WorkItem) -> Void
     var plain = false
     @ViewBuilder let between: Between
     @Environment(BotStore.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The task Stop or Cut in asks about.
-    @State private var asked: WorkTask?
+    /// The item Stop or Cut in asks about.
+    @State private var asked: WorkItem?
     @State private var confirmingStop = false
     @State private var pickingCutIn = false
 
@@ -31,9 +31,9 @@ struct WorkTimeline<Between: View>: View {
             } else if !work.isIdle {
                 CardSection("Threads") {
                     rows(work.live, in: work)
-                    ForEach(0..<work.free(maxThreads: bot.maxThreads), id: \.self) { _ in FreeRow() }
+                    ForEach(0..<work.free(maxAgents: bot.maxAgents), id: \.self) { _ in FreeRow() }
                 } accessory: {
-                    count(work.threadsCount(maxThreads: bot.maxThreads))
+                    count(work.threadsCount(maxAgents: bot.maxAgents))
                 }
                 .transition(.opacity)
             }
@@ -49,25 +49,25 @@ struct WorkTimeline<Between: View>: View {
         .animation(Motion.reduced(Motion.layout, reduceMotion), value: bot.work.map(\.id))
         .animation(Motion.reduced(Motion.layout, reduceMotion), value: bot.work.map(\.status))
         .stopWorkDialog(isPresented: $confirmingStop) {
-            if let asked { model.stopWork(bot.id, task: asked.id) }
+            if let asked { model.stopWork(bot.id, item: asked.id) }
         }
         .codyncDialog(L10n.fill(L10n.tr("Let \"{title}\" cut in"), ["title": asked?.title ?? ""]), isPresented: $pickingCutIn,
-                      message: "Every thread is busy. Pick the task that gives way: its thread closes and the task starts again later.") {
+                      message: "Every place is taken. Pick what gives way: its session closes and it starts again later.") {
             work.givingWay.map { giving in
                 DialogAction(cutInChoice(giving)) {
-                    if let asked { model.workCutIn(bot.id, task: asked.id, insteadOf: giving.id) }
+                    if let asked { model.workCutIn(bot.id, item: asked.id, insteadOf: giving.id) }
                 }
             }
         }
     }
 
     /// `numbered`: the order the box is taken in, in the mark's place.
-    private func rows(_ tasks: [WorkTask], in work: WorkSections, numbered: Bool = false) -> some View {
-        ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
-            let card = task.status == .needsYou ? model.chat(bot.id).card(for: task) : nil
-            WorkRow(task: task, number: numbered ? index + 1 : nil, subtitle: card?.ask ?? task.line(),
-                    actions: work.actions(for: task, maxThreads: bot.maxThreads),
-                    open: opener(task, card: card)) { run($0, on: task) }
+    private func rows(_ items: [WorkItem], in work: WorkSections, numbered: Bool = false) -> some View {
+        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+            let card = item.status == .needsYou ? model.chat(bot.id).card(for: item) : nil
+            WorkRow(item: item, number: numbered ? index + 1 : nil, subtitle: card?.ask ?? item.line(),
+                    actions: work.actions(for: item, maxAgents: bot.maxAgents),
+                    open: opener(item, card: card)) { run($0, on: item) }
         }
     }
 
@@ -76,44 +76,44 @@ struct WorkTimeline<Between: View>: View {
         Text(verbatim: text).font(.footnote.monospacedDigit()).foregroundStyle(Palette.tertiary).padding(.trailing, 2)
     }
 
-    private func opener(_ task: WorkTask, card: Entry?) -> (() -> Void)? {
-        if task.status == .needsYou, let openCard { return { openCard(task) } }
-        return task.thread == nil ? nil : { openThread(task) }
+    private func opener(_ item: WorkItem, card: Entry?) -> (() -> Void)? {
+        if item.status == .needsYou, let openCard { return { openCard(item) } }
+        return item.task == nil ? nil : { openThread(item) }
     }
 
-    private func run(_ action: WorkAction, on task: WorkTask) {
+    private func run(_ action: WorkAction, on item: WorkItem) {
         switch action {
         case .stop:
-            asked = task
+            asked = item
             confirmingStop = true
         case .cutIn:
-            asked = task
+            asked = item
             pickingCutIn = true
-        case .first: model.workFirst(bot.id, task: task.id)
-        case .drop: model.dropWork(bot.id, task: task.id)
-        case .retry: model.retryWork(bot.id, task: task.id)
+        case .first: model.workFirst(bot.id, item: item.id)
+        case .drop: model.dropWork(bot.id, item: item.id)
+        case .retry: model.retryWork(bot.id, item: item.id)
         }
     }
 
-    /// A working task in the cut-in dialog: its title, what it does, how long.
-    private func cutInChoice(_ task: WorkTask) -> String {
-        let elapsed = task.startedAt.map { Duration.seconds(max(0, Date.now.timeIntervalSince(Date(milliseconds: $0)))).formatted(.time(pattern: .minuteSecond)) }
-        return [task.title, task.status == .needsYou || !task.activity.isEmpty ? task.what() : nil, elapsed]
+    /// A working item in the cut-in dialog: its title, what it does, how long.
+    private func cutInChoice(_ item: WorkItem) -> String {
+        let elapsed = item.startedAt.map { Duration.seconds(max(0, Date.now.timeIntervalSince(Date(milliseconds: $0)))).formatted(.time(pattern: .minuteSecond)) }
+        return [item.title, item.status == .needsYou || !item.activity.isEmpty ? item.what() : nil, elapsed]
             .compactMap(\.self).joined(separator: " · ")
     }
 }
 
 extension WorkTimeline where Between == EmptyView {
     /// A bot's rows in the view of all bots' work.
-    init(plain bot: Bot, openCard: @escaping (WorkTask) -> Void, openThread: @escaping (WorkTask) -> Void) {
+    init(plain bot: Bot, openCard: @escaping (WorkItem) -> Void, openThread: @escaping (WorkItem) -> Void) {
         self.init(bot: bot, openCard: openCard, openThread: openThread, plain: true) {}
     }
 }
 
-/// One task: its mark, title, what goes on and where its thread works, its time, and the action that matters most; the
+/// One item: its mark, title, what goes on and where its task works, its time, and the action that matters most; the
 /// rest is in its touch-and-hold menu.
 private struct WorkRow: View {
-    let task: WorkTask
+    let item: WorkItem
     /// Its place in the event box, shown where the mark is.
     var number: Int?
     let subtitle: String
@@ -140,22 +140,22 @@ private struct WorkRow: View {
             if let number {
                 Text(verbatim: "\(number)").font(.footnote.monospacedDigit()).foregroundStyle(Palette.tertiary).frame(width: 16)
             } else {
-                WorkMark(status: task.status)
+                WorkMark(status: item.status)
             }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     source
-                    Text(task.title).foregroundStyle(Palette.text).lineLimit(1)
+                    Text(item.title).foregroundStyle(Palette.text).lineLimit(1)
                 }
                 Text(subtitle)
                     .font(.footnote)
-                    .foregroundStyle(task.status == .failed || task.status == .stopped ? Palette.danger : Palette.secondary)
+                    .foregroundStyle(item.status == .failed || item.status == .stopped ? Palette.danger : Palette.secondary)
                     .lineLimit(2)
-                if let place = task.whereLine(home: model.hello?.home ?? "") { WhereLabel(place: place) }
+                if let place = item.whereLine(home: model.hello?.home ?? "") { WhereLabel(place: place) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            WorkElapsed(task: task)
-            if open != nil, task.status.hasEnded {
+            WorkElapsed(item: item)
+            if open != nil, item.status.hasEnded {
                 Image(systemName: "chevron.right").font(.caption2).foregroundStyle(Palette.tertiary)
             }
         }
@@ -163,15 +163,15 @@ private struct WorkRow: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Where the task came from, before its title: a routine's symbol, or the avatar of the bot that asked. Nothing
+    /// Where the item came from, before its title: a routine's symbol, or the avatar of the bot that asked. Nothing
     /// for the bot's own, or for a bot that isn't on this computer.
     @ViewBuilder private var source: some View {
-        switch task.source?.kind {
+        switch item.source?.kind {
         case .routine:
             Image(systemName: "clock.arrow.circlepath").font(.footnote).foregroundStyle(Palette.secondary)
                 .accessibilityLabel(L10n.tr("Routine"))
         case .request:
-            if let asking = task.source?.id.flatMap({ model.bots[$0] }) {
+            if let asking = item.source?.id.flatMap({ model.bots[$0] }) {
                 BotAvatar(bot: asking, members: model.members(of: asking), size: 16, animated: false)
                     .accessibilityLabel(asking.name)
             }
@@ -195,7 +195,7 @@ private struct WorkRow: View {
     }
 }
 
-/// A thread not in use: the ceiling, visible.
+/// A place no task has: the ceiling, visible.
 private struct FreeRow: View {
     var body: some View {
         HStack(spacing: 10) {
@@ -206,9 +206,9 @@ private struct FreeRow: View {
     }
 }
 
-/// A task's status as a mark: attention, a moving dot, a faint ring (waiting), a ring (done), the danger mark.
+/// An item's status as a mark: attention, a moving dot, a faint ring (waiting), a ring (done), the danger mark.
 struct WorkMark: View {
-    let status: WorkTask.Status
+    let status: WorkItem.Status
 
     var body: some View {
         Group {
@@ -225,7 +225,7 @@ struct WorkMark: View {
     }
 }
 
-/// Where a task's thread works, one quiet line: the folder symbol and the folder, or the branch symbol and the
+/// Where an item's task works, one quiet line: the folder symbol and the folder, or the branch symbol and the
 /// branch of its own worktree. A long one keeps both ends.
 struct WhereLabel: View {
     let place: WhereLine
@@ -239,15 +239,15 @@ struct WhereLabel: View {
     }
 }
 
-/// How long a thread has had a task: counting while it works, fixed once it ended.
+/// How long a task has had an item: counting while it works, fixed once it ended.
 struct WorkElapsed: View {
-    let task: WorkTask
+    let item: WorkItem
 
     var body: some View {
         Group {
-            if let taken = task.timeTaken {
+            if let taken = item.timeTaken {
                 Text(taken.formatted(.time(pattern: .minuteSecond)))
-            } else if task.status.isLive, let started = task.startedAt {
+            } else if item.status.isLive, let started = item.startedAt {
                 Text(Date(milliseconds: started), style: .timer)
             }
         }

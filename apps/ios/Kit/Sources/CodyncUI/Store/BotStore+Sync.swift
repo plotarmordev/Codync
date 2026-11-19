@@ -111,8 +111,6 @@ extension BotStore {
         if staleCache || otherSchema { refetchAll() }
         staleCache = false
         if let schema { hostSchema = schema }
-        // Which names calls go out under (`HostClient+OldHosts.swift`).
-        client?.hostVersion = new.version
         if hostVersion.map({ $0.version != new.version }) ?? false {
             // Data that wouldn't read may read on the other version; the host's update request is done.
             rewound = false
@@ -143,7 +141,7 @@ extension BotStore {
             bump(rev)
         case .bot(let received):
             let bot = putHostBot(received)
-            dropEndedThreads()
+            dropEndedTasks()
             bump(bot.rev)
             onBotUpdated?(bot)
             onRosterChanged?()
@@ -152,7 +150,7 @@ extension BotStore {
             removeComposerDrafts(for: id)
             bots[id] = nil
             entries[id] = nil
-            dropEndedThreads()
+            dropEndedTasks()
             windowFloors[id] = nil
             bump(r)
             if selection == id { selection = nil }
@@ -166,8 +164,8 @@ extension BotStore {
             if let card = e.data.artifact { artifacts.announce(card) }
             bump(e.rev)
             acknowledgeVisibleConversations(e.botId, entry: e)
-        case let .threadEntry(thread, e):
-            putThreadEntry(e, thread: thread)
+        case let .taskEntry(task, e):
+            putTaskEntry(e, task: task)
             bump(e.rev)
         case let .call(cue):
             // The computer decides what the voice hears; this device hands each cue over once.
@@ -212,7 +210,7 @@ extension BotStore {
         persistComposerDrafts()
         bots = [:]
         entries = entries.mapValues { $0.filter { $0.id.hasPrefix("local-") } }.filter { !$0.value.isEmpty }
-        threadEntries = [:]
+        taskEntries = [:]
         selection = nil
         onRosterChanged?()
         rev = 0
@@ -281,11 +279,11 @@ extension BotStore {
         return e.seq < floor
     }
 
-    /// A thread no task names any more is gone from the computer too; its transcript goes with it.
-    private func dropEndedThreads() {
-        guard !threadEntries.isEmpty else { return }
-        let named = Set(bots.values.flatMap(\.work).compactMap(\.thread))
-        threadEntries = threadEntries.filter { named.contains($0.key) }
+    /// A task no item names any more is gone from the computer too; its transcript goes with it.
+    private func dropEndedTasks() {
+        guard !taskEntries.isEmpty else { return }
+        let named = Set(bots.values.flatMap(\.work).compactMap(\.task))
+        taskEntries = taskEntries.filter { named.contains($0.key) }
     }
 
     func upsert(_ e: Entry) {

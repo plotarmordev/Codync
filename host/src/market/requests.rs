@@ -188,7 +188,7 @@ pub async fn finish(hub: &Arc<Hub>, args: &Value) -> Result<Value> {
             text(args, "value")?,
         )?;
         let note = format!(
-            "[Login for {} saved as `{}`{}. Type it with the computer tool type_login; the password is never shown to you. Continue your work.]",
+            "[Login for {} saved as `{}`{}. Type it with the computer tool type_login; the password is never shown to you. Continue the task.]",
             login.site,
             login.id,
             if login.username.is_empty() { String::new() } else { format!(" (username {})", login.username) }
@@ -234,7 +234,7 @@ pub async fn finish(hub: &Arc<Hub>, args: &Value) -> Result<Value> {
     hub.update_bot(&json!({"id":bot,"connectors":enabled}))?;
     hub.send_cmd(bot, Cmd::RefreshTools)?;
     let note = format!(
-        "[Connection setup completed: {}. Credentials were submitted securely and are not in this conversation. Continue your work.]",
+        "[Connection setup completed: {}. Credentials were submitted securely and are not in this conversation. Continue the task.]",
         request["title"].as_str().unwrap_or("Connector")
     );
     complete(hub, &e, id, note)

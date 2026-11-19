@@ -19,7 +19,6 @@
 mod background_work;
 mod cmd;
 mod codex_names;
-mod codex_section;
 mod commands;
 mod compaction;
 mod decisions;
@@ -83,9 +82,9 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
     // The agent its main session runs on: one of its fallbacks, if it was on one when the host stopped.
     let cfg = fallback::resume_step(&hub, &base);
     let interrupted = resumable(&hub.store, &cfg.id).then(|| Lane::main(&cfg.id));
-    // A thread's chat is its bot's own work, not the user's words: only the bot dreams, over its own chat.
+    // A task's chat is its bot's own work, not the user's words: only the bot dreams, over its own chat.
     let dreamer =
-        if cfg.is_thread() { mpsc::unbounded_channel().0 } else { memory::spawn_dreamer(hub.clone(), cfg.id.clone()) };
+        if cfg.is_task() { mpsc::unbounded_channel().0 } else { memory::spawn_dreamer(hub.clone(), cfg.id.clone()) };
     let lane = Lane::main(&cfg.id);
     let fast_support = FastModeSupport::from_stored(hub.store.kv_get(&fast_mode::stored_key(&cfg.id)).as_deref());
     let support = fast_support.clone();
@@ -107,7 +106,6 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         routine_timed_out: false,
         routine_completion: None,
         session_fresh: false,
-        unfiled: codex_section::Unfiled::default(),
         profile_resend: HashSet::new(),
         compacting: None,
         raw_prompt: false,
@@ -127,7 +125,7 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         steers_in_flight: HashMap::new(),
         held_done: None,
         active_request: None,
-        task_source: crate::chat::work::Source::Bot,
+        task_source: crate::chat::tasks::Source::Bot,
         reply_hops: None,
         host_turn: None,
         reports: Vec::new(),
@@ -174,7 +172,7 @@ struct SessionCaps {
     additional_directories: bool,
     /// `_session/steering` (not in ACP v1 yet): a message joins the running turn (see `steer`).
     steering: bool,
-    /// `session/fork`: a new session that starts as a copy of another, which a thread's does (`chat::work`).
+    /// `session/fork`: a new session that starts as a copy of another, which a task's does (`chat::tasks`).
     fork: bool,
     /// `session/delete`: a background job's session leaves the agent's saved history (`chat::oneshot`).
     delete: bool,
@@ -244,8 +242,6 @@ pub(crate) struct Conn {
     renamed: HashMap<String, codex_names::Renamed>,
     /// The login profile the process runs on, which isn't removed meanwhile.
     on_profile: Option<crate::agent::login_profiles::Running>,
-    /// The `CODEX_HOME` the process started with, when it isn't Codex's own default.
-    codex_home: Option<String>,
 }
 
 impl Conn {
@@ -311,8 +307,6 @@ struct Actor {
     routine_completion: Option<RoutineCompletion>,
     /// True until the first prompt of a new ACP session has been sent.
     session_fresh: bool,
-    /// The new Codex sessions that aren't in Codex's Codync section yet.
-    unfiled: codex_section::Unfiled,
     /// Sessions that compacted away the `<bot-profile>` their first message carried; their next prompt carries
     /// a fresh one.
     profile_resend: HashSet<String>,
@@ -348,15 +342,15 @@ struct Actor {
     /// How the running turn ended, while the agent still owes an answer to a steer (`turn_ended`).
     held_done: Option<Done>,
     active_request: Option<crate::chat::team::BotRequest>,
-    /// A thread's running turn works a task that came from here (`chat::work`): a routine's run and another bot's
+    /// A task's running turn works an item that came from here (`chat::tasks`): a routine's run and another bot's
     /// request keep the rules those turns have in a chat. Anything else: the bot's own.
-    task_source: crate::chat::work::Source,
+    task_source: crate::chat::tasks::Source,
     /// During a turn that takes bot replies: the hops of their chain (see `chat::team::BotReply`).
     reply_hops: Option<u8>,
     /// The running turn is one the host started, with no message of the user's (`Cmd::Prompt`, `Cmd::FollowUp`).
     host_turn: Option<HostTurn>,
     /// The reports the running turn answers (`HostTurn::TaskReport`), kept until it ends (`end_host_turn`).
-    reports: Vec<crate::chat::work::Report>,
+    reports: Vec<crate::chat::tasks::Report>,
     /// The call the next host-started turn opens (`Cmd::Prompt`), whose replies are that call's.
     prompt_call: Option<String>,
     seg: Seg,
@@ -434,8 +428,8 @@ impl Actor {
         let failed = done.as_ref().is_err_and(acp::may_end_session);
         self.finish_turn(&done);
         match session {
-            // A thread's session is spent like a run's; a task that follows reopens it.
-            Some(sid) if routine || self.cfg.is_thread() => self.release_spent(&sid).await,
+            // A task's session is spent like a run's; an item that follows reopens it.
+            Some(sid) if routine || self.cfg.is_task() => self.release_spent(&sid).await,
             Some(sid) if failed => self.close_reopenable(&sid).await,
             _ => {}
         }
@@ -492,13 +486,13 @@ impl Actor {
         self.hub.team.end_turn(&self.cfg.id);
         self.complete_request(Err(anyhow!("recipient shut down")), true);
         self.complete_group(Err(anyhow!("bot shut down")));
-        // Its cards may sit in another chat (a group's, a thread's parent's), which outlives it.
+        // Its cards may sit in another chat (a group's, a task's parent's), which outlives it.
         self.expire_perms();
         if let Some(c) = self.conn.take() {
             c.acp.kill().await;
         }
-        // Unless the thread runs again already: the user wrote to its thread as this actor was on its way out.
-        if self.cfg.is_thread() && !self.hub.has_actor(&self.cfg.id) {
+        // Unless the task runs again already: the user wrote to its thread as this actor was on its way out.
+        if self.cfg.is_task() && !self.hub.has_actor(&self.cfg.id) {
             self.hub.forget_runtime(&self.cfg.id);
         }
     }
@@ -548,10 +542,14 @@ impl Actor {
 }
 
 /// Told to a bot whose turn the previous host process cut off (Grok Bot's upgrade resume).
-const RESUME_PROMPT: &str = "[Codync restarted on this computer and interrupted you mid-turn. You've been resumed with your full conversation intact. Continue exactly where you left off and finish what you were doing. If your previous step already completed an action, do NOT repeat it — just carry on from there.]";
+const RESUME_PROMPT: &str = "[Codync restarted on this computer and interrupted you mid-task. You've been resumed with your full conversation intact. Continue exactly where you left off and finish what you were doing. If your previous step already completed an action, do NOT repeat it — just carry on from there.]";
 
-/// How long a cancelled turn may take to wind down before its agent process is stopped.
+/// How long a cancelled turn may take to wind down before its agent process is stopped. Tests stop
+/// one that ignores the cancel sooner.
+#[cfg(not(test))]
 const CANCEL_GRACE: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const CANCEL_GRACE: Duration = Duration::from_secs(2);
 
 async fn recv_incoming(conn: &mut Option<Conn>) -> Option<Incoming> {
     match conn {

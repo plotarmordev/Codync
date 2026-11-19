@@ -41,7 +41,7 @@ class CodyncHost < Formula
 
   def caveats
     <<~EOS
-      Start the host in the background and pair your phone:
+      Start the host in the background and pair your iPhone:
         codync-host install
         codync-host pair
     EOS

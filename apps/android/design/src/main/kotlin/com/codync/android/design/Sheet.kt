@@ -79,15 +79,9 @@ val LocalDismissModal = staticCompositionLocalOf<() -> Unit> { {} }
 
 /** `.codyncSheet(item:)`: keeps showing the last item while the sheet slides away. */
 @Composable fun <T : Any> CodyncSheet(item: T?, onDismiss: () -> Unit, content: @Composable (T) -> Unit) {
-    val last = lastOf(item)
-    CodyncSheet(item != null, onDismiss) { last?.let { content(it) } }
-}
-
-/** [item] while it's set, else the last one: what a sheet, dialog or page shows keeps its words while it goes away. */
-@Composable fun <T : Any> lastOf(item: T?): T? {
     var last by remember { mutableStateOf(item) }
     if (item != null) last = item
-    return last
+    CodyncSheet(item != null, onDismiss) { last?.let { content(it) } }
 }
 
 @Composable private fun SheetFrame(shown: Float, dismiss: () -> Unit, content: @Composable () -> Unit) {

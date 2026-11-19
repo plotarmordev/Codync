@@ -180,33 +180,19 @@ test("another device's auto order switch shows here", async () => {
 })
 
 /** A store over a cache in another mirror format: "gone" and "kept" from the computer and a message that didn't send, with each events stream it opens. */
-function syncOverStaleCache(cache: object = {}, hello: object = {}) {
+function syncOverStaleCache() {
   const entry = (id: string, seq: number, rev: number, data = {}) => ({ id, seq, botId: 'b1', rev, kind: 'agent', turn: 1, data, createdAt: 1, updatedAt: 1 })
   storage.set('codync-mirror-local-test', JSON.stringify({ format: 0, hostId: 'h1', rev: 77, bots: [],
-    entries: [entry('gone', 1, 70), entry('kept', 2, 77), entry('local-x', 3, 0, { status: 'failed' })], ...cache }))
+    entries: [entry('gone', 1, 70), entry('kept', 2, 77), entry('local-x', 3, 0, { status: 'failed' })] }))
   const streams: { path: string; send: (event: object) => void }[] = []
   let opened = deferred()
   const store = sync({
-    call: async () => ({ hostId: 'h1', version: '2.29.0', name: 'Test', backends: [], ...hello }),
+    call: async () => ({ hostId: 'h1', version: '2.29.0', name: 'Test', backends: [] }),
     stream: (path, onData) => { streams.push({ path, send: (event) => onData(JSON.stringify(event)) }); opened.resolve(); return () => {} },
   })
   const nextStream = async () => { await opened.promise; opened = deferred(); return streams[streams.length - 1] }
   return { store, nextStream, kept: { type: 'entry', entry: entry('kept', 2, 77) }, ids: () => store.allEntries('b1').map((e) => e.id) }
 }
-
-test('a host update keeps the cursor of a copy synced under the same store schema', async () => {
-  const { store, nextStream } = syncOverStaleCache({ format: 1, schema: 8 }, { version: '2.30.0', schema: 8 })
-  store.start()
-  assert.match((await nextStream()).path, /since=77&/)
-  store.retire()
-})
-
-test('a new host schema refetches', async () => {
-  const { store, nextStream } = syncOverStaleCache({ format: 1, schema: 8 }, { schema: 9 })
-  store.start()
-  assert.match((await nextStream()).path, /since=0&/)
-  store.retire()
-})
 
 test('a cache in another format refetches underneath the cached chat', async () => {
   const { store, nextStream, kept, ids } = syncOverStaleCache()

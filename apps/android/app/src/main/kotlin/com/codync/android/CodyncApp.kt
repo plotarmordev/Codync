@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import com.codync.android.core.Bot
 import com.codync.android.core.BotDraft
 import com.codync.android.core.CloudComputer
-import com.codync.android.core.CloudMachine
 import com.codync.android.core.GroupDraft
 import com.codync.android.core.LinkState
 import com.codync.android.design.*
@@ -124,17 +123,6 @@ private data class Editing<T>(val computerId: String, val draft: T)
                     // Computers paired signed out wait in the signed-out context; signing in moves them.
                     Root.Welcome -> WelcomeView(app, accounts, signedOutComputers = if (required) app.computers.size else 0) {
                         if (app.account.configured) accounts.continueWithoutAccount() else welcomed = true
-                    }
-                    Root.CloudStart -> Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                        waitingFor?.let { machine ->
-                            // In the account, not on this phone yet: a lookup or request the network lost is asked
-                            // again while it waits (iOS too).
-                            val reaching = machine.computerId.takeIf { machine.start == CloudMachine.Start.Connecting }
-                            LaunchedEffect(reaching) { if (reaching != null) accounts.reachCloudComputer(reaching) }
-                            CloudStartView(machine, back = { accounts.passCloud(machine) }, skip = accounts::skipSetup) {
-                                AccountSwitcherButton(app) { showAccount = true }
-                            }
-                        }
                     }
                     Root.Choose -> Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                         ChooseComputerView(app, askable, { access = it }, { pairingNew = true }, accounts::skipSetup) {

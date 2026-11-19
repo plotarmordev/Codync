@@ -255,7 +255,6 @@ public final class AccountStore {
     }
 
     /// Codync Cloud computers approve this device by themselves: each one it can't use yet is asked once per
-    /// session, through the same request and code exchange as a tap on "Ask for access".
     /// session, through the same request and code exchange as a tap on "Ask for access"; a request that failed or
     /// ended unapproved is asked again on the next refresh. So is one listed as asked ("pending") that this device has
     /// no request for: the cloud kept a request whose answer the network lost, and a new one replaces it there.
@@ -269,23 +268,12 @@ public final class AccountStore {
                     try await self?.requestAccess(id)
                 } catch {
                     log.info("cloud computer access request failed: \(error.localizedDescription, privacy: .public)")
+                    self?.askedCloud.remove(id)
                 }
             }
         }
     }
 
-    /// First run, waiting on cloud computer `id` now that it's in the account: asks the account again every `interval`
-    /// until this device uses it, so a lookup or an access request lost to the network doesn't leave the wait standing.
-    /// It ends with the waiting page, whose task this is. An error on screen is read first: asking again would only
-    /// show it again.
-    // ponytail: a fixed interval for as long as the page shows; back off if a wait ever lasts hours.
-    public func reachCloudComputer(_ id: ComputerID, every interval: Duration = .seconds(5)) async {
-        while !Task.isCancelled, !retired, stores[id] == nil {
-            try? await Task.sleep(for: interval)
-            guard !Task.isCancelled, !retired, stores[id] == nil else { return }
-            if lastError == nil { await refreshCloud() }
-        }
-    }
 
     private func setHosting(_ store: BotStore, _ id: ComputerID) {
         let hosting = cloudComputers.first { $0.computerId == id }?.cloud

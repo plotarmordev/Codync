@@ -81,19 +81,6 @@ struct RootView: View {
             Spinner(size: 28)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.opacity)
-        } else if let machine = cloudStart {
-            // In the account, not on this iPhone yet: a lookup or request the network lost is asked again while it waits.
-            let reaching = machine.start == .connecting ? machine.computerId : nil
-            CloudStartView(machine: machine, back: {
-                animateSetup {
-                    startedCloud = false
-                    passedCloud.insert(machine.id)
-                }
-            }, skip: { completeOnboarding(via: .skipped) }) {
-                AccountSwitcherButton()
-            }
-            .task(id: reaching) { if let reaching { await accounts.reachCloudComputer(reaching) } }
-            .transition(.opacity)
         } else if !pairingNew && !askableComputers.isEmpty {
             ChooseComputerView(computers: askableComputers, ask: { asking = $0 },
                                pairNew: { animateSetup { pairingNew = true } }, skip: { completeOnboarding(via: .skipped) }) {

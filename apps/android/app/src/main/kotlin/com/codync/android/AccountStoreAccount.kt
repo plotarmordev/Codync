@@ -159,7 +159,6 @@ fun AccountStore.requestAccess(target: CloudComputer, renew: Boolean = false, qu
 
 private fun AccountStore.startAccess(target: CloudComputer, renew: Boolean, quiet: Boolean = false) = action("access:" + target.computerId) {
     mutableState.update { it.copy(asking = it.asking + target.computerId) }
-    try { askForAccess(target, renew) } finally { mutableState.update { it.copy(asking = it.asking - target.computerId) } }
     try { askForAccess(target, renew, quiet) }
     catch (error: Exception) {
         // Failed or ended unapproved: a cloud computer is asked again by itself on the next refresh.

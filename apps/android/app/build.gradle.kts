@@ -204,5 +204,4 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(testFixtures(project(":core")))
-    androidTestImplementation(libs.mockwebserver.app)
 }

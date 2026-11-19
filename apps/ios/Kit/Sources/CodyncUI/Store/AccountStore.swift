@@ -255,6 +255,7 @@ public final class AccountStore {
     }
 
     /// Codync Cloud computers approve this device by themselves: each one it can't use yet is asked once per
+    /// session, through the same request and code exchange as a tap on "Ask for access".
     /// session, through the same request and code exchange as a tap on "Ask for access"; a request that failed or
     /// ended unapproved is asked again on the next refresh. So is one listed as asked ("pending") that this device has
     /// no request for: the cloud kept a request whose answer the network lost, and a new one replaces it there.
@@ -268,7 +269,6 @@ public final class AccountStore {
                     try await self?.requestAccess(id)
                 } catch {
                     log.info("cloud computer access request failed: \(error.localizedDescription, privacy: .public)")
-                    self?.askedCloud.remove(id)
                 }
             }
         }
@@ -401,8 +401,6 @@ public final class AccountStore {
                 }
                 // Withdrawn by the account: the list shows what's left of it.
                 if reason == .cancelled { await refreshCloud() }
-                // A cloud computer is asked again by itself on the next refresh.
-                askedCloud.remove(ticket.computerId)
                 return
             }
         }

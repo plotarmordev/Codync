@@ -1,7 +1,7 @@
 import Foundation
 
 /// One piece of work in a bot's box (the host's `chat/tasks/`), as its bot carries it (`bot.work`): the live and
-/// waiting items in dispatch order, then the ones that ended in the last day. A task (an agent session) works it;
+/// waiting items in dispatch order, then the ones that ended in the last day. A task (with its own session) works it;
 /// `task` names it, for its transcript (`taskEntries`). What the words say is decided here, the same on Android
 /// and the desktop.
 public struct WorkItem: Codable, Identifiable, Hashable, Sendable {

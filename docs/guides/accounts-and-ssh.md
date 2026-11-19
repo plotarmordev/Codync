@@ -116,6 +116,7 @@ from it. With computers in the account, the first page lists them (**Ask for acc
 is requested until the tap, since the user may be here to set up another computer) next to
 **Pair a new computer**, which leads to the install page. With none, or only older copies, setup
 goes straight to the install page. That page has a button that copies the website's link,
+to open on the computer. A computer that joins the account meanwhile brings up the first page the next
 to open on the computer. Signed in, while Codync Cloud is open to the account, both pages also offer
 **Start a cloud computer** (first run only, not the pairing sheet from Computers): once one is created, a wait page
 (`CloudStartView`) replaces the setup pages, preparing → connecting → the tabs once it's reached; it fails → its
@@ -142,7 +143,7 @@ and phones and the desktop app see it as an older copy once the new one is reach
 (offline, named like a computer they use or see online, and last seen before that one
 joined the account) and offer to remove it; pair again or ask for access to reach the new one.
 
-On the computer, open Codync in the menu bar and choose **Pair phone…**, then scan the
+On the computer, open Codync in the menu bar and choose **Pair iPhone…**, then scan the
 code on the phone (or paste its `codync://pair` link, or type the short code
 `codync-host pair` prints). The phone sends a device certificate from the cloud with
 `pair`, and the host checks it offline: a computer in an account lets in phones of that

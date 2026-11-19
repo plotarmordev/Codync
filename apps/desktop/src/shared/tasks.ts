@@ -1,4 +1,4 @@
-// A task (host/src/chat/tasks/): the agent session that works an item of a bot's box (`work.ts`). Its own
+// A task (host/src/chat/tasks/): where an item of a bot's box is worked, with its own session (`work.ts`). Its own
 // transcript is read from the item's details and never enters a chat.
 
 import type { Entry } from './models'

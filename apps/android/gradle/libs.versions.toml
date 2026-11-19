@@ -7,7 +7,7 @@ lifecycle = "2.10.0"
 coroutines = "1.10.2"
 serialization = "1.9.0"
 okhttp = "4.12.0"
-# The OkHttp the app runs on, which Clerk brings: what a MockWebServer in its instrumented tests has to match.
+# The app's okhttp after Clerk raises it; a fake host inside the app's tests must match it.
 okhttp-app = "5.4.0"
 bouncycastle = "1.86"
 junit = "4.13.2"

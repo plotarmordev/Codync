@@ -1,6 +1,7 @@
 package com.codync.android.core
 
-// A task is the agent session working one of a bot's items (`Work.kt`); its transcript is read from the item's details.
+// A task is where one of a bot's items is worked, with its own session (`Work.kt`); its transcript is read from the
+// item's details.
 
 /**
  * The task transcripts being read, by task id, with [events]' entries laid over. Only a task whose details are open

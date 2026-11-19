@@ -4,7 +4,8 @@ Args: `steer|sends|voice|voice-wav|voice-file|late|sends-late|limit|next|refuse|
 advertises `_session/steering` (top-level `_meta`, as Claude's and Codex's adapters do) and takes a steered message into
 its running turn; with `sends` it also calls `send_message` before it takes the message and again after, before its
 last text; with `voice` it sends a voice note (`send_file` with text) before it takes the message and ends with no more
-text (`voice-wav`: the same with four seconds of real, silent WAV a player can load; `voice-file`: that WAV as a file of its own, without text); with `late` it ends that turn before answering; `sends-late` does both, calling `send_message` once; with `limit`
+text (`voice-wav`: the same with four seconds of real, silent WAV a player can load; `voice-file`: that WAV as a file of
+its own, without text); with `late` it ends that turn before answering; `sends-late` does both, calling `send_message` once; with `limit`
 that turn then fails the way Claude's adapter reports a usage limit; with `next` it advertises steering too but always
 answers that the message needs a turn of its own; with `refuse` it answers a steer with an error; with `lingers` it
 takes two seconds to wind down after a cancel. It answers a steer after `answer_delay` seconds, so a turn shorter than

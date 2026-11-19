@@ -45,6 +45,19 @@ export interface CallError {
   presence?: RelayAbsence
 }
 
+/** A computer in the account, as the encrypted channel needs it: its ID and pinned signing key. */
+export interface AccountComputer {
+  id: string
+  signKey: string
+}
+
+/** An access request the computer has seen: approve it there only if it shows `code`. */
+export interface AccessTicket {
+  requestId: string
+  expiresAt: number
+  code: string
+}
+
 /** A menu image as PNG data URLs drawn for 1x and 2x screens; each screen shows its own. */
 export interface TrayImage {
   x1: string
@@ -151,6 +164,8 @@ export type WindowCommand =
   | { kind: 'sendMessage'; ref: string; text: string }
   /** The voice input shortcut, while the island is off: a double tap starts dictating into the composer, a tap sends. */
   | { kind: 'voiceKey'; key: VoiceKey }
+  /** Opens Settings at Voice chat (the island asks when a dictation key is missing). */
+  | { kind: 'voiceSettings' }
   /** The chat window was shown again after being hidden (`window_opened`). */
   | { kind: 'windowOpened' }
 
@@ -275,12 +290,16 @@ export interface CodyncBridge {
     openBot(ref: string): void
     newBot(): void
     openApp(): void
+    /** Opens the chat window's Settings at Voice chat. */
+    openVoiceSettings(): void
   }
   /** The Codync cloud's `/v1` API with the signed-in session (and the device key for `signed`). */
   cloud: {
     request(method: string, path: string, body: unknown, signed: boolean): Promise<{ ok: true; value: unknown } | { ok: false; error: { status: number; code: string; message: string | null } }>
     /** Asks a Codync Cloud computer for this device's access and waits for its answer (it approves by itself). */
     requestAccess(computerId: string): Promise<{ ok: true; value: { status: string } } | { ok: false; error: { status: number; code: string; message: string | null } }>
+    /** Asks another account computer for this device's access; answers once it shows the code a person compares there. */
+    askForAccess(computer: AccountComputer): Promise<{ ok: true; value: AccessTicket } | { ok: false; error: { status: number; code: string; message: string | null } }>
   }
   updates: {
     state(): Promise<UpdateState>

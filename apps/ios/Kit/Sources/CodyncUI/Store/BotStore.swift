@@ -42,6 +42,9 @@ public final class BotStore {
     public internal(set) var connection: Connection = .connecting
     /// The first catch-up has arrived: everything up to the host's rev when this app connected.
     public internal(set) var caughtUp = false
+    public internal(set) var catchUpsCompleted = 0
+    var eventSubscription = 0
+    var caughtUpSubscription = 0
     var catchUpRev = Int64.max
     /// This events stream has delivered its whole catch-up; false again as soon as the stream stops or is replaced.
     var streamCaughtUp = false
@@ -65,6 +68,7 @@ public final class BotStore {
     public internal(set) var hostRoute: HostRoute?
     public internal(set) var client: HostClient?
     public internal(set) var hello: Hello?
+    @ObservationIgnored public internal(set) var openTiming = OpenTiming.shared
     /// The host's version and `minApp`, kept even when the rest of its `hello` can't be read.
     public internal(set) var hostVersion: HostVersion?
     /// An update this phone asked of the computer; cleared when its version changes.
@@ -173,8 +177,10 @@ public final class BotStore {
     /// The chats on screen, by the view showing each.
     @ObservationIgnored var readingViews: [UUID: String] = [:]
 
-    /// What the mirror was synced under (`syncStamp`): from the cache, then from each hello. Nil: nothing held yet.
-    var cacheStamp: String?
+    /// The cache was written in another `mirrorFormat`: the first hello fetches everything again.
+    var staleCache = false
+    /// The host's store schema (`hello.schema`) the conversation was synced under; nil before a host sent one.
+    var hostSchema: Int?
 
     /// Loads this context's `DeviceIdentity` itself.
     public convenience init(computer: Computer, storage: SharedStore.Context) {

@@ -84,9 +84,14 @@ impl Actor {
         });
     }
 
+    /// Files and artifact cards go to the bot's own chat: its own turns and routine runs, not a room or a bot request.
+    pub(super) fn shares_files(&self) -> bool {
+        self.active_group.is_none() && !self.in_request()
+    }
+
     fn can_send_file(&self) -> Result<()> {
         self.turn_writes()?;
-        ensure!(self.in_own_chat(), "send_file is only available in the bot's own chat");
+        ensure!(self.shares_files(), "send_file is only available in the bot's own chat");
         Ok(())
     }
 
@@ -102,7 +107,7 @@ impl Actor {
     /// published (`#380`). A room's or another bot's request leaves the artifact in the Library with no card.
     pub(super) fn post_artifact(&mut self, data: Value) -> Result<String> {
         self.turn_writes()?;
-        ensure!(self.in_own_chat() || self.in_routine(), "artifact cards go only to the bot's own chat");
+        ensure!(self.shares_files(), "artifact cards go only to the bot's own chat");
         let text = data["text"].as_str().unwrap_or_default().to_owned();
         self.close_seg();
         let entry =

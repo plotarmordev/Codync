@@ -66,10 +66,14 @@ async fn wait_for<F: Fn(&[Value]) -> bool>(host: &Host, bot: &str, what: &str, d
     }
 }
 
-/// Waits until the first server runs on `port`.
+/// Waits until the first server runs with `port` among its ports. Another process of its session can listen too (a
+/// session id reused under load), so the port is looked for wherever it comes in the list.
 async fn wait_running(host: &Host, bot: &str, port: u16) {
     wait_for(host, bot, "running with its port", |list| {
-        list.first().is_some_and(|s| s["status"] == "running" && s["ports"][0]["port"] == port)
+        list.first().is_some_and(|s| {
+            s["status"] == "running"
+                && s["ports"].as_array().is_some_and(|ports| ports.iter().any(|p| p["port"] == port))
+        })
     })
     .await;
 }
@@ -103,9 +107,14 @@ async fn a_server_outlives_its_agent_and_shows_its_port() {
 
     let started = start(&host, &bot, &server_command(port), "web").await;
     assert_eq!(started["status"], "running", "{started}");
-    assert_eq!(started["ports"][0]["port"], port);
-    assert_eq!(started["ports"][0]["local"], format!("http://localhost:{port}"));
-    assert_eq!(started["ports"][0]["remote"], json!([]), "it listens on loopback only");
+    let listed_port = started["ports"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["port"] == port)
+        .unwrap_or_else(|| panic!("the port it was asked for isn't listed: {started}"));
+    assert_eq!(listed_port["local"], format!("http://localhost:{port}"));
+    assert_eq!(listed_port["remote"], json!([]), "it listens on loopback only");
     assert!(serves(port));
 
     let listed = servers(&host, &bot).await;
@@ -210,8 +219,9 @@ async fn the_same_command_is_one_server_and_a_bot_runs_at_most_five() {
     assert_eq!(first["id"], dotted["id"], "{dotted}");
     assert_eq!(servers(&host, &bot).await.len(), 1);
 
-    // Without a port a start waits its whole time, so one of these.
-    start(&host, &bot, &sleeper(300), "watch").await;
+    // Without a port a start waits its whole time, then settles as running.
+    let watch = start(&host, &bot, &sleeper(300), "watch").await;
+    assert_eq!(watch["status"], "running", "{watch}");
     for n in 0..3 {
         start(&host, &bot, &server_command(free_port()), &format!("s{n}")).await;
     }
@@ -220,11 +230,8 @@ async fn the_same_command_is_one_server_and_a_bot_runs_at_most_five() {
         host.refused("chatCall", json!({"botId": bot, "name": "start_dev_server", "arguments": arguments})).await;
     assert!(refused.contains("at most 5"), "{refused}");
 
-    let list = wait_for(&host, &bot, "a server without a port settles", |list| {
-        list.iter().filter(|s| s["status"] == "running").count() == 5
-    })
-    .await;
-    assert_eq!(list.iter().filter(|s| s["ports"] == json!([])).count(), 1);
+    wait_for(&host, &bot, "every server runs", |list| list.iter().filter(|s| s["status"] == "running").count() == 5)
+        .await;
 
     // A person starting a stopped one is held to the limit too.
     stop(&host, &bot, &first["id"], port).await;

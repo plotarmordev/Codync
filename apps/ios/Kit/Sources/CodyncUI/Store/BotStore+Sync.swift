@@ -19,6 +19,10 @@ extension BotStore {
                     try await Task.sleep(for: hostUpdateOffer() == .updating ? Self.updatingRecheck : Self.mismatchRecheck)
                     continue
                 }
+                eventSubscription += 1
+                let subscription = eventSubscription
+                var messagesFetched = 0
+                var chatsCaughtUp: Set<String> = []
                 // A refetch the link cut short starts over: only one whole catch-up says what the computer still has.
                 if refetched != nil { refetchAll() }
                 requestedSince = rev
@@ -29,6 +33,13 @@ extension BotStore {
                     setConnection(.online)
                     backoff = 1
                     apply(event)
+                    switch event {
+                    case let .entry(entry):
+                        messagesFetched += 1
+                        chatsCaughtUp.insert(entry.botId)
+                    case let .bot(bot): chatsCaughtUp.insert(bot.id)
+                    default: break
+                    }
                     // An event that restarted the stream leaves the refetch to the new one.
                     guard !Task.isCancelled else { return }
                     if case let .hello(_, _, _, _, _, catchUp) = event {
@@ -39,7 +50,12 @@ extension BotStore {
                     } else {
                         continue
                     }
-                    if catchUpLeft == 0 { finishCatchUp() }
+                    if catchUpLeft == 0 {
+                        finishCatchUp()
+                        caughtUpSubscription = subscription
+                        catchUpsCompleted += 1
+                        openTiming.record(.catchUp, computer: computer.id, chats: chatsCaughtUp.count, messages: messagesFetched)
+                    }
                 }
             } catch is CancellationError {
                 return
@@ -78,25 +94,25 @@ extension BotStore {
         guard !Task.isCancelled, !retired else { return }
         // hello first: whatever the version change shows (notices, reminders) reads it.
         guard epoch == iconsEpoch else { return }
+        // Another host database: its revisions say nothing about this cache's, so start over before subscribing from it.
+        if let hostId, hostId != h.hostId { resetMirror() }
+        hostId = h.hostId
         iconsRevision = -1
         hello = h
+        openTiming.record(.hello, computer: computer.id)
         applyIcons(h.icons ?? [:], revision: h.iconsRevision ?? 0)
-        noteSyncStamp(Self.syncStamp(h))
-        noteHostVersion(HostVersion(version: h.version, minApp: h.minApp))
+        noteHostVersion(HostVersion(version: h.version, minApp: h.minApp), schema: h.schema)
     }
 
-    /// A copy synced under another mirror format or host schema may lack fields or hold rows a migration changed:
-    /// fetch it all again, underneath what's shown.
-    private func noteSyncStamp(_ stamp: String) {
-        if let cacheStamp, cacheStamp != stamp { refetchAll() }
-        cacheStamp = stamp
-    }
-
-    private func noteHostVersion(_ new: HostVersion) {
-        // Which names calls go out under (`HostClient+OldHosts.swift`).
-        client?.hostVersion = new.version
-        if let hostVersion, hostVersion.version != new.version {
-            // Another host: its update is done, and what the last one sent no longer says anything.
+    private func noteHostVersion(_ new: HostVersion, schema: Int? = nil) {
+        // A cache in another format can't be kept, nor a conversation synced under another store schema (a migration
+        // may rewrite or delete rows in place), so everything is fetched again. A host update alone keeps the cursor.
+        let otherSchema = schema != nil && hostSchema != nil && schema != hostSchema
+        if staleCache || otherSchema { refetchAll() }
+        staleCache = false
+        if let schema { hostSchema = schema }
+        if hostVersion.map({ $0.version != new.version }) ?? false {
+            // Data that wouldn't read may read on the other version; the host's update request is done.
             rewound = false
             unreadable = false
             hostUpdate = nil
@@ -125,7 +141,7 @@ extension BotStore {
             bump(rev)
         case .bot(let received):
             let bot = putHostBot(received)
-            dropEndedThreads()
+            dropEndedTasks()
             bump(bot.rev)
             onBotUpdated?(bot)
             onRosterChanged?()
@@ -134,7 +150,7 @@ extension BotStore {
             removeComposerDrafts(for: id)
             bots[id] = nil
             entries[id] = nil
-            dropEndedThreads()
+            dropEndedTasks()
             windowFloors[id] = nil
             bump(r)
             if selection == id { selection = nil }
@@ -148,8 +164,8 @@ extension BotStore {
             if let card = e.data.artifact { artifacts.announce(card) }
             bump(e.rev)
             acknowledgeVisibleConversations(e.botId, entry: e)
-        case let .threadEntry(thread, e):
-            putThreadEntry(e, thread: thread)
+        case let .taskEntry(task, e):
+            putTaskEntry(e, task: task)
             bump(e.rev)
         case let .call(cue):
             // The computer decides what the voice hears; this device hands each cue over once.
@@ -194,7 +210,7 @@ extension BotStore {
         persistComposerDrafts()
         bots = [:]
         entries = entries.mapValues { $0.filter { $0.id.hasPrefix("local-") } }.filter { !$0.value.isEmpty }
-        threadEntries = [:]
+        taskEntries = [:]
         selection = nil
         onRosterChanged?()
         rev = 0
@@ -263,11 +279,11 @@ extension BotStore {
         return e.seq < floor
     }
 
-    /// A thread no task names any more is gone from the computer too; its transcript goes with it.
-    private func dropEndedThreads() {
-        guard !threadEntries.isEmpty else { return }
-        let named = Set(bots.values.flatMap(\.work).compactMap(\.thread))
-        threadEntries = threadEntries.filter { named.contains($0.key) }
+    /// A task no item names any more is gone from the computer too; its transcript goes with it.
+    private func dropEndedTasks() {
+        guard !taskEntries.isEmpty else { return }
+        let named = Set(bots.values.flatMap(\.work).compactMap(\.task))
+        taskEntries = taskEntries.filter { named.contains($0.key) }
     }
 
     func upsert(_ e: Entry) {

@@ -3,7 +3,7 @@ export type AudioPhase = 'idle' | 'loading' | 'playing' | 'paused' | 'failed'
 /** Which step of a play failed: fetching or opening the sound, or starting it. */
 export type AudioFailure = 'load' | 'playback'
 
-/** What a card shows: the player's phase and the sound's clock (seconds; duration 0 until known). */
+/** What a card shows: the player's phase and the sound's clock (seconds; duration 0 while unknown). */
 export interface AudioSnapshot {
   phase: AudioPhase
   elapsed: number
@@ -45,35 +45,35 @@ export interface SharedAudioPlatform {
 export class SharedAudio {
   private phase: AudioPhase = 'idle'
   private elapsed = 0
-  private duration = 0
-  /** The length the preload read off the bytes (0 until then), shown before the first play and after a failure. */
-  private known = 0
+  private duration: number
   private sound: Sound | null = null
-  /** Where a seek made before the player opened wants it to start (seconds), applied as it opens. */
-  private pending: number | null = null
   private disposed = false
   /** The step this tap is on, so a failure says which one broke. */
   failure: AudioFailure = 'load'
   private readonly platform: SharedAudioPlatform
   private readonly changed: (snapshot: AudioSnapshot) => void
-  /** The sound's bytes, one fetch shared by the preload and a tap; a failed one is forgotten, so the next call
-   *  fetches again. */
+  /** The length the host or the card read from the sound's headers (0 when unknown), shown until the sound itself says. */
+  private known: number
+  /** The sound's bytes, one fetch shared by the preload, the length read and a tap; a failed one is forgotten, so
+   *  the next call fetches again. */
   private bytes: Promise<Uint8Array | null> | null = null
 
-  constructor(platform: SharedAudioPlatform, changed: (snapshot: AudioSnapshot) => void) {
+  constructor(platform: SharedAudioPlatform, changed: (snapshot: AudioSnapshot) => void, known: number) {
     this.platform = platform
     this.changed = changed
+    this.known = known
+    this.duration = known
   }
 
   get snapshot(): AudioSnapshot {
     return { phase: this.phase, elapsed: this.elapsed, duration: this.duration }
   }
 
-  /** Settles once this tap's pause, play or failure is done. A tap while the preload runs shows loading and plays
-   *  once those bytes arrive. */
+  /** Settles once this tap's pause, play or failure is done. A tap while the card's preload runs shows the spinner
+   *  and plays once those bytes arrive. */
   async toggle() {
     if (this.phase === 'playing') return this.sound?.pause()
-    // A tap while the sound loads is dropped, so it never starts a second player.
+    // A second tap while the sound loads is dropped, so it never starts a second player.
     if (this.phase === 'loading' || this.disposed) return
     this.setPhase('loading')
     this.failure = 'load'
@@ -94,39 +94,31 @@ export class SharedAudio {
     this.phase = 'idle'
   }
 
-  /** Moves the playhead, held to the sound's length; playing or paused, it stays so. Before the first play, the
-   *  preloaded length shows the move and the sound opens there. */
-  seek(seconds: number) {
-    if (this.duration <= 0) return
-    this.elapsed = Math.min(Math.max(seconds, 0), this.duration)
-    if (this.sound) this.sound.seek(this.elapsed)
-    else this.pending = this.elapsed
+  /** The host's length arriving after the card mounted (a backfilled note): shown until the sound itself says. */
+  setKnownDuration(seconds: number) {
+    if (seconds <= 0 || this.duration > 0) return
+    this.known = seconds
+    this.duration = seconds
     this.changed(this.snapshot)
   }
 
-  /** Fetches the sound as the card shows, so a tap plays at once, and reads its length off the bytes so the bar and
-   *  clock show before the first play. A fetch that fails stays quiet: it is forgotten and the tap retries and
-   *  reports it. */
+  /** Fetches the sound as the card shows, so a tap plays at once; a note shared with no length (an older computer)
+   *  reads it from those same bytes, so the clock is there before the first play. A fetch or read that fails stays
+   *  quiet: the tap retries and reports it. */
   async preload() {
     if (this.disposed) return
     const data = await this.data()
-    // A tap already on these bytes, or a sound once played, says its length itself.
-    if (!data || this.disposed || this.phase !== 'idle' || this.duration > 0) return
+    if (!data || this.disposed || this.duration > 0) return
     const seconds = await this.platform.length(data)
-    if (this.disposed || this.duration > 0 || seconds <= 0) return
-    this.known = this.duration = seconds
-    this.changed(this.snapshot)
+    if (!this.disposed) this.setKnownDuration(seconds)
   }
 
-  /** The shared fetch, which one preload and a tap all wait on; it lets go of its bytes once they answer, so a card
-   *  holds none while it isn't playing (the store keeps them), and a failed fetch is forgotten, so the next call
-   *  fetches again. */
-  private async data(): Promise<Uint8Array | null> {
-    const running = this.bytes ?? this.platform.load().catch(() => null)
-    this.bytes = running
-    const data = await running
-    if (this.bytes === running) this.bytes = null
-    return data
+  /** Moves a loaded sound's playhead, held to its length; playing or paused, it stays so. */
+  seek(seconds: number) {
+    if (!this.sound || this.duration <= 0) return
+    this.elapsed = Math.min(Math.max(seconds, 0), this.duration)
+    this.sound.seek(this.elapsed)
+    this.changed(this.snapshot)
   }
 
   private async play() {
@@ -158,22 +150,24 @@ export class SharedAudio {
         },
       })
       this.sound = sound
-      if (this.pending !== null) {
-        sound.seek(this.pending)
-        this.pending = null
-      }
     }
     this.failure = 'playback'
     await this.sound.play()
   }
 
-  /** Drops the player and its clock, so a failure shows no stale progress and the next tap fetches and decodes again;
-   *  the length the preload read stays. */
+  private data() {
+    this.bytes ??= this.platform.load().then((data) => {
+      if (!data) this.bytes = null
+      return data
+    })
+    return this.bytes
+  }
+
+  /** Drops the player and its clock, so a failure shows no stale progress and the next tap fetches and decodes again. */
   private drop() {
     const sound = this.sound
     this.bytes = null
     this.sound = null
-    this.pending = null
     this.elapsed = 0
     this.duration = this.known
     sound?.pause()

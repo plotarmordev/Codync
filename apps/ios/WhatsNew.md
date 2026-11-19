@@ -81,9 +81,13 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - 備援可以選同一個智慧體的另一個登入設定：一個的額度用完，bot 會換到下一個繼續。
 - 「用量上限」會在智慧體底下分別列出每個賬戶的額度（Claude Code、Codex），小工具顯示最接近上限的那一個。
 - 電腦重新啟動或 App、Codync 更新後，iPhone 只接收新的訊息，不再重新載入每個聊天。
+- 語音訊息一出現就顯示播放鍵、進度條和長度（例如 0:00 / 0:09），進度條兩側的間距相同；聲音會先在背景載入，按下就能播放（使用行動數據時只預先載入 2 MB 以下的語音）。單獨傳來的音檔也用同一個播放器，下載移到訊息的選單裡。無法播放時，錯誤訊息直接取代進度條。
 - 選擇卡片改用編號選項；最後一列「其他答案」可以直接打字回答，bot 會帶著你的話繼續。
 - Bot 說「晚點回來看」時會真的設定跟進：聊天裡會出現「20 分鐘後跟進」的提示，時間到了它會自己回到聊天告訴你結果，還沒有進展就不打擾你。等待中的跟進會列在例行任務上方，可以直接取消。
 - 例行任務會記住上次做到哪裡，分批進行的工作下次會接著做。
+- 訊息裡的表格放不進泡泡時，過長的文字會在格子裡換行，不再被截斷。
+- Gemini 即時語音新增 Google 搜尋開關，可在通話中查詢網頁資訊，預設關閉。
+- 在訊息上往旁邊滑就能回覆，就像「訊息」App：你的訊息往左滑，Bot 的訊息往右滑，放開時就會開始回覆。
 - 語音通話設定的 OpenAI 區塊會顯示電腦目前使用的「伺服器」：OpenAI，或你在電腦上設定的自有語音伺服器。使用自有伺服器時，模式固定為語音識別。
 - 可以只回覆訊息的其中一段：長按訊息選「選取文字」，選好文字後在選單點「回覆」，Bot 會知道你問的是哪一段。
 - Bot 也可以引用訊息：晚一點才回的答案，上方會顯示它回答的是哪一則。點一下引用就會捲到那則訊息。
@@ -98,11 +102,12 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - 長按 Bot 選「新會話」，就能讓智慧體從新的上下文開始，聊天記錄會保留。
 - 背景工作也會用備援；需要登入時會在聊天裡請你登入。
 - 轉寫中、資料夾、雲端電腦更新等幾段介面文字，現在會以你選的語言顯示。
+- 「管理團隊」現在讓 Bot 也能刪除 Bot（不會刪除自己），刪除前一樣可以核准。
 
 ### en-US
 - Bots do long work in the background, several things at once, and keep answering in the chat.
-- A capsule above the message box says how many are working and waiting (one alone: what it's doing, with Stop). Tap it for the bot's Details.
-- Details lists the bot's work. Threads: what runs now; tap one to write to it like a chat, even once it's done. Each shows its folder or branch. Event box: what waits, with First, Cut in and Drop. Recent: what ended, with Try again.
+- A capsule above the message box shows background work and its progress, with Stop for a single task. Tap it for Details.
+- Details lists running Threads (tap one to open it and write to it like a chat; each shows its folder or branch), waiting Event box tasks (First, Cut in, Drop), and Recent work from the last day, with Try again.
 - Agents at once, in the bot's Settings, sets how many work at a time (1 to 6). Instructions and Agent (model, fast mode, fallbacks) moved there from Details.
 - Background work can ask for approval or a choice and send files or voice notes in the chat, marked "In the background".
 - Routines and other bots' requests run in the background too.
@@ -116,10 +121,14 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - A fallback can be the same agent on another login profile: when one runs out of usage, the bot carries on with the next.
 - Usage limits lists each account of an agent with its own limits (Claude Code, Codex), and widgets show the one nearest its limit.
 - After a restart or an update, the iPhone loads only what's new, not every chat again.
+- Voice notes play in the chat; downloads moved to the message menu.
 - Choice cards show numbered options; the last row, Something else, takes your own answer.
 - A bot that says it will check back later sets a follow-up ("Follow-up in 20 minutes") and tells you what it found when it's due. Waiting ones are above its routines.
 - A routine remembers where its last run stopped, so work done in parts carries on from there.
+- A table that doesn't fit its message bubble wraps the long text inside its cells instead of cutting it off.
+- Optional Google Search in Gemini realtime calls, off by default.
 - Voice chat settings show which Server the computer's OpenAI engine uses: OpenAI, or your own speech server (Mode then stays on Speech).
+- Swipe sideways on a message to reply.
 - Reply to one part of a message: touch and hold it, choose Select Text, select the words, then Reply.
 - Bots can quote a message too: tap the quote above an answer to see it.
 - A bot's Skills settings list only each skill's name; the info button beside one shows its description.
@@ -133,3 +142,4 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 - Touch and hold a bot for New session: a fresh context for its agent; the chat stays.
 - Background work uses fallbacks too; sign-ins it needs show in the chat.
 - A few more interface texts (transcribing, folders, cloud computer updates) now show in your language.
+- Manage the team now lets a bot delete bots too, never itself.

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { SharedFile } from '@shared/models'
 import type { DownloadState } from '../../store/file-downloads.ts'
-import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock, soundClock } from './file-card.ts'
+import { byteCount, cardActions, cardDetail, cardKeyAction, clickRunsFirstAction, clock, clockRoom, soundClock } from './file-card.ts'
 import type { AudioSnapshot } from './shared-audio.ts'
 
 const file = (size: number): SharedFile => ({ id: 'f1', name: 'venue-floor-plan.pdf', size, sha256: 'a'.repeat(64) })
@@ -13,7 +13,9 @@ test('byteCount matches ByteCountFormatter(.file): decimal units, no needless ze
     [0, 'Zero KB'], [1, '1 byte'], [43, '43 bytes'], [999, '999 bytes'],
     [1000, '1 KB'], [1499, '1 KB'], [1500, '2 KB'], [47600, '48 KB'], [64400, '64 KB'], [380030, '380 KB'],
     [999500, '1 MB'], [1049999, '1 MB'], [1050000, '1.1 MB'], [1234567, '1.2 MB'], [12345678, '12.3 MB'],
-    [1000000000, '1 GB'], [1234567890, '1.23 GB'],
+    [2550000, '2.6 MB'], [16650000, '16.7 MB'],
+    [999995000, '1 GB'], [1000000000, '1 GB'], [1005000000, '1.01 GB'], [1234567890, '1.23 GB'], [2555000000, '2.56 GB'],
+    [999999999999, '1 TB'], [1234567890123, '1.23 TB'],
   ]
   for (const [bytes, text] of expected) assert.equal(byteCount(bytes), text, `${bytes}`)
 })
@@ -25,11 +27,17 @@ test('clock writes m:ss, and h:mm:ss past an hour', () => {
   assert.equal(clock(600), '10:00')
   assert.equal(clock(3725), '1:02:05')
 })
-test("a sound's clock writes its elapsed half in its length's shape, so it keeps one width as it runs", () => {
+
+test("a sound's clock writes its elapsed half in its length's shape, as wide as its room", () => {
   assert.equal(soundClock(3, 10), '0:03 / 0:10')
   assert.equal(soundClock(5, 720), '00:05 / 12:00')
   assert.equal(soundClock(5, 3720), '0:00:05 / 1:02:00')
   assert.equal(soundClock(750, 3720), '0:12:30 / 1:02:00')
+  for (const [elapsed, duration] of [[3, 10], [5, 270], [5, 720], [5, 3720], [3719, 3720]]) {
+    assert.equal(soundClock(elapsed, duration).length, clockRoom(duration).length, `${elapsed} of ${duration}`)
+  }
+  assert.equal(clockRoom(0), '0:00 / 0:00', 'an unknown length keeps the room of a short note')
+  assert.equal(clockRoom(10), '0:00 / 0:00', "a short note never keeps an hour's room")
 })
 
 test('a card that could not play says so before anything else', () => {
@@ -59,26 +67,32 @@ test('a card that could not play writes its retry in the saved language', (t) =>
   lang = 'en'
   assert.equal(cardDetail(undefined, file(1000), failed), "Couldn't play. Click to retry.")
 })
-
-test('a downloading or failed download beats the sound clock', () => {
+test("a voice note's failed download beats its clock; one under way leaves the clock, never a byte count", () => {
   const downloading: DownloadState = { kind: 'downloading', received: 500 }
   const failed: DownloadState = { kind: 'failed', message: 'No space left.' }
-  assert.equal(cardDetail(downloading, file(1000), audio('playing', 7, 48)), '500 bytes of 1 KB')
+  assert.equal(cardDetail(downloading, file(1000), audio('playing', 7, 48)), '0:07 / 0:48')
   assert.equal(cardDetail(failed, file(1000), audio('playing', 7, 48)), 'No space left.')
 })
 
-test('a loaded sound shows elapsed of duration while playing, paused or done', () => {
+test('a loaded sound shows elapsed of duration while playing, paused, done or saved', () => {
   for (const phase of ['playing', 'paused', 'idle'] as const) {
     assert.equal(cardDetail(undefined, file(64400), audio(phase, 7, 48)), '0:07 / 0:48')
   }
+  assert.equal(cardDetail({ kind: 'saved' }, file(64400), audio('idle', 0, 48)), '0:00 / 0:48')
 })
 
-test('a card without a loaded sound or download keeps the file detail', () => {
+test('a voice note of unknown length shows the bar alone, never its file size', () => {
+  for (const phase of ['idle', 'loading'] as const) {
+    assert.equal(cardDetail(undefined, file(380030), audio(phase)), '')
+    assert.equal(cardDetail({ kind: 'saved' }, file(380030), audio(phase)), '')
+    assert.equal(cardDetail({ kind: 'downloading', received: 500 }, file(380030), audio(phase)), '')
+  }
+})
+
+test("a file card's caption is its download's", () => {
   assert.equal(cardDetail(undefined, file(380030)), '380 KB')
-  assert.equal(cardDetail(undefined, file(380030), audio('idle')), '380 KB')
-  assert.equal(cardDetail(undefined, file(380030), audio('loading')), '380 KB')
-  const saved: DownloadState = { kind: 'saved' }
-  assert.equal(cardDetail(saved, file(380030), audio('idle')), '380 KB · Saved')
+  assert.equal(cardDetail({ kind: 'downloading', received: 500 }, file(1000)), '500 bytes of 1 KB')
+  assert.equal(cardDetail({ kind: 'saved' }, file(380030)), '380 KB · Saved')
 })
 
 test("a card's first action is a voice note's play (also after a failure), then a picture's view, then the download", () => {

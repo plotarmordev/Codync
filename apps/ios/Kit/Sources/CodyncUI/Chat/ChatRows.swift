@@ -19,6 +19,8 @@ struct ChatRow: View {
     var addFallback: (() -> Void)?
     /// An artifact card's artifact, full size.
     var openArtifact: ((ArtifactRef) -> Void)?
+    /// A shared file readable on the phone, in the chat's viewer.
+    var openFile: ((FileViewerTarget) -> Void)?
     /// A voice call's line: the call's conversation.
     var openCall: (() -> Void)?
     /// A tap on the message's quote: brings the quoted message (its id) into view.
@@ -33,16 +35,19 @@ struct ChatRow: View {
                 UserBubble(entry: entry, reply: reply, selectText: selectText, openQuote: openQuote)
                 ReactionsRow(entry: entry)
             }
+            .swipeToReply(.left, margin: 56, reply: reply)
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: entry.data.reactions)
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: entry.data.botReactions)
             .padding(.top, groupStart ? 12 : 4)
         case "agent":
             VStack(alignment: .leading, spacing: 4) {
                 if chat?.isGroup == true, groupStart { AuthorLabel(botId: entry.data.author) }
-                AgentBubble(entry: entry, openTrace: openTrace, reply: reply, selectText: selectText, openArtifact: openArtifact, openQuote: openQuote)
+                AgentBubble(entry: entry, openTrace: openTrace, reply: reply, selectText: selectText, openArtifact: openArtifact,
+                            openFile: openFile, openQuote: openQuote)
                 ReactionsRow(entry: entry)
                     .padding(.leading, chat?.isGroup == true ? 34 : 0)
             }
+            .swipeToReply(.right, margin: 40, reply: reply)
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: entry.data.reactions)
             .animation(Motion.reduced(Motion.layout, reduceMotion), value: entry.data.botReactions)
             .padding(.top, groupStart ? 12 : 4)
@@ -146,7 +151,7 @@ struct UserBubble: View {
     var selectText: (() -> Void)?
     var openQuote: ((String) -> Void)?
     @Environment(BotStore.self) private var model
-    /// The task's thread the message was written to: no reactions there, and Resend goes to the thread.
+    /// The item's thread the message was written to: no reactions there, and Resend goes to the thread.
     @Environment(\.workThread) private var thread
 
     var body: some View {
@@ -157,7 +162,6 @@ struct UserBubble: View {
             if !(entry.data.text ?? "").isEmpty || entry.data.replyTo != nil { text }
                 status
         }
-        .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.leading, 56)
     }
 
@@ -219,9 +223,10 @@ struct AgentBubble: View {
     var reply: (() -> Void)?
     var selectText: (() -> Void)?
     var openArtifact: ((ArtifactRef) -> Void)?
+    var openFile: ((FileViewerTarget) -> Void)?
     var openQuote: ((String) -> Void)?
     @Environment(BotStore.self) private var model
-    /// In a task's thread a message has Copy alone: reactions and "Show what it did" are the chat's.
+    /// In an item's thread a message has Copy alone: reactions and "Show what it did" are the chat's.
     @Environment(\.workThread) private var thread
 
     var body: some View {
@@ -230,7 +235,7 @@ struct AgentBubble: View {
             if let quote = entry.data.replyTo { QuoteLine(text: quote.text, open: openQuote.map { open in { open(quote.id) } }).padding(.horizontal, 16) }
             if entry.data.artifact == nil, entry.data.voiceNoteFile == nil, let files = entry.data.files, !files.isEmpty {
                 // Each card has the menu, its picture's copy items in Copy's place; a sound the computer marked
-                // playable is the player bubble instead, its name under the row and Download in the menu.
+                // playable is the player bubble instead, its name under the row.
                 ForEach(files) { file in
                     if file.playsInChat {
                         VoiceNoteBubble(entry: entry, file: file, name: file.name) {
@@ -240,7 +245,7 @@ struct AgentBubble: View {
                             menu.items(copy: menu.textCopy + [downloadItem(file)])
                         }
                     } else {
-                        FileDownloadCard(entry: entry, file: file, menu: menu)
+                        FileDownloadCard(entry: entry, file: file, menu: menu, openFile: openFile)
                     }
                 }
             } else {
@@ -263,9 +268,8 @@ struct AgentBubble: View {
                     menu.textItems(more: entry.data.voiceNoteFile.map { [downloadItem($0)] } ?? [])
                 }
             }
-            WorkThreadLine(data: entry.data).padding(.leading, 4)
+            TaskLine(data: entry.data).padding(.leading, 4)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.trailing, 40)
     }
 
@@ -273,7 +277,7 @@ struct AgentBubble: View {
     private func downloadItem(_ file: SharedFile) -> MenuItem {
         let downloading = model.fileDownloads.isDownloading(file.id)
         return MenuItem(downloading ? "Cancel download" : "Download", icon: "arrow.down.to.line") {
-            Motion.animate { model.fileDownloads.toggle(client: model.client, entryId: entry.id, botId: entry.botId, file: file) }
+            model.fileDownloads.toggle(client: model.client, entry: entry, file: file)
         }
     }
 
@@ -310,7 +314,7 @@ struct NoticeRow: View {
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.danger)
                 }
-                WorkThreadLine(data: entry.data)
+                TaskLine(data: entry.data)
                 if entry.data.addFallback == true, let addFallback {
                     Button(L10n.tr("Add a fallback"), action: addFallback).buttonStyle(.secondary)
                 }

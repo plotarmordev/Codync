@@ -16,6 +16,7 @@ struct LibraryView: View {
     @State private var renaming: Artifact?
     @State private var sharing: ArtifactFile?
     @State private var viewing: ImageViewing?
+    @State private var viewingFile: FileViewerTarget?
 
     var body: some View {
         let items = files + model.artifacts.artifacts(of: botId).map(ChatLibraryItem.init)
@@ -48,8 +49,9 @@ struct LibraryView: View {
         .codyncSheet(item: $renaming) { ArtifactRenameSheet(artifact: $0) }
         .artifactShareSheet($sharing)
         .imageViewer($viewing)
+        .codyncSheet(item: $viewingFile) { FileViewer(file: $0.file, entryId: $0.entryId, botId: $0.botId) }
         // The picture viewer presents a download that finishes while it's open.
-        .fileExportSheet(model, botId: botId, active: viewing == nil)
+        .fileExportSheet(model, botId: botId, active: viewing == nil && viewingFile == nil)
     }
 
     @ViewBuilder private func row(_ item: ChatLibraryItem) -> some View {
@@ -65,7 +67,10 @@ struct LibraryView: View {
                  MenuItem("Share artifact", icon: "square.and.arrow.up") { share(artifact) }]
             }
         case .file(let file, let entryId):
-            Button { download(file, entryId: entryId) } label: {
+            Button {
+                if file.preview != nil { viewingFile = FileViewerTarget(file: file, entryId: entryId, botId: botId) }
+                else { download(file, entryId: entryId) }
+            } label: {
                 LibraryRow(title: file.name, detail: FileDownloadCard.detail(model.fileDownloads.states[file.id], size: file.size)) {
                     symbol(AttachmentIcon.symbol(file.name))
                 }

@@ -6,6 +6,8 @@ import Foundation
 public enum AnalyticsEvent: Equatable, Sendable {
     /// nil = couldn't be read; left out.
     case appOpened(notifications: Notifications? = nil, widgets: Int? = nil)
+    case openTiming(OpenPhase, open: OpenKind, ms: Int, computer: ComputerID,
+                    computers: Int, chats: Int? = nil, messages: Int? = nil)
     case onboardingStepViewed(OnboardingStep)
     case onboardingCompleted(via: OnboardingVia)
     case signInStarted(SignInProvider)
@@ -69,14 +71,20 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case conversationFindOpened
     /// A search in the find bar settled: whether it found anything, never the text.
     case conversationFindSearched(found: Bool)
+    /// A message dragged sideways far enough to start a reply.
+    case replySwiped
     /// A quote at the top of a message was tapped: whether the quoted message was loaded and came into view.
     case quoteOpened(found: Bool)
     /// Something from another app's share sheet handed to a bot, or why it wasn't; never names or content.
     case shareSent(ShareSent)
+    /// How smoothly one of the reader's scrolls of the bot list or a chat drew, from the drag to just after it came to rest.
+    case scrollHitches(ScrollHitches)
 
     public enum Notifications: String, Sendable { case allowed, denied, notAsked = "not_asked" }
-    public enum OnboardingStep: String, Sendable { case welcome, choose, install, scan, cloud }
-    public enum OnboardingVia: String, Sendable { case paired, account, cloud, skipped }
+    public enum OpenPhase: String, Sendable { case linkReady = "link_ready", hello, catchUp = "catch_up", chatList = "chat_list", openChat = "open_chat" }
+    public enum OpenKind: String, Sendable { case cold, foreground }
+    public enum OnboardingStep: String, Sendable { case welcome, choose, install, scan }
+    public enum OnboardingVia: String, Sendable { case paired, account, skipped }
     public enum SignInProvider: String, Sendable { case apple, google, github }
     public enum SignInFailure: String, Sendable { case cancelled, verification, error }
     public enum MovedKeys: String, Sendable { case moved, rescan }
@@ -120,13 +128,42 @@ public enum AnalyticsEvent: Equatable, Sendable {
             self.recent = recent
         }
     }
+    /// One scroll's frames: how many, how many were late (a hitch: longer than one and a half frame intervals), the
+    /// longest in ms and the late time per second (Apple's hitch-time ratio). A chat also says where it came to rest and how
+    /// far its rows moved by themselves after that (a jump or second bounce at the stop), in points.
+    public struct ScrollHitches: Equatable, Sendable {
+        public enum List: String, Sendable { case bots, chat }
+        public enum Stop: String, Sendable { case top, end, middle }
+        public let list: List
+        public let rows: Int
+        public let frames: Int
+        public let hitches: Int
+        public let longestMs: Int
+        public let hitchMsPerSecond: Int
+        public let fps: Int
+        public let stop: Stop?
+        public let jump: Int?
+
+        public init(list: List, rows: Int, frames: Int, hitches: Int, longestMs: Int, hitchMsPerSecond: Int, fps: Int,
+                    stop: Stop? = nil, jump: Int? = nil) {
+            self.list = list
+            self.rows = rows
+            self.frames = frames
+            self.hitches = hitches
+            self.longestMs = longestMs
+            self.hitchMsPerSecond = hitchMsPerSecond
+            self.fps = fps
+            self.stop = stop
+            self.jump = jump
+        }
+    }
     public enum VoiceEngine: String, Sendable { case onDevice = "on_device", openai, gemini, cloud }
     public enum VoiceStuck: String, Sendable { case none, connecting, reconnecting, speaking }
     public enum VoiceFailure: String, Sendable { case none, microphone, connection, provider }
     public enum Screen: String, Sendable {
         case bots, state, chat, trace, botDetails = "bot_details", botComputer = "bot_computer", memory, routines, marketplace
         case settings, computers, usage, account, pairing, voiceSettings = "voice_settings", remoteScreen = "remote_screen"
-        case library, artifact, network, thread, allWork = "all_work"
+        case library, artifact, network, task, allWork = "all_work"
     }
 
     public enum NotificationKind: String, Sendable {
@@ -235,6 +272,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
     var name: String {
         switch self {
         case .appOpened: "app_opened"
+        case .openTiming: "open_timing"
         case .onboardingStepViewed: "onboarding_step_viewed"
         case .onboardingCompleted: "onboarding_completed"
         case .signInStarted: "sign_in_started"
@@ -276,8 +314,10 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .voiceNotePlayed: "voice_note_played"
         case .conversationFindOpened: "conversation_find_opened"
         case .conversationFindSearched: "conversation_find_searched"
+        case .replySwiped: "reply_swiped"
         case .quoteOpened: "quote_opened"
         case .shareSent: "share_sent"
+        case .scrollHitches: "scroll_hitches"
         }
     }
 
@@ -288,12 +328,19 @@ public enum AnalyticsEvent: Equatable, Sendable {
             p["notifications"] = notifications.map { .string($0.rawValue) }
             p["widgets"] = widgets.map(Analytics.Value.int)
             return p
+        case let .openTiming(phase, open, ms, computer, computers, chats, messages):
+            var p: [String: Analytics.Value] = ["phase": .string(phase.rawValue), "open": .string(open.rawValue),
+                                                "ms": .int(ms), "computer": .string(Analytics.computerTag(computer)),
+                                                "computers": .int(computers)]
+            p["chats"] = chats.map(Analytics.Value.int)
+            p["messages"] = messages.map(Analytics.Value.int)
+            return p
         case let .onboardingStepViewed(step): return ["step": .string(step.rawValue)]
         case let .onboardingCompleted(via): return ["via": .string(via.rawValue)]
         case let .signInStarted(provider), let .signedIn(provider): return ["provider": .string(provider.rawValue)]
         case let .signInFailed(provider, reason): return ["provider": .string(provider.rawValue), "reason": .string(reason.rawValue)]
         case .signedOut, .accessRequested, .continuedWithoutAccount, .computerFoundOnNetwork, .addToAccountAsked,
-             .addToAccountCompleted, .imagePreviewOpened, .whatsNewShown, .conversationFindOpened: return [:]
+             .addToAccountCompleted, .imagePreviewOpened, .whatsNewShown, .conversationFindOpened, .replySwiped: return [:]
         case let .conversationFindSearched(found), let .quoteOpened(found): return ["found": .bool(found)]
         case let .addToAccountFailed(reason): return ["reason": .string(reason.rawValue)]
         case let .imagePreviewAction(action, from, outcome):
@@ -339,6 +386,14 @@ public enum AnalyticsEvent: Equatable, Sendable {
             var p: [String: Analytics.Value] = ["outcome": .string(share.outcome.rawValue), "files": .int(share.files),
                                                 "text": .bool(share.text), "recent": .bool(share.recent)]
             p["error"] = share.error.map { .string($0.rawValue) }
+            return p
+        case let .scrollHitches(scroll):
+            var p: [String: Analytics.Value] = ["list": .string(scroll.list.rawValue), "rows": .int(scroll.rows),
+                                                "frames": .int(scroll.frames), "hitches": .int(scroll.hitches),
+                                                "longest_ms": .int(scroll.longestMs), "hitch_ms_per_s": .int(scroll.hitchMsPerSecond),
+                                                "fps": .int(scroll.fps)]
+            p["stop"] = scroll.stop.map { .string($0.rawValue) }
+            p["jump"] = scroll.jump.map(Analytics.Value.int)
             return p
         }
     }

@@ -94,7 +94,8 @@ function openChat() {
     show: false,
     backgroundColor: background(),
     titleBarStyle: isMac ? 'hidden' : 'default',
-    webPreferences: webPreferences(join(__dirname, '../preload/index.js')),
+    // `plugins` keeps Chromium's PDF viewer able to open the file sheet's blob frames.
+    webPreferences: { ...webPreferences(join(__dirname, '../preload/index.js')), plugins: true },
   })
   // CODYNC_SHOW_INACTIVE: development and UI checks open the window without taking focus.
   chat.on('ready-to-show', () => chat && present(chat, Boolean(process.env.CODYNC_SHOW_INACTIVE)))

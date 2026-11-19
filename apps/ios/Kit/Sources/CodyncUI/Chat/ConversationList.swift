@@ -80,6 +80,10 @@ private struct ConversationCollection: UIViewRepresentable {
         context.coordinator.update(self, context: context)
     }
 
+    static func dismantleUIView(_ view: ConversationContainer, coordinator: Coordinator) {
+        coordinator.meter.cancel()
+    }
+
     @MainActor final class Coordinator: NSObject, UICollectionViewDelegate {
         private var view: ConversationCollectionView!
         private var dataSource: UICollectionViewDiffableDataSource<Int, String>!
@@ -92,6 +96,7 @@ private struct ConversationCollection: UIViewRepresentable {
         private var lastReveal: ConversationReveal?
         private var lastOffset: CGFloat = 0
         private var reduceMotion = false
+        let meter = ScrollHitchMeter(.chat)
         /// The pull as last told to `pull`, read here instead of from it: the list also scrolls inside SwiftUI's
         /// update of this view, and a read of `pull` there makes each step of a pull run the update again, whose
         /// snapshot snaps the pull back.
@@ -246,6 +251,7 @@ private struct ConversationCollection: UIViewRepresentable {
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
             view.cancelScrollingToEnd()
             lastOffset = scrollView.contentOffset.y
+            meter.begin()
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -340,8 +346,19 @@ private struct ConversationCollection: UIViewRepresentable {
         /// The list stopped moving (the reader's scrolling, a row brought into view): resting at the end follows again;
         /// anywhere else stays put.
         private func settle() {
+            meter.rest(rows: dataSource.snapshot().numberOfItems, stop: view.stop, track: restingRow())
             setFollowing(view.followingAfterInteraction())
             if view.following { view.pinToEnd() }
+        }
+
+        /// Where the first row on screen now sits on screen, followed by its id: rows going in above don't move it.
+        private func restingRow() -> () -> CGFloat? {
+            let id = view.indexPathsForVisibleItems.min().flatMap(dataSource.itemIdentifier(for:))
+            return { [weak self] in
+                guard let self, let id, let path = dataSource.indexPath(for: id),
+                      let frame = view.layoutAttributesForItem(at: path)?.frame else { return nil }
+                return frame.minY - view.contentOffset.y
+            }
         }
     }
 }

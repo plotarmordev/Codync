@@ -198,7 +198,7 @@ export function UserBubble({ entry, reply }: { entry: Entry; reply?: () => void 
         ) : null}
         {status && status !== 'sent' ? <UserStatus entry={entry} hovering={hovering} /> : null}
         {/* Beside the bubble, inside its hover region: showing them never changes the height. */}
-        <MessageActions className="leading" visible={hovering} reactions={reactionPick(store, entry)} reply={reply} items={messageCopyItems(store, entry)} />
+        <MessageActions className="leading" visible={hovering} reactions={reactionPick(store, entry)} reply={reply} items={() => messageCopyItems(store, entry)} />
       </div>
     </div>
   )
@@ -225,7 +225,7 @@ function UserStatus({ entry, hovering }: { entry: Entry; hovering: boolean }) {
   }
 }
 
-/** `plain` is a message read outside its chat (a reply in a thread): only Copy and a file's own actions, no
+/** `plain` is a message read outside its chat (a task's reply in its thread): only Copy and a file's own actions, no
  * reactions, Reply or what it did. */
 export function AgentBubble({ entry, openTrace, reply, openArtifact, plain = false }: { entry: Entry; openTrace?: () => void; reply?: () => void; openArtifact?: (artifactId: string) => void; plain?: boolean }) {
   const store = useStore()
@@ -238,8 +238,8 @@ export function AgentBubble({ entry, openTrace, reply, openArtifact, plain = fal
   ]
   // A shared picture or voice note has the same menu as the bubble: reactions, Reply and what it did, its own items in place of Copy.
   const menu: MessageMenu = { items: rest, reactions }
-  const download = (file: SharedFile) => downloadItem(store.fileDownloads.states.get(file.id), () => store.fileDownloads.toggle(store.client, entry.id, file))
   // Copy, then Download for each voice note (inside the message or sent on its own): the bubble's and the "…" menu's.
+  const download = (file: SharedFile) => downloadItem(store.fileDownloads.states.get(file.id), () => store.fileDownloads.toggle(store.client, entry.id, file))
   const own = (): MenuItem[] => [...messageCopyItems(store, entry), ...(entry.data.files ?? []).filter((file) => file.playsInChat).map(download)]
   return (
     <div className="message agent" title={fullDate.format(entry.createdAt)} onMouseEnter={() => setHovering(true)} onMouseLeave={() => setHovering(false)}>
@@ -264,7 +264,7 @@ export function AgentBubble({ entry, openTrace, reply, openArtifact, plain = fal
             <MarkdownText text={entry.data.text ?? ''} findable />
           )}
         </Bubble>
-        {reactions ? <MessageActions className="trailing" visible={hovering} reactions={reactions} reply={reply} trace={openTrace} items={own()} /> : null}
+        {reactions ? <MessageActions className="trailing" visible={hovering} reactions={reactions} reply={reply} trace={openTrace} items={own} /> : null}
       </div>
       <ThreadLine entry={entry} />
     </div>
@@ -355,8 +355,9 @@ function MessageActions({ visible, className, reactions, reply, trace, items }: 
   reactions: ReactionPick
   reply?: () => void
   trace?: () => void
-  /** The message's own items, before what it did: Copy (`copyItems`), a voice note's Download. */
-  items: MenuItem[]
+  /** The message's own items, before what it did: Copy (`copyItems`), a voice note's Download. Computed when
+   *  the menu opens, so a language change reaches them without this row re-rendering. */
+  items: () => MenuItem[]
 }) {
   const tr = useTr()
   const [menu, setMenu] = useState<'reactions' | 'more' | null>(null)
@@ -377,7 +378,7 @@ function MessageActions({ visible, className, reactions, reply, trace, items }: 
         open={menu === 'more'}
         onClose={() => setMenu(null)}
         anchor={more}
-        items={() => [...items, ...(trace ? [{ title: 'Show what it did', icon: 'list.bullet', action: trace }] : [])]}
+        items={() => [...items(), ...(trace ? [{ title: 'Show what it did', icon: 'list.bullet', action: trace }] : [])]}
       />
     </div>
   )

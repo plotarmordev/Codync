@@ -312,10 +312,11 @@ import Testing
 // MARK: - Version compatibility (docs/reference/compatibility.md)
 
 func helloJSON(version: String, minApp: String? = nil, backends: String = "[]", canUpdate: Bool = false,
-               latestVersion: String? = nil) -> String {
+               latestVersion: String? = nil, schema: Int? = nil) -> String {
     let min = minApp.map { #","minApp":"\#($0)""# } ?? ""
     let latest = latestVersion.map { #","latestVersion":"\#($0)""# } ?? ""
-    return #"{"hostId":"h1","name":"Mac","version":"\#(version)"\#(min)\#(latest),"os":"macos","backends":\#(backends),"rev":0,"canUpdate":\#(canUpdate)}"#
+    let schema = schema.map { #","schema":\#($0)"# } ?? ""
+    return #"{"hostId":"h1","name":"Mac","version":"\#(version)"\#(min)\#(latest)\#(schema),"os":"macos","backends":\#(backends),"rev":0,"canUpdate":\#(canUpdate)}"#
 }
 
 @MainActor @Test func hostNeedingANewerAppStopsSyncAndAsksForTheUpdate() async throws {
@@ -456,7 +457,7 @@ func helloJSON(version: String, minApp: String? = nil, backends: String = "[]", 
     let computer = randomComputer("Fixture")
     let url = URL.cachesDirectory.appending(path: "codync-mirror-\(Bundle.main.bundleIdentifier ?? "app")-\(storage.id)-\(computer.id).json")
     let cached = #"""
-    {"stamp":"1:schema 8","hostId":"h1","rev":77,"bots":[],"entries":[
+    {"format":\#(BotStore.mirrorFormat),"hostId":"h1","rev":77,"bots":[],"entries":[
       {"id":"notice","seq":1,"botId":"dex","rev":77,"kind":"notice","turn":1,"createdAt":1,"updatedAt":1,
        "data":{"text":"Message from Miles","status":"completed"}},
       {"id":"local-pending","seq":2,"botId":"dex","rev":0,"kind":"user","turn":1,"createdAt":2,"updatedAt":2,
@@ -473,46 +474,21 @@ func helloJSON(version: String, minApp: String? = nil, backends: String = "[]", 
     let bytes = try Data(contentsOf: url)
     let cache = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
     #expect(cache["rev"] as? Int == 77)
-    #expect(cache["stamp"] as? String == "1:schema 8")
 }
 
-/// A cache synced under `stamp` (by default, one an older app left) for `computer`: "gone" and "kept" from the
-/// computer, and a message not sent yet.
-private func writeStaleCache(for computer: Computer, in storage: SharedStore.Context, stamp: String = "older/2.0.0") throws -> URL {
+/// A cache in another mirror format for `computer`: "gone" and "kept" from the computer, and a message not sent yet.
+private func writeStaleCache(for computer: Computer, in storage: SharedStore.Context) throws -> URL {
     let url = URL.cachesDirectory.appending(path: "codync-mirror-\(Bundle.main.bundleIdentifier ?? "app")-\(storage.id)-\(computer.id).json")
     func cachedEntry(_ id: String, seq: Int, rev: Int) -> String {
         #"{"id":"\#(id)","seq":\#(seq),"botId":"b1","rev":\#(rev),"kind":"agent","turn":1,"createdAt":1,"updatedAt":1,"data":{"text":"old","final":true}}"#
     }
-    let cached = #"{"stamp":"\#(stamp)","hostId":"h1","rev":77,"bots":[],"entries":[\#(cachedEntry("gone", seq: 1, rev: 70)),\#(cachedEntry("kept", seq: 2, rev: 77)),\#(cachedEntry("local-unsent", seq: 3, rev: 0))]}"#
+    let cached = #"{"format":0,"hostId":"h1","rev":77,"bots":[],"entries":[\#(cachedEntry("gone", seq: 1, rev: 70)),\#(cachedEntry("kept", seq: 2, rev: 77)),\#(cachedEntry("local-unsent", seq: 3, rev: 0))]}"#
     try Data(cached.utf8).write(to: url)
     return url
 }
 
-/// An update of the app or the host catches up from the cache's rev while the mirror format and the host's store
-/// schema (its version, on a host that sends none) stay; a change of either fetches everything again.
-@MainActor @Test(arguments: [
-    ("2:schema 8", #""schema":8,"#, Int64(77)),
-    ("2:schema 8", #""schema":9,"#, Int64(0)),
-    ("2:3.0.0", "", Int64(77)),
-    ("2:2.9.0", "", Int64(0)),
-    ("1:schema 8", #""schema":8,"#, Int64(0)),
-])
-func anUpdateKeepsTheCursorUnderTheSameSyncStamp(stamp: String, schema: String, since: Int64) async throws {
-    let (storage, suite) = context()
-    defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
-    let computer = randomComputer("Fixture")
-    _ = try writeStaleCache(for: computer, in: storage, stamp: stamp)
-    let fake = FakeRemote(.ready(.direct))
-    await fake.setHello(#"{"hostId":"h1","name":"Mac","version":"3.0.0",\#(schema)"os":"macos","backends":[],"rev":0}"#)
-    let store = BotStore(computer: computer, storage: storage) { _ in fake }
-    defer { store.retire() }
-    store.setActive(true)
-    #expect(await until { await fake.subscribed })
-    #expect(store.rev == since)
-}
-
-/// A cache an older app left is fetched again underneath what the chat shows.
-@MainActor @Test func aCacheAnOlderAppLeftRefetchesUnderneathTheCachedChat() async throws {
+/// A cache in another mirror format fetches everything again underneath what the chat shows.
+@MainActor @Test func anotherMirrorFormatRefetchesUnderneathTheCachedChat() async throws {
     let (storage, suite) = context()
     defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
     let computer = randomComputer("Fixture")
@@ -535,7 +511,7 @@ func anUpdateKeepsTheCursorUnderTheSameSyncStamp(stamp: String, schema: String, 
     #expect(store.canLoadOlder("b1"))
 }
 
-/// A refetch the link cut short starts over on the next stream; earlier pages and the cache's stamp wait for it.
+/// A refetch the link cut short starts over on the next stream; earlier pages and the cache's format wait for it.
 @MainActor @Test func aRefetchCutShortStartsOver() async throws {
     let (storage, suite) = context()
     defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
@@ -544,9 +520,9 @@ func anUpdateKeepsTheCursorUnderTheSameSyncStamp(stamp: String, schema: String, 
     let fake = FakeRemote(.ready(.relay))
     let store = BotStore(computer: computer, storage: storage) { _ in fake }
     defer { store.retire() }
-    func savedStamp() throws -> String? {
+    func savedFormat() throws -> Int? {
         store.saveCache()
-        return try (JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])?["stamp"] as? String
+        return try (JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])?["format"] as? Int
     }
     store.setActive(true)
     #expect(await until { await fake.subscribed })
@@ -554,7 +530,7 @@ func anUpdateKeepsTheCursorUnderTheSameSyncStamp(stamp: String, schema: String, 
     await fake.emit(entryEvent("kept", seq: 2, rev: 77, text: "new"))
     #expect(await until { store.rev == 77 })
     #expect(!store.canLoadOlder("b1"))
-    #expect(try savedStamp() == "")
+    #expect(try savedFormat() == 0)
     await fake.set(.connecting)
     await fake.set(.ready(.relay))
     #expect(await until { await fake.eventSubscriptionCount == 2 })
@@ -563,7 +539,20 @@ func anUpdateKeepsTheCursorUnderTheSameSyncStamp(stamp: String, schema: String, 
     // A host before 2.32.0 doesn't say how long its catch-up is: the held entries go at its hello.
     await fake.emit(#"{"type":"hello","hostId":"h1","rev":80}"#)
     #expect(await until { store.chat("b1").map(\.id) == ["local-unsent"] })
-    #expect(try savedStamp() == "2:3.0.0")
+    #expect(try savedFormat() == BotStore.mirrorFormat)
+}
+
+/// A stale cache saved before the first hello stays stale for the next launch.
+@MainActor @Test func aStaleCacheSavedBeforeTheFirstHelloStaysStale() async throws {
+    let (storage, suite) = context()
+    defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let computer = randomComputer("Fixture")
+    let url = try writeStaleCache(for: computer, in: storage)
+    let store = BotStore(computer: computer, storage: storage) { _ in FakeRemote(.connecting) }
+    store.saveCache()
+    store.retire()
+    let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+    #expect(saved?["format"] as? Int == 0)
 }
 
 /// An unreadable event fetches everything again; the stream it ended doesn't finish that refetch.

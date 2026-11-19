@@ -34,6 +34,7 @@ quotes itself.
 
 | Method | Body | Notes |
 |---|---|---|
+| `bots` | `{}` | `{bots: [Bot]}`: every bot and group on this computer, each as its `bot` event carries it (`id`, `name`, `kind`, `status`, `activity`, `unread`, …; `Hub::bot_json`), without deleted ones. For callers that want the roster once instead of the event stream; needs the bearer token (`401` without it) or a device's `control` scope. |
 | `send` | `botId, text, clientNonce, replyTo?` | `botId` is a bot or a group. `replyTo`: the id of a user message or final reply in that chat; anything else is refused. Works in the relay mailbox too. |
 | `createBot` | `{kind:"group", name, description?, members}` | Returns the existing group when these exact bots already share one. |
 | `updateBot` | `{id, name?, members?, pinned?, hidden?, section?}` | A group can't become a bot or the reverse. `section`: a name, or `null` for none. |
@@ -132,8 +133,11 @@ answer carries a `warning`. Group room turns have no `send_message`, so they don
 Roster row for groups (member avatars), a trace per turn, author label on group replies,
 **Reply** on user messages and final replies (desktop: the hover footer beside the time, with
 quick reactions and copy, never on the bubble, and the context menu; iPhone and Android:
-long-press, reactions on top of the menu; terminal: `r` picks a message, ↵ or `r` replies, esc
-cancels). While replying, the composer shows a quote
+long-press, reactions on top of the menu, or a sideways swipe as in Messages: the message
+follows the finger (the user's left, a bot's right; only a mostly sideways drag starts it, so
+the list still scrolls), a reply arrow grows in the gap, past 64 pt/dp a light haptic, and
+letting go there replies; it always springs back (`SwipeToReply`); terminal: `r` picks a
+message, ↵ or `r` replies, esc cancels). While replying, the composer shows a quote
 bar on top (`text.bubble`, “text” on one line, an X to cancel; the terminal: `↳ “…”`), its
 placeholder reads "Reply…", and sending includes `replyTo`; leaving the chat cancels it.
 Replying to a part: on the desktop, Reply (hover footer or context menu) quotes what is

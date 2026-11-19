@@ -62,18 +62,16 @@ struct CodyncApp: App {
                 .onChange(of: app.account.userID, initial: true) { _, userID in
                     app.switchAccount(to: userID)
                 }
-                .overlay {
-                    if app.launching {
-                        LaunchSplash(stores: app.accounts.computers.compactMap { app.accounts.store(for: $0.id) }) {
-                            withAnimation(.easeOut(duration: 0.35)) { app.launching = false }
-                        }
-                    }
-                }
+                .launchSplash(app, stores: app.accounts.computers.compactMap { app.accounts.store(for: $0.id) })
                 .onOpenURL { url in app.open(url) }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     switch phase {
-                    case .active: Analytics.shared.becameActive()
-                    case .background: BackgroundTime.run("Analytics") { await Analytics.shared.enteredBackground() }
+                    case .active:
+                        OpenTiming.shared.becameActive()
+                        Analytics.shared.becameActive()
+                    case .background:
+                        OpenTiming.shared.enteredBackground()
+                        BackgroundTime.run("Analytics") { await Analytics.shared.enteredBackground() }
                     default: break
                     }
                     // Only leaving for the background disconnects; `.inactive` (Control Center,
@@ -144,6 +142,7 @@ final class AppStore {
     let whatsNew = WhatsNew(usedBefore: UserDefaults.standard.bool(forKey: "onboardingCompleted"))
 
     private init() {
+        OpenTiming.shared.beginCold()
         let session = AccountSession()
         // Keep the selected context while Clerk restores: background intents have no scene observer yet.
         let storage = SharedStore.Context(accountID: session.isReady ? session.userID : SharedStore.activeAccountID)

@@ -21,29 +21,24 @@ test('a failed voice note offers retry in the selected language', async () => {
     await page.locator('.roster-row', { hasText: name }).click()
     await api(page, 'send', { botId, text: 'Send a voice note' })
     const player = page.locator('.voice-note')
+    const caption = player.locator('.file-card-detail')
     await expect(player).toBeVisible()
-    await player.click()
+    // Neither the host nor the player can read this fixture's length: no clock and no size, but the clock's room stays,
+    // a short note's clock wide, so the bar ends where it will once a length shows.
+    await expect(caption).toHaveText('')
+    const bar = (await player.locator('input.voice-note-progress').boundingBox())!
+    const room = (await caption.boundingBox())!
+    expect(room.width).toBeGreaterThan(30)
+    expect(bar.x + bar.width).toBeLessThan(room.x)
+    await player.locator('.voice-note-glyph').click()
     await expect(player).toContainText('Lecture impossible. Cliquez pour réessayer.')
-    await player.click()
+    // The error takes the bar's place: no empty bar beside it.
+    await expect(player.locator('input.voice-note-progress')).toHaveCount(0)
+    await caption.click()
     await expect(player).toContainText('Lecture impossible. Cliquez pour réessayer.')
     await setPref(page, 'appLanguage', 'en')
     await expect(player).toContainText("Couldn't play. Click to retry.")
-    // The error takes the bar's place, centred in it: no bar, the same gap on both sides of the text.
-    const error = await player.evaluate((note) => {
-      const box = (selector: string) => note.querySelector(selector)!.getBoundingClientRect()
-      const line = note.querySelector('.voice-note-error')!
-      const range = document.createRange()
-      range.selectNodeContents(line)
-      const ink = range.getBoundingClientRect()
-      return {
-        bar: note.querySelector('input.file-card-progress') !== null,
-        left: Math.round(ink.left - box('.file-card-play').right),
-        right: Math.round(note.getBoundingClientRect().right - ink.right),
-      }
-    })
-    expect(error.bar).toBe(false)
-    expect(Math.abs(error.left - error.right)).toBeLessThanOrEqual(1)
-    await player.click({ button: 'right' })
+    await caption.click({ button: 'right' })
     await expect(page.getByRole('menuitem')).toHaveText(['Play', 'Download', 'Reply', 'Show what it did'])
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: 'More message actions' }).click()
@@ -76,43 +71,39 @@ test('a click on the voice note plays or pauses it; only its bar seeks', async (
     const play = player.getByTitle('Play')
     const pause = player.getByTitle('Pause')
     await expect(player).toBeVisible()
-    // The sound preloaded as the card came on screen: its bar and clock show before the first play.
-    const bar = player.locator('input.file-card-progress')
-    await expect(bar).toBeVisible()
-    await expect(player.locator('.file-card-detail')).toContainText(' / ')
-    // Dragged before the first play, the bar keeps its position: the note opens and starts there.
-    const seekBox = (await bar.boundingBox())!
-    await bar.click({ position: { x: seekBox.width * 0.25, y: seekBox.height / 2 } })
-    await expect.poll(async () => Number(await bar.inputValue())).toBeGreaterThan(0.5)
-    await expect(play).toBeVisible()
-    await play.click()
-    await expect(pause).toBeVisible()
-    await expect(player.locator('.file-card-detail')).toContainText(/0:0[1-2] \/ 0:04/)
-    await pause.click()
-    await expect(play).toBeVisible()
-    await page.mouse.move(0, 0)
+    // The host read the length when the note was shared: the bar and clock show before the first play.
+    await expect(player.locator('.file-card-detail')).toHaveText('0:00 / 0:04')
     // Hovering lays a soft round chip behind the outline glyph over the app's hover time, never a sudden switch.
     const chip = async () => play.evaluate((el) => {
       const style = getComputedStyle(el, '::before')
       return { background: style.backgroundColor, radius: style.borderRadius, transition: style.transitionDuration }
     })
-    await expect.poll(async () => (await chip()).background).toBe('rgba(0, 0, 0, 0)')
+    expect((await chip()).background).toBe('rgba(0, 0, 0, 0)')
     await play.hover()
     await expect.poll(async () => (await chip()).background).not.toBe('rgba(0, 0, 0, 0)')
     expect(await chip()).toMatchObject({ radius: '50%', transition: '0.12s' })
     await page.mouse.move(0, 0)
     await expect.poll(async () => (await chip()).background).toBe('rgba(0, 0, 0, 0)')
-    // The play button plays; a click on the player's clock pauses.
+    // The bar sits 10 px from the play glyph's slot and 10 px from the clock, at rest and while it plays.
+    const gaps = async () => player.evaluate((note) => {
+      const box = (selector: string) => note.querySelector(selector)!.getBoundingClientRect()
+      const track = box('input.voice-note-progress')
+      return [track.left - box('.voice-note-slot').right, box('.file-card-detail').left - track.right].map(Math.round)
+    })
+    expect(await gaps()).toEqual([10, 10])
+    // The play button plays, and the row stays put: the bar and clock keep their places once the sound loads.
+    const bar = player.locator('input.voice-note-progress')
+    const clock = player.locator('.file-card-detail')
+    // Whole pixels, so sub-pixel drift doesn't count as the row moving.
+    const layout = async () => [await bar.boundingBox(), await clock.boundingBox()]
+      .map((box) => box && [box.x, box.y, box.width, box.height].map(Math.round))
+    const atRest = await layout()
     await play.click()
     await expect(pause).toBeVisible()
-    // The bar sits 10 px from the play glyph's slot and 10 px from the clock.
-    const gaps = await player.evaluate((note) => {
-      const box = (selector: string) => note.querySelector(selector)!.getBoundingClientRect()
-      const track = box('input.file-card-progress')
-      return [track.left - box('.file-card-play').right, box('.file-card-detail').left - track.right].map(Math.round)
-    })
-    expect(gaps).toEqual([10, 10])
-    await player.locator('.file-card-detail').click()
+    expect(await layout()).toEqual(atRest)
+    expect(await gaps()).toEqual([10, 10])
+    // A click on the player's clock pauses.
+    await clock.click()
     await expect(play).toBeVisible()
     // Beside the bar, above its 12 px box, the click still plays rather than seeking.
     const box = (await bar.boundingBox())!
@@ -121,10 +112,10 @@ test('a click on the voice note plays or pauses it; only its bar seeks', async (
     await expect(pause).toBeVisible()
     await pause.click()
     await expect(play).toBeVisible()
-    // On the bar itself, a click moves the playhead to where it landed and leaves the note paused.
-    // Compared with the destination, not the playhead before: playback may have moved it meanwhile.
+    // On the bar itself, a click moves the playhead and leaves the note paused.
+    const before = Number(await bar.inputValue())
     await bar.click({ position: { x: box.width * 0.75, y: box.height / 2 } })
-    await expect.poll(async () => Number(await bar.inputValue())).toBeGreaterThan(2)
+    await expect.poll(async () => Number(await bar.inputValue())).toBeGreaterThan(before + 1)
     await expect(play).toBeVisible()
   } finally {
     if (botId) await api(page, 'deleteBot', { botId })
@@ -142,7 +133,7 @@ test('a voice note sent on its own uses the same player, its name under the row'
     if (await continueWithoutAccount.isVisible()) await continueWithoutAccount.click()
     const agent = resolve(__dirname, '../../../host/tests/fixtures/steer_agent.py')
     const { bot } = await api<{ bot: { id: string } }>(page, 'createBot', {
-      name, backend: 'custom', command: `${fixtureCommand(agent)} voice-file 0`,
+      name, backend: 'custom', command: `python3 -X utf8 -u '${agent}' voice-file 0`,
       connectors: [], skills: [], notify: false,
     })
     botId = bot.id
@@ -150,9 +141,8 @@ test('a voice note sent on its own uses the same player, its name under the row'
     await api(page, 'send', { botId, text: 'Send a voice note' })
     const player = page.locator('.voice-note')
     await expect(player).toContainText('note.wav')
-    await expect(player.locator('.file-card-detail')).toContainText(' / ')
-    await expect(player.locator('input.file-card-progress')).toBeVisible()
-    // No Download button on the row: it is in the message's menu, right-click or the ⋯ button.
+    await expect(player.locator('.file-card-detail')).toHaveText('0:00 / 0:04')
+    await expect(player.locator('input.voice-note-progress')).toBeVisible()
     await expect(player.getByTitle('Download')).toHaveCount(0)
     await player.locator('.file-card-detail').click({ button: 'right' })
     await expect(page.getByRole('menuitem', { name: 'Download' })).toBeVisible()

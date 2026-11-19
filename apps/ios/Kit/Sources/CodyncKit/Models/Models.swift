@@ -340,8 +340,6 @@ public struct Hello: Codable, Sendable {
     public var hostId: String
     public var name: String
     public var version: String
-    /// The host's store schema, which the mirror's rows were synced under (missing from older hosts).
-    public var schema: Int?
     public var os: String
     /// laptop · macmini · macstudio · imac · macpro · desktop · linux (missing from older hosts).
     public var device: String?
@@ -358,6 +356,8 @@ public struct Hello: Codable, Sendable {
     public var boxKey: String?
     /// The oldest app version this host serves (missing from hosts that predate the check).
     public var minApp: String?
+    /// The host's store schema: a copy of the conversation synced under another one is fetched again (missing before 2.45.1).
+    public var schema: Int?
     /// The cloud relay the host uses; nil = cloud off.
     public var cloud: String?
     /// `installHostUpdate` can update this computer from here (missing from older hosts: it can't).

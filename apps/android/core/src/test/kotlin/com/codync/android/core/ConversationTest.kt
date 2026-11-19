@@ -95,14 +95,6 @@ class ConversationTest {
         }
     }
 
-    @Test fun `a queued message waits above the composer`() {
-        fun user(status: String) = Entry("u", 1, "b", rev = 1, kind = "user", data = buildJsonObject { put("text", "hi"); put("status", status) })
-        assertTrue(user("queued").isQueued)
-        assertTrue(user("queued").isChat)
-        assertFalse(user("sent").isQueued)
-        assertFalse(Entry("n", 1, "b", rev = 1, kind = "notice", data = buildJsonObject { put("status", "queued") }).isQueued)
-    }
-
     @Test fun `a flagged sound plays in its reply's bubble, anything else keeps its card`() {
         val note = SharedFile("f1", "note.m4a", 1000, "a".repeat(64), playsInChat = true)
         fun carrying(flag: Boolean? = true, file: SharedFile = note) = Entry("v", 1, "b", rev = 1, kind = "agent", data = buildJsonObject {
@@ -115,6 +107,24 @@ class ConversationTest {
         // An older computer doesn't stamp it: the plain file card, whatever the name says.
         assertNull(carrying(file = note.copy(playsInChat = false)).voiceNote)
     }
+
+    @Test fun `a shared file's stamped length decodes, and an older computer's absence is unknown`() {
+        fun file(with: JsonObjectBuilder.() -> Unit) = WireJson.decodeFromJsonElement<SharedFile>(buildJsonObject {
+            put("id", "f"); put("name", "note.m4a"); put("size", 1000); put("sha256", "a".repeat(64)); with()
+        })
+        assertEquals(9200L, file { put("durationMs", 9200) }.durationMs)
+        assertNull(file {}.durationMs)
+        assertNull(file { put("durationMs", JsonNull) }.durationMs)
+    }
+
+    @Test fun `a queued message waits above the composer`() {
+        fun user(status: String) = Entry("u", 1, "b", rev = 1, kind = "user", data = buildJsonObject { put("text", "hi"); put("status", status) })
+        assertTrue(user("queued").isQueued)
+        assertTrue(user("queued").isChat)
+        assertFalse(user("sent").isQueued)
+        assertFalse(Entry("n", 1, "b", rev = 1, kind = "notice", data = buildJsonObject { put("status", "queued") }).isQueued)
+    }
+
 
     @Test fun `malformed known events fail before a checkpoint while unknown events are ignored`() {
         assertFails<IllegalArgumentException> { MirrorEvent.decode(buildJsonObject { put("type", "entry"); put("entry", buildJsonObject { put("id", "broken") }) }) }
@@ -152,5 +162,32 @@ class ConversationTest {
             val value = WireJson.parseToJsonElement("""{"id":"e","botId":"b","seq":1,"rev":1,"kind":"user","data":$data}""").jsonObject
             assertFails<IllegalArgumentException> { Entry.decode(value) }
         }
+    }
+
+    @Test fun `markdown, text, pdf and video files open inside the app and others only download`() {
+        fun preview(name: String) = SharedFile("f", name, 1, "a".repeat(64)).preview
+        assertEquals(FilePreview.Markdown, preview("NOTES.MD"))
+        for (name in listOf("a.txt", "data.csv", "x.json", "main.kt")) assertEquals(FilePreview.Text, preview(name))
+        assertEquals(FilePreview.Pdf, preview("report.pdf"))
+        for (name in listOf("clip.mp4", "clip.MOV", "clip.m4v", "clip.webm")) assertEquals(FilePreview.Video, preview(name))
+        for (name in listOf("photo.png", "voice.m4a", "build.zip", "README")) assertNull(preview(name))
+    }
+
+    @Test fun `a file over its kind's limit does not open inside the app`() {
+        val mb = 1024L * 1024
+        for ((name, limit) in listOf("a.md" to 10 * mb, "a.csv" to 10 * mb, "a.json" to 10 * mb, "a.pdf" to 25 * mb, "a.mp4" to 25 * mb)) {
+            assertTrue(name, SharedFile("f", name, limit, "a".repeat(64)).opensInline)
+            assertFalse(name, SharedFile("f", name, limit + 1, "a".repeat(64)).opensInline)
+        }
+        assertFalse(SharedFile("f", "build.zip", 1, "a".repeat(64)).opensInline)
+    }
+
+    @Test fun `a video is checked by its bytes, not its name`() {
+        fun box(type: String) = byteArrayOf(0, 0, 0, 0x20) + type.encodeToByteArray() + "isom".encodeToByteArray()
+        for (type in listOf("ftyp", "moov", "mdat", "wide")) assertTrue(type, isVideoData(box(type)))
+        assertTrue(isVideoData(byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte(), 0x9F.toByte(), 0x42, 0x86.toByte(), 0x81.toByte())))
+        assertFalse(isVideoData("PK\u0003\u0004zip renamed .mp4".encodeToByteArray()))
+        assertFalse(isVideoData("plain text".encodeToByteArray()))
+        assertFalse(isVideoData(byteArrayOf(0, 0, 0, 0x20, 0x66)))
     }
 }

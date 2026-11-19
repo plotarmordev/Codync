@@ -3,8 +3,9 @@ import CodyncKit
 import Foundation
 import Observation
 
-/// Plays a sound a bot shared (a voice note), fetched from the computer; one player per file card or
-/// voice-note bubble.
+/// Plays a sound a bot shared (a voice note), fetched from the computer; one player per bubble. Its clock starts
+/// at the length the computer read from the sound's headers, so the bar and `0:00 / 0:09` show from the first
+/// frame, before the sound loads.
 @MainActor
 @Observable
 final class SharedAudio {
@@ -13,23 +14,21 @@ final class SharedAudio {
         case idle, loading, playing, paused, failed
     }
     private(set) var state = State.idle
-    /// Seconds the sound runs, known once its first load decoded.
+    /// Seconds the sound runs: the loaded sound's own length, or the computer's stamp until it loads.
     private(set) var duration: TimeInterval?
-    /// The length the preload read off the fetched bytes; the clock falls back to it when the player drops.
-    @ObservationIgnored private var known: TimeInterval?
     /// Seconds into the sound; ticks about four times a second while it plays.
     private(set) var elapsed: TimeInterval = 0
+    /// The length the computer, or the bubble, read from the sound's headers (nil when unknown), shown until the sound says.
+    private var known: TimeInterval?
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private var done: PlayDone?
-    /// Where a seek made before the player opened wants it to start (seconds), applied as it opens.
-    @ObservationIgnored private var pendingSeek: TimeInterval?
     /// Whether this player turned the audio session on (a call or dictation keeps its own).
     @ObservationIgnored private var ownsSession = false
     /// Bumped by `stop()`: a load still running when the card went doesn't start playing.
     @ObservationIgnored private var generation = 0
-    /// The fetch of the sound's bytes now running, shared by every asker: the card's preload and a tap all wait
-    /// on it. Dropped once it answers, so a card holds no bytes it isn't playing; the store keeps them on disk
-    /// for the next ask.
+    /// The fetch of the sound's bytes now running, shared by every asker: the bubble's preload, its length read and
+    /// a tap all wait on it. Dropped once it answers, so a bubble holds no bytes it isn't playing; the store keeps
+    /// them on disk for the next ask.
     @ObservationIgnored private var fetched: Task<Data?, Never>?
     /// Ticks `elapsed` while the sound plays.
     @ObservationIgnored private var clock: Timer?
@@ -45,9 +44,12 @@ final class SharedAudio {
     private let deactivate: @MainActor () -> Void
 
     init(load: @escaping @MainActor (BotStore, SharedFile, String) async -> Data? = { await $0.sharedFileData($1, entryId: $2) },
-         deactivate: @escaping @MainActor () -> Void = CallAudioSession.releasePlayback) {
+         deactivate: @escaping @MainActor () -> Void = CallAudioSession.releasePlayback,
+         known: TimeInterval? = nil) {
         self.load = load
         self.deactivate = deactivate
+        self.known = known
+        duration = known
     }
 
     /// The card's one control: a tap while the sound loads is dropped, so it never starts a second player.
@@ -87,29 +89,42 @@ final class SharedAudio {
         }
     }
 
-    /// The sound's bytes, ready to play before the first tap: fetched as the card shows (the card skips the fetch
-    /// when the network is off or costly for its size), their length read off them so the bar and clock show at
-    /// once. The fetch is the tap's, so a tap during it only waits, and its answer never downloads again; a fetch
-    /// that fails stays quiet: the tap retries and reports it. `generation` guards the fetch's users, so a card
-    /// stopped while it runs plays nothing and shows no clock.
-    func preload(_ file: SharedFile, entryId: String, model: BotStore) async {
-        let started = generation
-        // A tap already on these bytes, or a sound once played, says its length itself.
-        guard let data = await bytes(file, entryId: entryId, model: model),
-              generation == started, state == .idle, duration == nil,
-              let sound = try? AVAudioPlayer(data: data) else { return }
-        known = sound.duration
-        duration = known
+    func stop() {
+        generation += 1
+        player?.stop()
+        player?.currentTime = 0
+        interruptions?.stop()
+        interruptions = nil
+        finish()
     }
 
-    /// Whether the card preloads a sound as it shows: the computer online, and the fetch never costly — under
-    /// `preloadLimit` even on an expensive network (cellular, a hotspot). A network not yet known (`nil`, before
-    /// the path's first report) counts as expensive, so a big note never starts fetching on cellular in that moment.
+    /// The computer's length arriving after the bubble mounted (a backfilled note): shown until the sound says.
+    func setKnownDuration(_ seconds: TimeInterval?) {
+        guard let seconds, seconds > 0, duration == nil else { return }
+        known = seconds
+        duration = seconds
+    }
+
+    /// The sound's bytes, ready to play before the first tap: fetched as the bubble shows (the bubble skips the fetch
+    /// when the network is off or costly for its size). The fetch is the tap's, so a tap during it only waits, and
+    /// its answer never downloads again. A note shared with no length (an older computer) reads it from the same
+    /// bytes; a fetch that fails stays quiet: the tap retries and reports it.
+    func preload(_ file: SharedFile, entryId: String, model: BotStore) async {
+        let started = generation
+        guard let data = await bytes(file, entryId: entryId, model: model),
+              generation == started, duration == nil,
+              let sound = try? AVAudioPlayer(data: data) else { return }
+        setKnownDuration(sound.duration)
+    }
+
+    /// Whether the bubble preloads a sound as it shows: the computer online, and the fetch never costly — under
+    /// `preloadLimit` even on an expensive network (cellular, a hotspot). A network not yet known (`nil`, before the
+    /// path's first report) counts as expensive, so a big note never starts fetching on cellular in that moment.
     static func preloads(online: Bool, expensive: Bool?, bytes: Int64) -> Bool {
         online && (expensive == false || bytes < preloadLimit)
     }
 
-    /// The sound size the card still preloads on an expensive network (2 MiB).
+    /// The sound size the bubble still preloads on an expensive network (2 MiB).
     static let preloadLimit: Int64 = 2 * 1024 * 1024
 
     /// The sound's bytes: the fetch running now if there is one, so askers share a single download; once it answers
@@ -122,23 +137,11 @@ final class SharedAudio {
         return data
     }
 
-    func stop() {
-        generation += 1
-        pendingSeek = nil
-        player?.stop()
-        player?.currentTime = 0
-        interruptions?.stop()
-        interruptions = nil
-        finish()
-    }
-
-    /// Moves the playhead, held to the sound's length; playing or paused, it stays so. Before the first play, the
-    /// preloaded length shows the move and the player opens there.
+    /// Moves a loaded sound's playhead, held to its length; playing or paused, it stays so.
     func seek(to seconds: TimeInterval) {
-        guard let duration else { return }
-        let target = min(max(seconds, 0), duration)
-        elapsed = target
-        if let player { player.currentTime = target } else { pendingSeek = target }
+        guard let player, let duration else { return }
+        player.currentTime = min(max(seconds, 0), duration)
+        elapsed = player.currentTime
     }
 
     private func pause() {
@@ -158,10 +161,10 @@ final class SharedAudio {
         releaseSession()
     }
 
-    /// The sound or the session failed: the player is dropped so the next tap fetches and decodes again.
+    /// The sound or the session failed: the player is dropped so the next tap fetches and decodes again, and the
+    /// clock falls back to the length the computer read.
     private func fail() {
         (player, done, fetched) = (nil, nil, nil)
-        pendingSeek = nil
         duration = known
         elapsed = 0
         stopClock()
@@ -189,10 +192,6 @@ final class SharedAudio {
         let done = PlayDone { [weak self] played in Task { @MainActor in played ? self?.finish() : self?.fail() } }
         player.delegate = done
         (self.player, self.done) = (player, done)
-        if let pendingSeek {
-            player.currentTime = pendingSeek
-            self.pendingSeek = nil
-        }
         return player
     }
 
@@ -218,5 +217,11 @@ final class SharedAudio {
         let (m, s) = (total / 60 % 60, total % 60)
         let h = total / 3600
         return h > 0 ? "\(h):" + String(format: "%02d:%02d", m, s) : "\(m):" + String(format: "%02d", s)
+    }
+
+    /// `text`'s shape: its digits zeroed, colons kept, so `00:05` fits the room `12:00` reserved — the caption's
+    /// elapsed padding and the room itself both come from it.
+    static func timeShape(_ text: String) -> String {
+        text.map { $0.isNumber ? "0" : String($0) }.joined()
     }
 }

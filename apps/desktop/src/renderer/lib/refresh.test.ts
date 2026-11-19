@@ -25,6 +25,7 @@ Object.assign(globalThis, {
 })
 const { AppModel } = await import('../store/app-model.ts')
 const { BotSync } = await import('../store/bot-sync.ts')
+const { HostError } = await import('../client/host-client.ts')
 
 function deferred() {
   let resolve!: () => void
@@ -86,6 +87,48 @@ test('an already-online computer stays refreshing until the replacement stream a
   store.retire()
 })
 
+test('a cache from an older app keeps its cursor across a host update; another format, store schema or host database fetches everything', async () => {
+  const key = 'codync-mirror-local-test'
+  const cached = { hostId: 'h1', rev: 77, bots: [{ id: 'b1', name: 'Bot' }], entries: [] }
+  const since = async (cache: object, hello: object = {}) => {
+    storage.set(key, JSON.stringify(cache))
+    let resolve!: (sub: string) => void
+    const path = new Promise<string>((r) => { resolve = r })
+    const store = sync({
+      call: async () => ({ hostId: 'h1', version: '2.30.0', name: 'Test', backends: [], schema: 8, ...hello }),
+      stream: (sub) => { resolve(sub); return () => {} },
+    })
+    store.start()
+    const query = new URLSearchParams((await path).split('?')[1])
+    store.retire()
+    storage.delete(key)
+    return query.get('since')
+  }
+  // Written by an older app for the host before its update: the stamp names both, the format is unrecorded.
+  assert.equal(await since({ ...cached, stamp: '2.28.0/2.29.0' }), '77')
+  // An older app saved partway through a refetch, or before its first hello: the stamp lacks the host.
+  assert.equal(await since({ ...cached, stamp: '' }), '0')
+  assert.equal(await since({ ...cached, stamp: '2.28.0/' }), '0')
+  assert.equal(await since({ ...cached, format: 2 }), '0')
+  assert.equal(await since({ ...cached, format: 1, schema: 8 }), '77')
+  // The host migrated its store: rows may have changed in place without a new rev.
+  assert.equal(await since({ ...cached, format: 1, schema: 7 }), '0')
+  // A replacement host database, already past the cached cursor: its revisions say nothing about the cache's.
+  assert.equal(await since({ ...cached, format: 1, schema: 8 }, { hostId: 'h2', rev: 300 }), '0')
+})
+
+test('a stale cache saved before the first hello stays stale for the next launch', () => {
+  const key = 'codync-mirror-local-test'
+  storage.set(key, JSON.stringify({ format: 0, schema: 7, hostId: 'h1', rev: 77, bots: [], entries: [] }))
+  const store = sync({ call: () => new Promise(() => {}), stream: () => () => {} })
+  store.saveCache()
+  store.retire()
+  const saved = JSON.parse(storage.get(key)!)
+  storage.delete(key)
+  assert.equal(saved.format, 0)
+  assert.equal(saved.schema, 7)
+})
+
 test('a host failure and a removed computer both release the refresh waiter', async () => {
   const failing = sync({ call: async () => { throw new Error('Unavailable') }, stream: () => () => {} })
   await assert.rejects(failing.refreshStream(), /Unavailable/)
@@ -106,6 +149,21 @@ test('an unresponsive host cannot leave manual refresh spinning forever', async 
   store.retire()
 })
 
+test('a computer that refuses this device shows No access and stops retrying', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  let streams = 0
+  const store = sync({
+    call: async () => ({ version: '2.29.0', name: 'Test', backends: [] }),
+    stream: (_sub, _onData, onEnd) => { streams++; onEnd(new HostError(401, 'Refused')); return () => {} },
+  })
+  await store.refreshStream().catch(() => {})
+  t.mock.timers.tick(60_000)
+  await new Promise((r) => setImmediate(r))
+  assert.equal(store.connection.kind, 'unauthorized')
+  assert.equal(streams, 1)
+  store.retire()
+})
+
 test("another device's auto order switch shows here", async () => {
   let send!: (event: object) => void
   const ready = deferred()
@@ -121,48 +179,22 @@ test("another device's auto order switch shows here", async () => {
   store.retire()
 })
 
-/**
- * A store over a cache synced under `stamp` (by default, one an older app left): "gone" and "kept" from the
- * computer and a message that didn't send, with each events stream it opens.
- */
-function syncOverStaleCache(stamp = 'older/2.0.0', hello: object = {}) {
+/** A store over a cache in another mirror format: "gone" and "kept" from the computer and a message that didn't send, with each events stream it opens. */
+function syncOverStaleCache() {
   const entry = (id: string, seq: number, rev: number, data = {}) => ({ id, seq, botId: 'b1', rev, kind: 'agent', turn: 1, data, createdAt: 1, updatedAt: 1 })
-  storage.set('codync-mirror-local-test', JSON.stringify({ stamp, hostId: 'h1', rev: 77, bots: [],
+  storage.set('codync-mirror-local-test', JSON.stringify({ format: 0, hostId: 'h1', rev: 77, bots: [],
     entries: [entry('gone', 1, 70), entry('kept', 2, 77), entry('local-x', 3, 0, { status: 'failed' })] }))
   const streams: { path: string; send: (event: object) => void }[] = []
   let opened = deferred()
   const store = sync({
-    call: async () => ({ version: '2.29.0', name: 'Test', backends: [], ...hello }),
+    call: async () => ({ hostId: 'h1', version: '2.29.0', name: 'Test', backends: [] }),
     stream: (path, onData) => { streams.push({ path, send: (event) => onData(JSON.stringify(event)) }); opened.resolve(); return () => {} },
   })
   const nextStream = async () => { await opened.promise; opened = deferred(); return streams[streams.length - 1] }
   return { store, nextStream, kept: { type: 'entry', entry: entry('kept', 2, 77) }, ids: () => store.allEntries('b1').map((e) => e.id) }
 }
 
-test('an app update keeps the cursor of a copy synced under the same host schema', async () => {
-  const { store, nextStream } = syncOverStaleCache('2:schema 8', { version: '2.30.0', schema: 8 })
-  store.start()
-  assert.match((await nextStream()).path, /since=77&/)
-  store.retire()
-})
-
-test('a host that sends no schema keeps the cursor only within its version', async () => {
-  for (const [stamp, since] of [['2:2.29.0', 77], ['2:2.28.0', 0]] as const) {
-    const { store, nextStream } = syncOverStaleCache(stamp)
-    store.start()
-    assert.match((await nextStream()).path, new RegExp(`since=${since}&`), stamp)
-    store.retire()
-  }
-})
-
-test('a new host schema refetches', async () => {
-  const { store, nextStream } = syncOverStaleCache('2:schema 8', { schema: 9 })
-  store.start()
-  assert.match((await nextStream()).path, /since=0&/)
-  store.retire()
-})
-
-test('a cache an older app left refetches underneath the cached chat', async () => {
+test('a cache in another format refetches underneath the cached chat', async () => {
   const { store, nextStream, kept, ids } = syncOverStaleCache()
   store.start()
   const stream = await nextStream()
@@ -180,19 +212,19 @@ test('a cache an older app left refetches underneath the cached chat', async () 
 
 test('a refetch the link cut short starts over', async () => {
   const { store, nextStream, kept, ids } = syncOverStaleCache()
-  const savedStamp = () => { store.saveCache(); return JSON.parse(storage.get('codync-mirror-local-test')!).stamp }
+  const savedFormat = () => { store.saveCache(); return JSON.parse(storage.get('codync-mirror-local-test')!).format }
   store.start()
   const first = await nextStream()
   first.send({ type: 'hello', hostId: 'h1', rev: 80, catchUp: 3 })
   first.send(kept)
-  assert.equal(savedStamp(), '')
+  assert.equal(savedFormat(), 0, 'saved partway through, the next launch starts over')
   store.restartStream()
   const second = await nextStream()
   assert.match(second.path, /since=0&/)
   assert.deepEqual(ids(), ['gone', 'kept', 'local-x'])
   second.send({ type: 'hello', hostId: 'h1', rev: 80 })
   assert.deepEqual(ids(), ['local-x'], "a host that doesn't say how long its catch-up is: the held entries go at its hello")
-  assert.equal(savedStamp(), '2:2.29.0')
+  assert.equal(savedFormat(), 1)
   store.retire()
 })
 

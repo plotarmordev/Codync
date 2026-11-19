@@ -3,6 +3,7 @@ package com.codync.android
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.LinearEasing
@@ -19,10 +20,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -42,15 +43,17 @@ import kotlin.math.sin
 /**
  * The splash over the app until the account is open and its computers have caught up ([caughtUp]; true with none), held
  * at least 0.7 s so the motion reads and never past 1.8 s, the cached list being behind it (iOS `LaunchSplash`).
+ * [gone] runs once the splash has faded out, not as it starts: the app is still covered while it fades.
  */
 @Composable internal fun LaunchLayer(loading: Boolean, caughtUp: Boolean, gone: () -> Unit) {
-    var visible by remember { mutableStateOf(true) }
+    val visible = remember { MutableTransitionState(true) }
     val started = remember { System.currentTimeMillis() }
     LaunchedEffect(loading, caughtUp) {
         if (loading) return@LaunchedEffect
         delay(maxOf(0L, 700 - (System.currentTimeMillis() - started)))
         if (!caughtUp) delay(maxOf(0L, 1_800 - (System.currentTimeMillis() - started)))
-        visible = false
+        visible.targetState = false
+        snapshotFlow { visible.isIdle }.first { it }
         gone()
     }
     AnimatedVisibility(visible, enter = EnterTransition.None,

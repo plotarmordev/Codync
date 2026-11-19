@@ -57,6 +57,10 @@ export function deviceHello(device: DeviceKey, hostSignPub: Uint8Array, eph: Key
 /** §4.2 B: what the device commits to before the computer shows its half of the code. */
 export const sasCommit = (dk: Uint8Array, nD: Uint8Array) => createHash('sha256').update(Buffer.concat([text('codync/sascommit/v1'), dk, nD])).digest()
 
+/** §4.2 B: the 6-digit code the device and the computer both show, for a person to compare. */
+export const sasCode = (hostSignPub: Uint8Array, dk: Uint8Array, nD: Uint8Array, nH: Uint8Array) =>
+  String(createHash('sha256').update(Buffer.concat([text('codync/sas/v2'), hostSignPub, dk, nD, nH])).digest().readUInt32BE(0) % 1_000_000).padStart(6, '0')
+
 // ---- frames (§6.3) ----
 
 export const CHUNK = 256 * 1024

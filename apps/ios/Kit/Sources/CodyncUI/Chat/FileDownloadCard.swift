@@ -2,13 +2,15 @@ import CodyncKit
 import SwiftUI
 import UIKit
 
-/// A file a bot shared that stays a file (a `playsInChat` sound gets the voice note bubble instead): its picture
-/// (tap for full size) when it's an image, its name and size, and its Download button. Long-press for the
+/// A file a bot shared: its picture (tap for full size) when it's an image, its name and size, and its Download
+/// button. A sound the computer marked playable shows as the voice-note bubble instead. Long-press for the
 /// message's menu; a picture's has Copy image and Copy name for Copy.
 struct FileDownloadCard: View {
     let entry: Entry
     let file: SharedFile
     let menu: MessageMenu
+    /// Opens a readable file in the chat's viewer; nil where the card stands alone.
+    var openFile: ((FileViewerTarget) -> Void)?
     @Environment(BotStore.self) private var model
     @Environment(\.openImage) private var openImage
 
@@ -26,6 +28,7 @@ struct FileDownloadCard: View {
         .contextActions(reactions: menu.reactions) {
             menu.items(copy: file.showsAsImage ? ImageCopy.menuItems(source, model: model) : menu.textCopy)
         }
+
         // One element reads the whole card; its buttons become named actions.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(file.name), \(caption)")
@@ -33,15 +36,17 @@ struct FileDownloadCard: View {
         .accessibilityActions {
             if file.showsAsImage {
                 Button(L10n.tr("View"), action: view)
+            } else if file.preview != nil {
+                Button(L10n.tr("View"), action: open)
             }
             Button(L10n.tr(Self.action(download)), action: self.download)
         }
     }
 
-    /// A double tap runs what the card leads with: open a picture, else download (Android's and the desktop's
-    /// first action, the voice-note bubble's double tap).
+    /// A double tap runs what the card leads with: open a picture or a readable file, else download (Android's
+    /// and the desktop's first action, the voice-note bubble's double tap).
     private func firstAction() {
-        if file.showsAsImage { view() } else { download() }
+        if file.showsAsImage { view() } else if file.preview != nil { open() } else { download() }
     }
 
     private func view() { openImage(ImageViewing(source: source, menu: menu)) }
@@ -59,11 +64,10 @@ struct FileDownloadCard: View {
 
     private func row(caption: String) -> some View {
         HStack(spacing: 12) {
-            Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
-                .frame(width: 24)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(file.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(2)
-                Text(caption).font(.caption2).foregroundStyle(Palette.secondary)
+            if file.preview != nil {
+                Button(action: open) { label(caption: caption) }.buttonStyle(.plain)
+            } else {
+                label(caption: caption)
             }
             Spacer(minLength: 0)
             Button(action: download) {
@@ -75,8 +79,24 @@ struct FileDownloadCard: View {
         }
     }
 
+    /// Its icon and name; tap opens the viewer for readable files.
+    private func label(caption: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: AttachmentIcon.symbol(file.name)).font(.system(size: 24)).foregroundStyle(Palette.secondary)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(file.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(2)
+                Text(caption).font(.caption2).foregroundStyle(Palette.secondary)
+            }
+        }
+    }
+
+    private func open() {
+        openFile?(FileViewerTarget(file: file, entryId: entry.id, botId: entry.botId))
+    }
+
     private func download() {
-        Motion.animate { model.fileDownloads.toggle(client: model.client, entryId: entry.id, botId: entry.botId, file: file) }
+        model.fileDownloads.toggle(client: model.client, entry: entry, file: file)
     }
 
     /// What the Download button does now (its label).
@@ -94,11 +114,8 @@ struct FileDownloadCard: View {
         return "arrow.down.to.line"
     }
 
-    /// What the card says under the name: a failed play, then the download, then the sound's position, then its
-    /// size. The elapsed count fills its duration's shape — `00:05 / 12:00` — so the clock keeps one width as it runs.
-    static func detail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,
-                       elapsed: TimeInterval = 0, duration: TimeInterval? = nil, size bytes: Int64) -> String {
-        if play == .failed { return L10n.tr("Couldn't play. Tap to retry.") }
+    /// What a file card says: its download's progress or failure, else its size.
+    static func detail(_ download: FileDownloads.State?, size bytes: Int64) -> String {
         let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
         switch download {
         case .downloading(let received):
@@ -107,16 +124,29 @@ struct FileDownloadCard: View {
                 .replacingOccurrences(of: "{received}", with: received)
                 .replacingOccurrences(of: "{size}", with: size)
         case .failed(let message): return "\(L10n.tr(message)) \(L10n.tr("Tap to retry."))"
-        case .saved, nil: break
+        case .saved: return "\(size) · \(L10n.tr("Downloaded"))"
+        case nil: return size
         }
-        if let duration {
-            let length = SharedAudio.timeText(duration)
-            let elapsed = SharedAudio.timeText(elapsed)
-            let pad = length.prefix(max(0, length.count - elapsed.count)).map { $0.isNumber ? "0" : String($0) }
-            return "\(pad.joined())\(elapsed) / \(length)"
-        }
-        if case .saved = download { return "\(size) · \(L10n.tr("Downloaded"))" }
-        return size
+    }
+
+    /// What a voice note's player says, never a byte count: a failed play, then a failed download, then the sound's
+    /// clock; empty (the bar alone) while its length is unknown. The elapsed count keeps the duration's shape —
+    /// `00:05 / 12:00` — so the clock is always exactly as wide as its room and the bar's end never moves.
+    static func voiceNoteDetail(_ download: FileDownloads.State?, play: SharedAudio.State = .idle,
+                                elapsed: TimeInterval = 0, duration: TimeInterval?) -> String {
+        if play == .failed { return L10n.tr("Couldn't play. Tap to retry.") }
+        if case .failed(let message) = download { return "\(L10n.tr(message)) \(L10n.tr("Tap to retry."))" }
+        guard let duration else { return "" }
+        let shape = SharedAudio.timeShape(SharedAudio.timeText(duration))
+        let elapsed = SharedAudio.timeText(elapsed)
+        return "\(shape.prefix(max(0, shape.count - elapsed.count)))\(elapsed) / \(SharedAudio.timeText(duration))"
+    }
+
+    /// The room a voice note's clock keeps: its whole caption's shape once the length is known, `0:00 / 0:00` before.
+    static func voiceNoteRoom(_ duration: TimeInterval?) -> String {
+        guard let duration else { return "0:00 / 0:00" }
+        let shape = SharedAudio.timeShape(SharedAudio.timeText(duration))
+        return "\(shape) / \(shape)"
     }
 }
 

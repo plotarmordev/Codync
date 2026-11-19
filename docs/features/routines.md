@@ -119,8 +119,8 @@ transcript (the task's details), and its reply, which is the result, is posted i
 that turn when the run ends. Nothing of it is a turn of the bot's own. The thread starts in a new session that knows
 only the run's prompt, as a run in the chat does (no fork of the chat's session, nothing of the chat), with the
 bot's instructions and memory; what it writes to memory is checked as a routine's turn is (it only adds). The `routines` tools reach
-the bot's routines from it, so `save_progress` and `follow_up` work as before, and `send_message`, `send_file`,
-`request_decision` and `add_task` are refused as before. The run's task can be stopped (the run is cancelled),
+the bot's routines from it, so `save_progress` and `follow_up` work as before, `send_file` and artifact cards post in
+the bot's chat as before, and `send_message`, `request_decision` and `add_task` are refused as before. The run's thread can be stopped (the run is cancelled),
 dropped while it waits, and tried again (the routine runs again) from the bot's Details; pausing or deleting the
 routine takes a waiting run out of the box. Stop in the chat doesn't cancel it.
 

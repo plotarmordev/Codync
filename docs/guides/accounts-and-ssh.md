@@ -237,9 +237,11 @@ A simulator build verifies compilation, not the Dashboard settings or OAuth flow
 ## Desktop: computers, approvals and SSH
 
 The desktop app attaches this computer's host and its SSH computers over loopback; they
-follow into whichever account is active. The account's Codync Cloud computer is attached over the relay's
-encrypted channel, while the window is in use ([desktop app](../architecture/desktop-app.md)). The account's other
-computers are not reached directly, so their "Ask for access" rows show status only. An older copy of a computer the app uses shows
+follow into whichever account is active. The account's other computers are reached over the relay's encrypted
+channel, as on the phones, while the window is in use ([desktop app](../architecture/desktop-app.md)), with their
+bots in the sidebar (an SSH tunnel to the same computer wins): the Codync Cloud computer by itself, any other once it
+approved this install; *Ask for access* on an online row runs the phones' access request and shows its 6-digit
+code. An older copy of a computer the app uses shows
 *Older copy · last seen …*. Every offline row has *Remove from account* (`DELETE /v1/computers/{id}`,
 confirmed first), except the Codync Cloud computer, which is deleted in its own section (the cloud refuses to take
 it out of the account), so a computer that was reset or given away can be cleaned up even when its

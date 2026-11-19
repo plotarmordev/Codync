@@ -16,6 +16,17 @@ actor FakeRemote: RemoteTransport {
     private var eventSinks: [AsyncThrowingStream<Data, Error>.Continuation] = []
     private var mailboxSinks: [AsyncStream<MailboxEvent>.Continuation] = []
     private(set) var sent: [String] = []
+    /// JSON bodies of `call`s, in order (what a test asserts a host call carried).
+    private var callBodies: [[String: Any]] = []
+    /// Answers for calls the switch below doesn't know; a `HostError` throws it instead.
+    private var canned: [String: Result<Data, any Error>] = [:]
+    func setCanned(_ method: String, _ json: String) { canned[method] = .success(Data(json.utf8)) }
+    /// The method fails like a host that doesn't know it.
+    func setCanned(_ method: String, throwing error: any Error) { canned[method] = .failure(error) }
+    /// The `key` string each `call`'s JSON body carried, per call, in order.
+    func sentValues(_ key: String) async -> [String?] {
+        callBodies.map { $0[key] as? String }
+    }
     /// Each `send`'s quoted message, in order.
     private(set) var replyTos: [String?] = []
     /// Each `send`'s selected part of the quoted message, in order.
@@ -98,6 +109,11 @@ actor FakeRemote: RemoteTransport {
         for s in eventSinks { s.yield(Data(json.utf8)) }
     }
 
+    func failEvents() {
+        for s in eventSinks { s.finish(throwing: HostError.unreachable) }
+        eventSinks = []
+    }
+
     func emit(_ event: MailboxEvent) {
         for s in mailboxSinks { s.yield(event) }
     }
@@ -105,6 +121,7 @@ actor FakeRemote: RemoteTransport {
     private func respond(_ method: String, _ body: Data) throws -> Data {
         guard !isShutdown else { throw HostError.unreachable }
         calls.append(method)
+        callBodies.append((try? JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:])
         record(.called(method))
         bodies[method] = (try? JSONSerialization.jsonObject(with: body)) as? [String: String]
         if let sentence = refusals[method] { throw HostError.http(400, sentence) }
@@ -112,6 +129,7 @@ actor FakeRemote: RemoteTransport {
             failures[method] = left - 1
             throw HostError.unreachable
         }
+        if let canned = canned[method] { return try canned.get() }
         switch method {
         case "hello":
             return Data(hello.utf8)
@@ -158,9 +176,19 @@ actor FakeRemote: RemoteTransport {
     }
     private func addMailbox(_ c: AsyncStream<MailboxEvent>.Continuation) { mailboxSinks.append(c) }
 
+    /// The `since` each events stream asked for, in order.
+    private(set) var eventSinces: [Int64] = []
+
     nonisolated func stream(_ request: HostStreamRequest) -> AsyncThrowingStream<Data, Error> {
-        AsyncThrowingStream { c in Task { await self.addEvents(c) } }
+        AsyncThrowingStream { c in
+            Task {
+                if case let .events(since, _) = request { await self.recordSince(since) }
+                await self.addEvents(c)
+            }
+        }
     }
+
+    private func recordSince(_ since: Int64) { eventSinces.append(since) }
 
     nonisolated func states() -> AsyncStream<LinkState> {
         AsyncStream { c in Task { await self.addState(c) } }

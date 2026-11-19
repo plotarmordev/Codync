@@ -136,6 +136,10 @@ data class AppState(
     /** The Codync cloud's emergency floor for this app version (`426 appUpdateRequired`), as the account last heard it. */
     val appFloor: String? = null,
     val error: String? = null,
+    /** Completed event catch-ups (iOS `BotStore.catchUpsCompleted`): `open_timing`'s `catch_up`, and the rows' notice to re-report. */
+    val catchUpsCompleted: Int = 0,
+    /** Opens this computer has noticed (iOS a row's `onAppear`): `open_timing`'s `chat_list`/`open_chat` re-report after each. */
+    val opensSeen: Int = 0,
 ) {
     /** The computer's home folder, which a folder on it shows as `~`; empty before its hello. */
     internal val home: String get() = hello?.get("home")?.jsonPrimitive?.contentOrNull.orEmpty()

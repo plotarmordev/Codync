@@ -208,6 +208,19 @@ impl Store {
         Ok(st.query_map(params![bot_id, limit], row_entry)?.collect::<rusqlite::Result<_>>()?)
     }
 
+    /// Messages with a playable sound whose length the host never stamped (shared before it read lengths): the
+    /// start-up backfill fills them in.
+    pub fn unstamped_sounds(&self) -> Result<Vec<Entry>> {
+        let c = self.db.locked();
+        let mut st = c.prepare(&format!(
+            "SELECT {ENTRY_COLS} FROM entries WHERE json_type(data, '$.files') = 'array'
+               AND EXISTS (SELECT 1 FROM json_each(data, '$.files') f
+                           WHERE json_extract(f.value, '$.playsInChat') = 1
+                             AND json_extract(f.value, '$.durationMs') IS NULL)"
+        ))?;
+        Ok(st.query_map([], row_entry)?.collect::<rusqlite::Result<_>>()?)
+    }
+
     /// The user's own messages in `bot_id`'s chat that still wait for their turn (not what the host wrote there),
     /// oldest first.
     pub fn queued_messages(&self, bot_id: &str) -> Result<Vec<Entry>> {

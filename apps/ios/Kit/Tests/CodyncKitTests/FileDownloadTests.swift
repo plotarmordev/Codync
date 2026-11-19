@@ -44,6 +44,39 @@ private func metadata(_ data: Data, name: String = "file.bin") -> SharedFile {
     await #expect(throws: FileDownloadError.self) { try await FileDownload().data(client: client, entryId: "entry", file: bad) }
 }
 
+@Test func sharedFilePreviewFollowsTheExtension() {
+    let file = { SharedFile(id: "id", name: $0, size: 0, sha256: String(repeating: "0", count: 64)) }
+    #expect(file("notes.md").preview == .markdown)
+    #expect(file("notes.MARKDOWN").preview == .markdown)
+    for name in ["a.txt", "data.csv", "x.json", "main.swift"] { #expect(file(name).preview == .text, "\(name)") }
+    #expect(file("report.pdf").preview == .pdf)
+    for name in ["clip.mp4", "clip.MOV", "clip.m4v", "clip.webm"] { #expect(file(name).preview == .video, "\(name)") }
+    for name in ["archive.zip", "photo.png", "voice.m4a", "README"] { #expect(file(name).preview == nil, "\(name)") }
+}
+
+@Test func sharedFileOpensInlineUpToItsKindsLimit() {
+    let file = { SharedFile(id: "id", name: $0, size: $1, sha256: String(repeating: "0", count: 64)) }
+    let mb = Int64(1024 * 1024)
+    for (name, limit) in [("notes.md", 10 * mb), ("data.csv", 10 * mb), ("x.json", 10 * mb), ("report.pdf", 25 * mb), ("clip.mp4", 25 * mb)] {
+        #expect(file(name, limit).opensInline, "\(name)")
+        #expect(!file(name, limit + 1).opensInline, "\(name)")
+    }
+    #expect(!file("archive.zip", 1).opensInline)
+}
+
+@Test func aVideoIsCheckedByItsBytesNotItsName() throws {
+    let fixture = { (name: String) in
+        try Data(contentsOf: #require(Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures")))
+    }
+    for name in ["vp8.webm", "vp9.webm"] { #expect(try SharedFile.VideoContainer(fixture(name)) == .webM, "\(name)") }
+    #expect(try SharedFile.VideoContainer(fixture("h264.mp4")) == .isoMedia)
+    let box = { (type: String) in Data([0, 0, 0, 0x20]) + Data(type.utf8) + Data("isom".utf8) }
+    for type in ["moov", "mdat", "wide"] { #expect(SharedFile.VideoContainer(box(type)) == .isoMedia, "\(type)") }
+    #expect(SharedFile.VideoContainer(Data("PK\u{3}\u{4}zip renamed .mp4".utf8)) == nil)
+    #expect(SharedFile.VideoContainer(Data("plain text".utf8)) == nil)
+    #expect(SharedFile.VideoContainer(Data([0, 0, 0, 0x20, 0x66])) == nil)
+}
+
 @Test func generatedFileFailuresRemovePartialBytes() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }

@@ -214,10 +214,14 @@ Claude Code's own memory; the rules live in the `codync-mem` crate, and `chat/me
 - A request turn (the recipient's) doesn't set the restart marker: its pending notices become interrupted errors instead of automatically replaying work. A reply turn is the sender's own chat turn and sets it, so it resumes like a user turn.
 - Stop sends `session/cancel`; an agent still running 15 seconds later is stopped (it resumes its session on
   the next turn). `session/new`, `session/load`, `session/resume` and `session/fork` get three minutes before the agent is
-  stopped. Connector or computer changes restart an agent that can resume sessions before its next turn; one
-  that can't keeps its session, and its next new session gets them. An edit to a connector the bot has on restarts
-  that one too, once its turn ends, told the conversation so far ([connector credentials](connector-credentials.md)).
-- *New session* (`newSession`) cancels the running turn as Stop does (a routine's run in the chat too; tasks that
+  stopped. A reopen (`session/load`, `session/resume`) that times out may mean a process the stopped agent started still
+  holds the session: the host logs which of the user's processes have it open (`lsof`, not on Windows), then a fresh
+  agent tries the same session once more; a second timeout fails the turn (a bot with fallbacks moves on to its next
+  agent) and the chat keeps its session. Connector or computer changes restart an agent that can resume sessions before
+  its next turn; one that can't keeps its session, and its next new session gets them. An edit to a connector the bot
+  has on restarts that one too, once its turn ends, told the conversation so far
+  ([connector credentials](connector-credentials.md)).
+- *New session* (`newSession`) cancels the running turn as Stop does (a routine's run in the chat too; threads that
   turn added to the event box are dropped) but keeps the queue: waiting messages and follow-ups run in the new
   session, waiting routines each in their own, and running threads report into it. A handoff card still in draft is
   withdrawn, so no summary of the old conversation is carried in.

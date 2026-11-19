@@ -3,31 +3,58 @@ import CodyncKit
 import Speech
 import SwiftUI
 
-/// What dictating with a provider needs from outside `Dictation`: the provider picked beside the
-/// mic, whether the computer has the user's key for it, the microphone, and a recording's transcript.
+/// What a dictation start finds before the microphone opens.
+enum DictationGate {
+    case open
+    /// No key for a provider: the mic button opens settings instead.
+    case needsKey
+    /// The computer says why it can't transcribe (no speech server is linked, say).
+    case blocked(String)
+}
+
+/// What dictating with an engine needs from outside `Dictation`: the engine picked beside the
+/// mic, whether it can start, the microphone, and a recording's transcript.
 struct DictationService {
-    var picked: @MainActor () -> VoiceProvider?
-    var hasKey: @MainActor (VoiceProvider, BotStore) async throws -> Bool
+    var picked: @MainActor () -> DictationEngine?
+    var check: @MainActor (DictationEngine, BotStore) async throws -> DictationGate
     /// Whether the user lets the app record.
     var allowMic: @MainActor () async -> Bool
     /// Starts `engine`'s microphone, handing `heard` 16 kHz mono PCM16 and its level, 0…1; false when it can't be used.
     var openMic: @MainActor (_ engine: AVAudioEngine, _ heard: @escaping @Sendable (Data, Float) -> Void) -> Bool
-    var transcribe: @MainActor (Data, VoiceProvider, BotStore) async throws -> String
+    var transcribe: @MainActor (Data, DictationEngine, BotStore) async throws -> String
 
-    /// The user's setting, this phone's microphone, and their computer on their own key.
+    /// The user's setting, this phone's microphone, and their computer's transcription.
     static var live: DictationService {
         DictationService(
-            picked: { VoiceSettings.dictationProvider },
-            hasKey: { provider, model in
-                let status = try await model.ready().voiceStatus()
-                VoiceSettings.remember(status)
-                return status.configured(provider)
+            picked: { VoiceSettings.dictationEngine },
+            check: { engine, model in
+                let client = try await model.ready()
+                switch engine {
+                case .provider(let provider):
+                    let status = try await client.voiceStatus()
+                    VoiceSettings.remember(status)
+                    return status.configured(provider) ? .open : .needsKey
+                case .local:
+                    let local = try await client.localDictation()
+                    return local.ready ? .open : .blocked(local.reason)
+                }
             },
             allowMic: { await AVAudioApplication.requestRecordPermission() },
-            openMic: { engine, heard in Dictation.openMic(engine, bufferSize: 2048) { MicTap.pcm16k(from: $0, out: heard) } },
-            transcribe: { pcm, provider, model in
-                let said = try await Dictation.transcribe(pcm, provider: provider, on: model)
-                VoiceUsage.add(seconds: pcm.count / MicTap.bytesPerSecond, for: provider)
+            openMic: { engine, heard in
+                #if DEBUG
+                if let clip = DictationClip.fromEnvironment {
+                    DictationClip.play(clip, into: heard)
+                    return true
+                }
+                #endif
+                return Dictation.openMic(engine, bufferSize: 2048) { MicTap.pcm16k(from: $0, out: heard) }
+            },
+            transcribe: { pcm, engine, model in
+                let said = try await Dictation.transcribe(pcm, engine: engine, on: model)
+                // The computer's speech server spends no provider minutes.
+                if case .provider(let provider) = engine {
+                    VoiceUsage.add(seconds: pcm.count / MicTap.bytesPerSecond, for: provider)
+                }
                 return said
             })
     }
@@ -35,15 +62,16 @@ struct DictationService {
 
 /// Dictation into the message box. With on-device speech the words appear as they're recognized,
 /// after what was already typed (words after a pause go after the ones before), and the recording
-/// pill's stop, or the recognizer finishing, stops it; it uses the call's language setting. With a
-/// provider picked beside the mic, it records, and the pill's stop has the computer transcribe all
-/// of it with the user's key; the transcript goes after what's in the box by then.
+/// pill's stop, or the recognizer finishing, stops it; it uses the call's language setting. With an
+/// engine picked beside the mic, it records, and the pill's stop has the computer transcribe all of
+/// it, on the user's key for a provider or on the speech server linked on the computer; the
+/// transcript goes after what's in the box by then.
 @MainActor @Observable
 final class Dictation {
     private(set) var listening = false {
         didSet { if listening != oldValue { CallAudioSession.dictating = listening } }
     }
-    /// Recorded for a provider, waiting for its transcript.
+    /// Recorded for an engine, waiting for its transcript.
     private(set) var transcribing = false
     /// When it started listening, for the recording pill's time.
     private(set) var startedAt = Date.now
@@ -56,15 +84,16 @@ final class Dictation {
     @ObservationIgnored private lazy var engine = AVAudioEngine()
     @ObservationIgnored private var request: SFSpeechAudioBufferRecognitionRequest?
     @ObservationIgnored private var task: SFSpeechRecognitionTask?
-    /// Recording for a provider: what the microphone heard (16 kHz mono PCM16), and whose computer transcribes it.
-    @ObservationIgnored private var recording: (provider: VoiceProvider, model: BotStore, pcm: Data)?
+    /// Recording for an engine: what the microphone heard (16 kHz mono PCM16), and whose computer transcribes it.
+    @ObservationIgnored private var recording: (engine: DictationEngine, model: BotStore, pcm: Data)?
+
     /// Changes the box's text: on-device words replace what follows `before`; a transcript goes after the box as it is then.
     @ObservationIgnored private var edit: (((String) -> String) -> Void)?
     /// The box when dictation started.
     @ObservationIgnored private var before = ""
     /// What the on-device recognizer heard since then.
     @ObservationIgnored private var segments = SpeechSegments()
-    /// A recording's transcription; `stop()` cancels it so no more pieces go out on the user's key.
+    /// A recording's transcription; `stop()` cancels it so no more pieces go out to the computer.
     @ObservationIgnored private var transcription: Task<Void, Never>?
     /// Runs once the transcript is in the box (a send while dictating); dropped on a failure or a stop.
     @ObservationIgnored private var done: (() -> Void)?
@@ -85,8 +114,8 @@ final class Dictation {
     /// Transcription requests in flight at once, under the channel's and the providers' limits.
     private static let inFlight = 3
 
-    /// Starts with the engine picked beside the mic, after `draft`; a provider goes through `model`'s
-    /// computer. A `stop()` (another chat, a call, a send) or another tap while it waits wins.
+    /// Starts with the engine picked beside the mic, after `draft`; a picked engine goes through
+    /// `model`'s computer. A `stop()` (another chat, a call, a send) or another tap while it waits wins.
     func start(after draft: String, model: BotStore, edit: @escaping ((String) -> String) -> Void) async {
         guard !busy else { return }
         failure = nil
@@ -94,8 +123,8 @@ final class Dictation {
         generation += 1
         before = draft
         segments = SpeechSegments()
-        if let provider = service.picked() {
-            await record(provider, model: model, generation: generation, edit: edit)
+        if let engine = service.picked() {
+            await record(engine, model: model, generation: generation, edit: edit)
         } else {
             await recognize(generation: generation, edit: edit)
         }
@@ -128,9 +157,18 @@ final class Dictation {
         self.done = done
         transcription = Task {
             do {
-                let said = try await service.transcribe(recording.pcm, recording.provider, recording.model)
+                let said = try await service.transcribe(recording.pcm, recording.engine, recording.model)
                 guard generation == self.generation else { return }
-                edit? { SpeechSegments.join($0, said) }
+                // The pill gives the box its width back first: text set in the same update is sized for the
+                // pill's narrower box and keeps that height.
+                withAnimation(Motion.morph) { transcribing = false } completion: { [weak self] in
+                    guard generation == self?.generation else { return }
+                    edit? { SpeechSegments.join($0, said) }
+                    let done = self?.done
+                    self?.done = nil
+                    done?()
+                }
+                return
             } catch {
                 guard generation == self.generation else { return }
                 failure = error.localizedDescription
@@ -201,13 +239,18 @@ final class Dictation {
         task = recognizer.recognitionTask(with: request, resultHandler: Self.results(self, generation: generation))
     }
 
-    /// Records for `provider` once the computer has its key, so nothing said is lost to a missing one.
-    private func record(_ provider: VoiceProvider, model: BotStore, generation: Int, edit: @escaping ((String) -> String) -> Void) async {
+    /// Records for `engine` once the computer says it can transcribe, so nothing said is lost.
+    private func record(_ engine: DictationEngine, model: BotStore, generation: Int, edit: @escaping ((String) -> String) -> Void) async {
         do {
-            let hasKey = try await service.hasKey(provider, model)
+            let gate = try await service.check(engine, model)
             guard generation == self.generation else { return }
-            guard hasKey else {
+            switch gate {
+            case .open: break
+            case .needsKey:
                 needsKey = true
+                return
+            case .blocked(let why):
+                failure = why
                 return
             }
         } catch {
@@ -220,14 +263,14 @@ final class Dictation {
             failure = "Allow microphone access in Settings to dictate."
             return
         }
-        guard service.openMic(engine, { [weak self] pcm, level in
+        guard service.openMic(self.engine, { [weak self] pcm, level in
             Task { @MainActor in self?.recorded(pcm, level: level, generation: generation) }
         }) else {
             failure = "The microphone isn't available."
             return
         }
         self.edit = edit
-        recording = (provider, model, Data())
+        recording = (engine, model, Data())
         startedAt = .now
         listening = true
     }
@@ -268,10 +311,11 @@ final class Dictation {
     }
 
     /// The recording in pieces, a few transcribed at a time and joined in order.
-    fileprivate static func transcribe(_ pcm: Data, provider: VoiceProvider, on store: BotStore) async throws -> String {
+    fileprivate static func transcribe(_ pcm: Data, engine: DictationEngine, on store: BotStore) async throws -> String {
         // Asked for now, not at the start: a reconnect while recording replaces the client.
         let client = try await store.ready()
-        let model = VoiceSettings.transcribeModel(provider)
+        let request = engine.transcribeRequest
+
         let wavs = pieces(of: pcm.count).map { MicTap.wav(pcm.subdata(in: $0)) }
         let texts = try await withThrowingTaskGroup(of: (Int, String).self) { group in
             var texts = [String](repeating: "", count: wavs.count)
@@ -279,7 +323,7 @@ final class Dictation {
             for (i, wav) in wavs.enumerated() {
                 if i >= inFlight, let done = try await group.next() { keep(done) }
                 try Task.checkCancellation()
-                group.addTask { (i, try await client.voiceTranscribe(provider, model: model, wav: wav)) }
+                group.addTask { (i, try await client.voiceTranscribe(provider: request.provider, model: request.model, wav: wav)) }
             }
             for try await done in group { keep(done) }
             return texts
@@ -308,6 +352,17 @@ final class Dictation {
                 dictation.failure = failure
                 dictation.stop()
             }
+        }
+    }
+}
+
+private extension DictationEngine {
+    /// The `voiceTranscribe` arguments an engine asks for: a provider's speech-to-text model on
+    /// the user's key, or the computer's own model (`provider "local"`).
+    var transcribeRequest: (provider: String, model: String) {
+        switch self {
+        case .provider(let provider): (provider.rawValue, VoiceSettings.transcribeModel(provider))
+        case .local: ("local", "")
         }
     }
 }

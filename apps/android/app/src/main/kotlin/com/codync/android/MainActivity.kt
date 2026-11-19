@@ -125,13 +125,19 @@ class MainActivity : ComponentActivity() {
         return super.dispatchTouchEvent(event)
     }
     override fun onStart() {
-        super.onStart(); accounts.setForeground(true); Analytics.becameActive(applicationContext)
+        super.onStart()
+        // Before the stores foreground: a live link records this open's milestones as it notices it.
+        OpenTiming.shared.becameActive(accounts.state.value.computers.size)
+        accounts.setForeground(true); Analytics.becameActive(applicationContext)
         lifecycleScope.launch { AppUpdates.refresh(applicationContext) }
     }
     override fun onStop() {
         accounts.setForeground(false)
         // A rotation isn't a trip to the background.
-        if (!isChangingConfigurations) Analytics.enteredBackground()
+        if (!isChangingConfigurations) {
+            OpenTiming.shared.enteredBackground()
+            Analytics.enteredBackground()
+        }
         super.onStop()
     }
     private fun handle(intent: Intent?) {

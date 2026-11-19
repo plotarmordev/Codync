@@ -45,4 +45,13 @@ private let sound = SharedFile(id: "note", name: "note.m4a", size: 120_000, sha2
 
     let unstamped = try JSONDecoder().decode(SharedFile.self, from: Data(#"{"id":"n","name":"n.m4a","size":1,"sha256":"0"}"#.utf8))
     #expect(!unstamped.playsInChat)
+    #expect(unstamped.durationMs == nil, "an older computer shares no length either")
+}
+
+/// The computer stamps a shared sound's length beside it, so the player's clock can show before the sound loads.
+@Test func sharedSoundLengthDecodesWithTheStamp() throws {
+    let stamped = try JSONDecoder().decode(SharedFile.self, from: Data(
+        #"{"id":"n","name":"note.m4a","size":1,"sha256":"0","playsInChat":true,"durationMs":9000}"#.utf8))
+    #expect(stamped.playsInChat)
+    #expect(stamped.durationMs == 9000)
 }

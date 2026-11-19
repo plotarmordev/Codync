@@ -5,7 +5,7 @@ Files travel in both directions: users attach inputs, and bots explicitly share 
 - Composer: the **+** button left of the message box. iPhone: a menu with Photos (sent as JPEG) and
   Files (plus Paste when the clipboard has an image); desktop: an open panel. Files and images can
   also be dropped on the box or pasted: ⌘V / Ctrl+V on the desktop takes a copied image or file
-  (`apps/desktop/src/renderer/views/chat/Composer.tsx`); on the iPhone through Paste in the
+  (`apps/desktop/src/renderer/views/thread/Composer.tsx`); on the iPhone through Paste in the
   + menu.
   Other apps' share sheets send files to a bot too, on iPhone and Android ([share to a bot](share-to-bot.md)).
   HEIC/TIFF/BMP become JPEG (`OutgoingFile.prepared`, CodyncKit). Picked files show as chips above
@@ -58,13 +58,13 @@ Files travel in both directions: users attach inputs, and bots explicitly share 
 
 ## Files from a bot
 
-In its own chat, a bot calls the built-in chat MCP tool
+In its own chat, including a routine run, a bot calls the built-in chat MCP tool
 `send_file {path, name?, text?, reply_to?}`. Paths may be absolute or relative to its working directory.
 The optional name is a display filename without folders; `text` makes the file
 [a voice note inside its message](#a-voice-note-inside-its-message), and `reply_to` quotes a message above the card
 ([bots quote too](groups-and-replies.md#bots-quote-too)). Any regular file type is
 accepted, including binary, hidden, extensionless and empty files, up to 100 MiB.
-Directories and special files are refused. Group, routine and delegated turns cannot
+Directories and special files are refused. Group and delegated turns cannot
 publish files.
 
 The host streams a snapshot into `~/.codync/bots/<bot>/files/<fileId>` and records
@@ -87,7 +87,7 @@ clients need Control access. It returns `{data: <base64>, size}` in chunks of at
 384 KiB over loopback, SSH, direct encrypted and relay transports.
 
 Updated clients show a filename, size, file icon and download action. File extension
-only selects the icon; it never restricts saving or changes bytes. Desktop uses its
+only selects the icon and the in-app viewer below; it never restricts saving or changes bytes. Desktop uses its
 native Save dialog, iPhone hands the verified temporary file to the native share
 sheet (including Save to Files), and the terminal's selected-message `f` action saves
 to Downloads without replacing existing files. Progress and errors appear alongside
@@ -99,36 +99,40 @@ An image file (by extension) up to 20 MB also shows inline above its card on iPh
 Android and desktop, tap/click for full size. A sound file (`mp3`, `m4a`, `wav`, `aac`, a
 voice note) up to 20 MB plays in the voice-note player below instead of a file card: the host
 stamps it `playsInChat` on the file's metadata (`SharedFile::plays_in_chat`, the one rule; the
-clients only read the flag, and a file without it, from an older host, stays a plain card). For either the
+clients only read the flag, and a file without it, from an older host, stays a plain card), and
+`durationMs`, its length read from its headers with `lofty` (format sniffed from the bytes; tags
+skipped unread, so a compressed tag can't inflate in memory; an estimate for an MP3 or AAC stream
+without a length header; omitted when unreadable), so the player shows its bar and clock before
+the sound is fetched; a sound shared before the host read lengths gets one filled in at the next
+start (once: marked done before it reads), and its message a new rev so clients fetch it
+again. For either the
 client reads the whole file into memory through the same `readFile` chunks, checks size
-and SHA-256, and keeps it — on desktop in the sent-attachment cache under its file id (the
-most recently read 64 MiB; older files are read again when shown), on the phones in the
-store's disk cache; a failed image read leaves the placeholder. A sound is fetched into that
-cache as its card comes on screen while the computer is online (on desktop only the cards in
-view, so a long history downloads only what shows), so play starts at once: one fetch per
-card, shared by that preload and a tap (a tap during it shows the spinner and plays when the
-bytes arrive); a failed preload stays silent and the tap fetches again. The preload also
-reads the sound's length off those bytes' headers alone (desktop `preload = 'metadata'`, iOS
-`AVAudioPlayer` never prepared, Android `MediaMetadataRetriever`), so the bar and `0:00 / 0:04`
-show before the first play (a failed play hides the bar and shows its error in its place; the
-length stays for the next try); until then, and for a sound not preloaded, the caption shows
-its size. On a phone on an expensive or metered network (iOS: also before the network's first
-report) only a sound under 2 MiB preloads; a bigger one is fetched on the tap. While a sound
-loads its button shows a spinner; once its length is known its caption reads elapsed / total
-time over a progress bar, the elapsed half written in the
-length's shape (`00:05 / 12:00`, `0:00:05 / 1:02:00`) so the caption keeps one width and the
-bar's end stays put as it plays. The play glyph is the outline in every state: on desktop
-hover lays a soft round chip behind it (press deepens it), on the phones a press does, and
-the bar keeps the row's gap to the glyph and to the clock. Download is in the message's menu,
-not a button on the row; a sound sent on its own is that row in a bubble of its own with the
-file's name under it. Tapping or dragging the bar
-(clicking on desktop) moves the sound there, playing or paused, or before the first play
-(the preloaded length shows the move and it then starts there); its touch area runs past the
+and SHA-256, and keeps it in the sent-attachment cache under its file id; a failed image
+read leaves the placeholder. The player is one row: play/pause (the outline glyph in every state; hover on desktop
+lays a soft round chip behind it and brings it to the text color over the app's hover time, and press, on every client,
+deepens that chip; a spinner while the sound loads), the progress bar, and the clock, elapsed / length, ending at the
+text's edge; never the file size. The bar keeps the same gap to the play glyph and to the clock (10 px on desktop,
+12 pt/dp on the phones). The length shows from the first frame when `durationMs` is known. A voice note's sound is
+fetched into the attachment cache as its card shows while the computer is online, one fetch per card that a tap,
+the preload and a length read all share (it runs in the card's own scope, so a preload restarting doesn't cancel it
+under a waiting tap), so play starts at once; a tap during that fetch shows the spinner and plays when the bytes
+arrive, and a failed fetch stays silent until a tap, which fetches again. On a phone on mobile data (an expensive or
+metered network, or one not yet known) only a note under 2 MiB preloads; a bigger one is fetched on the tap. A sound from
+an older host without `durationMs` has its length read from those same bytes' headers alone (desktop
+`preload = 'metadata'`, iOS `AVAudioPlayer` never prepared, Android `MediaMetadataRetriever`): nothing is played and
+nothing is fetched twice. The decoded length replaces it once the sound loads. The clock keeps the room of its note's
+own form, `0:00 / 0:00` or `0:00:00 / 0:00:00` from its length (a short note's while it is unknown), and writes its
+elapsed half in that form (`0:00:05 / 1:02:00`), so the clock is always as wide as its room and the bar's end never
+moves as it plays. Download is in the message's menu, not a button on the row. A sound sent on its own is that
+row in a bubble of its own with the file's name under it. Tapping or dragging the loaded bar
+(clicking on desktop) moves the sound there, playing or paused; its touch area runs past the
 4 pt bar without taking layout (on desktop only to the thumb's 12 px height, so a click
 elsewhere on the card or player, including beside the bar, plays or pauses), and VoiceOver/TalkBack adjust or the arrow keys move it five
 seconds. A sound that can't be read or decoded, also one that breaks mid-play, goes back to
 play and its caption reads "Couldn't play. Tap to retry." (click on desktop), in the app's
 language, with no dialog; the next tap reads it again. On the phones, starting a sound pauses the one playing.
+Every client shows sizes as
+Apple's `ByteCountFormatter` does (decimal units, rounded half up from the byte count).
 Screen readers get one element per card, with play, view and download as its actions; a
 double tap runs the first. On desktop the card is one keyboard stop: Enter or Space does its
 first action (play, view, else download), and its menu (right-click, Shift-F10 or
@@ -146,20 +150,35 @@ any player returned after the card is released is released without starting.
 
 `send_file {path, text}` sends a message that carries a voice note: one final agent entry
 `{text, final: true, files: [meta], voiceNote: true}`. The host accepts `text` only with a
-sound the chat plays (the extensions above, up to 20 MiB; `playsInChat`) and
+sound the chat plays (the extensions above, up to 20 MiB; `SharedFile::plays_in_chat`) and
 checks it like `send_message` (nonempty, at most 32 KiB). The message counts as one the bot
-sent: like `send_message`, the agent's own reply text then stays in the trace. iPhone,
-Android and desktop show the player at the top of
-the bubble on one centred row (play/pause with its spinner, the progress bar once the length is
-known, then elapsed / length, or the size before the first play, the same "Couldn't play"
-caption, which hides the bar and takes its place, centred there with the row's gap on both
-sides of the text), its glyph on the text's edge, and the Markdown text under it; screen readers
+sent: like `send_message`, the agent's own reply text then stays in the trace, and in a
+routine run it is the run's result. iPhone, Android and desktop show the same player row at
+the top of the bubble, its glyph on the text's edge, and the Markdown text under it; screen readers
 get the player as one element, "Voice note, <caption>", with Play/Pause and Download as its
-actions, and the text as its own. The terminal UI shows the file line, then the text. A
-voice note sent without `text` keeps its own card. Older clients show the card alone.
+actions, and the text as its own (a sound sent on its own reads "<file name>, <caption>"). The
+terminal UI shows the file line, then the text. Older clients show the card alone.
 Analytics: the host reports `voice_note_sent`, and each app `voice_note_played` (`played`, or
 `failed` with the step that broke: `load` or `playback`) when a tap starts a note from its beginning; never the file or the text
 ([event catalog](../reference/analytics-events.md)).
+
+Markdown (`md`, `markdown`), plain text and code (`txt`, `log`, `csv`, `tsv`, `json`,
+`jsonl`, `xml`, `yaml`, `yml`, `toml`, `ini`, `html`, `css`, `sql`, `sh` and common source
+extensions), PDF and video (`mp4`, `mov`, `m4v`, `webm`) files open in a viewer sheet on iPhone, Android and desktop: tap the
+card's icon or name, click the card, or tap the Library row; screen readers get it as the card's
+View action. Markdown renders with the chat's Markdown renderer,
+text shows monospaced and selectable, PDF uses the platform's PDF view (PDFKit, Android
+`PdfRenderer`, desktop: see `FileViewer.tsx`), and video plays in the platform's player (AVKit,
+Android `VideoView`, desktop `<video>`; WebM on iPhone plays in WebKit's `<video>`, since AVFoundation
+can't decode VP8/VP9) once its first bytes prove it's a video container (`VideoContainer`/`isVideoData`:
+an ISO media `ftyp`/QuickTime atom or WebM's EBML header), whatever its name.
+Long text and Markdown lay out lazily on the phones. The viewer header keeps Download. It reads the
+file through the same verified, cached path as images, up to 10 MB for Markdown and text
+and 25 MB for PDF and video; a bigger file, text that isn't UTF-8, a video that isn't one or
+can't play, or a failed read shows a message
+instead, and Download still works. The type choice and limits live in the model
+(`SharedFile.preview`, `filePreview` in desktop's `file-preview.ts`) and are tested on each client. The
+terminal UI saves files to Downloads and opens none.
 
 This feature adds no previews of other file types, folder packaging, background
 transfers, persistent resume or Watch UI. Existing bots do not publish workspace files

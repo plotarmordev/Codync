@@ -1,22 +1,24 @@
 import type { SharedFile } from '@shared/models'
 import type { MenuItem } from '../../components/Menu'
-import type { DownloadState } from '../../store/file-downloads'
 import { trNow } from '../../lib/l10n.ts'
+import type { DownloadState } from '../../store/file-downloads'
 import type { AudioSnapshot } from './shared-audio'
 
+/** Each unit: its name, its size in bytes, and the decimal places it shows (as the terminal UI's `file_size`). */
+const UNITS: [name: string, size: number, places: number][] = [['KB', 1e3, 0], ['MB', 1e6, 1], ['GB', 1e9, 2], ['TB', 1e12, 2], ['PB', 1e15, 2]]
 /** A byte count the way Apple's `ByteCountFormatter(.file)` writes it: decimal units, no needless zeros. */
 export function byteCount(bytes: number) {
   if (bytes <= 0) return 'Zero KB'
   if (bytes < 1000) return `${bytes} ${bytes === 1 ? 'byte' : 'bytes'}`
-  const units = ['KB', 'MB', 'GB']
-  const decimals = [0, 1, 2]
-  let value = bytes / 1000
-  let unit = 0
-  while (unit < units.length - 1 && Number(value.toFixed(decimals[unit])) >= 1000) {
-    value /= 1000
-    unit++
+  // The size in the smallest place a unit shows, rounded half up from the whole bytes: a scaled float can sit just
+  // under a half (2.55 is 2.5499… as a double) and round down where Apple's formatter rounds up.
+  const shown = ([, size, places]: (typeof UNITS)[number]) => {
+    const step = size / 10 ** places
+    return Math.floor((bytes + step / 2) / step)
   }
-  return `${parseFloat(value.toFixed(decimals[unit]))} ${units[unit]}`
+  // A size that rounds to 1000 of a unit reads as 1 of the next.
+  const unit = UNITS.find((u) => shown(u) < 1000 * 10 ** u[2]) ?? UNITS[UNITS.length - 1]
+  return `${shown(unit) / 10 ** unit[2]} ${unit[0]}`
 }
 
 /** Seconds as `m:ss` (hours as `h:mm:ss`), for a sound's caption. */
@@ -32,10 +34,20 @@ export function clock(seconds: number) {
 /** A sound's clock, `elapsed / duration`, its elapsed half written in its length's shape (`0:00:05 / 1:02:00`), so
  *  with steady digits the clock keeps one width as it runs. */
 export function soundClock(elapsed: number, duration: number) {
-  const length = clock(duration)
+  const shape = clockShape(duration)
   const played = clock(elapsed)
-  const pad = length.slice(0, Math.max(0, length.length - played.length)).replace(/\d/g, '0')
-  return `${pad}${played} / ${length}`
+  return `${shape.slice(0, Math.max(0, shape.length - played.length))}${played} / ${clock(duration)}`
+}
+
+/** The room a sound's clock takes: its length's shape on both sides (`0:00 / 0:00` while the length is unknown). */
+export function clockRoom(duration: number) {
+  const shape = clockShape(duration)
+  return `${shape} / ${shape}`
+}
+
+/** A length's clock with every digit 0 (`1:02:00` → `0:00:00`): as wide as any clock of that length, with steady digits. */
+function clockShape(duration: number) {
+  return clock(duration).replace(/\d/g, '0')
 }
 
 /** What the download button does now (also the Library's file rows). */
@@ -43,19 +55,22 @@ export function downloadAction(state: DownloadState | undefined) {
   return state?.kind === 'downloading' ? trNow('Cancel download') : state?.kind === 'failed' ? trNow('Retry download') : state?.kind === 'saved' ? trNow('Save again') : trNow('Download')
 }
 
+/** A card's menu row: always an action, never a submenu. */
+type CardAction = Extract<MenuItem, { action: () => void }>
+
 /** The download's menu item, titled for what it does now. */
-export function downloadItem(state: DownloadState | undefined, download: () => void): MenuItem {
+export function downloadItem(state: DownloadState | undefined, download: () => void): CardAction {
   return { title: downloadAction(state), icon: state?.kind === 'downloading' ? 'xmark' : 'arrow.down.to.line', action: download }
 }
 
-/** A card's actions, the first one what a click or Enter does: a voice note's play or pause, a picture's view, then the download's. */
+/** A card's actions, the first one what a click or Enter does: a voice note's play or pause, a picture's or readable file's view, then the download's. */
 export function cardActions({ state, audio, toggle, view, download }: {
   state: DownloadState | undefined
   audio?: AudioSnapshot
   toggle?: () => void
   view?: () => void
   download: () => void
-}): MenuItem[] {
+}): CardAction[] {
   const playing = audio?.phase === 'playing'
   return [
     ...(toggle ? [{ title: playing ? 'Pause' : 'Play', icon: playing ? 'pause.circle' : 'play.circle', action: toggle }] : []),
@@ -104,10 +119,13 @@ export function downloadDetail(state: DownloadState | undefined, file: SharedFil
   }
 }
 
-/** A card's caption: a voice note that couldn't play, then the download's, then the sound's clock, then the file's. */
+/**
+ * A card's caption. A file's is its download's. A voice note's never counts bytes: a play that failed, then a download
+ * that failed, then the sound's clock; empty (the bar alone) while its length is unknown.
+ */
 export function cardDetail(state: DownloadState | undefined, file: SharedFile, audio?: AudioSnapshot, tr = trNow) {
-  if (audio?.phase === 'failed') return tr("Couldn't play. Click to retry.")
-  if (state?.kind === 'downloading' || state?.kind === 'failed') return downloadDetail(state, file)
-  if (audio && audio.duration > 0) return soundClock(audio.elapsed, audio.duration)
-  return downloadDetail(state, file)
+  if (!audio) return downloadDetail(state, file)
+  if (audio.phase === 'failed') return tr("Couldn't play. Click to retry.")
+  if (state?.kind === 'failed') return state.message
+  return audio.duration > 0 ? soundClock(audio.elapsed, audio.duration) : ''
 }

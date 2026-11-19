@@ -51,6 +51,7 @@ suspend fun AppStore.refreshConnection() {
 fun AppStore.setForeground(active: Boolean) {
     foreground = active
     foregroundState.value = active
+    if (active) noteOpen(retainedLink = true)
     if (active && !state.value.loading) {
         connect()
         acknowledgeVisible()
@@ -60,6 +61,31 @@ fun AppStore.setForeground(active: Boolean) {
         graceJob?.cancel()
         channel?.close()
     }
+}
+
+/**
+ * This computer noticed the app's current open: its rows' milestones go again (iOS a row's `onAppear`). A link that
+ * stayed live meanwhile (a call holds it) never re-runs its connection, so its milestones are recorded from what it
+ * already has, without touching message loading.
+ */
+private fun AppStore.noteOpen(retainedLink: Boolean = false) {
+    if (openSeen == openTiming.opens) return
+    openSeen = openTiming.opens
+    mutableState.update { it.copy(opensSeen = it.opensSeen + 1) }
+    if (retainedLink && channel?.state?.value is LinkState.Ready && state.value.hello != null) {
+        // Ready: a catch-up still running reports its own, an open chat's rows wait for it.
+        openTiming.record(OpenPhase.LinkReady, id)
+        openTiming.record(OpenPhase.Hello, id)
+        if (caughtUpSubscription == eventSubscription && eventSubscription > 0)
+            noteCatchUp(chats = 0, messages = 0)
+    }
+}
+
+/** A subscription's catch-up finished: the milestone once per open, and the counter the rows watch (iOS `catchUpsCompleted`). */
+private fun AppStore.noteCatchUp(chats: Int, messages: Int) {
+    // Before the state change: the rows' check (`hasRecorded`) is already true when they react.
+    openTiming.record(OpenPhase.CatchUp, id, chats = chats, messages = messages)
+    mutableState.update { it.copy(catchUpsCompleted = it.catchUpsCompleted + 1) }
 }
 
 fun AppStore.connect() {
@@ -99,8 +125,11 @@ fun AppStore.connect() {
                                 reconcileMailbox(active)
                             }
                             if (link is LinkState.Ready) {
+                                noteOpen()
+                                openTiming.record(OpenPhase.LinkReady, id)
                                 val fromHost = HostClient.hello(active, state.value.computer)
                                 val hello = active.call("hello").jsonObject
+                                openTiming.record(OpenPhase.Hello, id)
                                 // This phone's picks (color, route, push) may have changed during those calls.
                                 changeComputer { current -> if (current.id == fromHost.id) fromHost.keepingDevicePicks(current) else current }
                                 adoptHello(active, hello, requireNotNull(iconEpoch))
@@ -139,20 +168,11 @@ fun AppStore.connect() {
     }
 }
 
-/** What the conversation held was synced under: the host's store schema, or its version before it sent one. */
-internal fun conversationStamp(hello: JsonObject): String = hello.text("schema")?.let { "schema $it" } ?: hello.text("version").orEmpty()
-
-/** A new link's hello: the mirror lets go of what another host database or store schema left, and holds the current bots. */
+/** A new link's hello: the mirror lets go of what another host database, mirror format or store schema left, and holds the current bots. */
 private suspend fun AppStore.adoptHello(active: EncryptedChannel, hello: JsonObject, iconEpoch: Long) {
     val mirror = requireNotNull(database)
-    val hostVersion = hello.text("version")
-    val versions = BuildConfig.VERSION_NAME + "/" + hostVersion.orEmpty()
-    val dropped = withContext(Dispatchers.IO) {
-        val changed = mirror.setStamp(requireNotNull(hello.text("hostId")), conversationStamp(hello), hostVersion)
-        mirror.applyIconReply(MirrorEvent.Icons(hello["icons"]?.let(::decodeCustomIcons).orEmpty(),
-            hello["iconsRevision"]?.jsonPrimitive?.longOrNull ?: 0), iconEpoch)
-        changed
-    }
+    val versions = BuildConfig.VERSION_NAME + "/" + hello.text("version").orEmpty()
+    val dropped = withContext(Dispatchers.IO) { mirror.connectedHello(hello, iconEpoch) }
     // Dropped chats page their earlier messages again.
     mutableState.update { it.copy(historyEnd = if (dropped) emptyMap() else it.historyEnd) }
     noteHello(hello)
@@ -169,14 +189,46 @@ private suspend fun AppStore.adoptHello(active: EncryptedChannel, hello: JsonObj
 
 /** Drain available catch-up in bounded transactions, without delaying a lone live event. */
 private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Long): Unit = coroutineScope {
+    eventSubscription += 1
+    val subscription = eventSubscription
     val source = active.events(cursor).produceIn(this)
+    // One completed subscription's counts (iOS `runEvents`): a stream restarted before its catch-up ends starts them
+    // over, so retries never overcount. A catch-up's chats and the messages they fetched count whether or not the
+    // chat had entries.
+    var helloSeen = false
+    var catchUpLeft = 0L
+    var catchUpDone = false
+    var messagesFetched = 0
+    val chatsCaughtUp = mutableSetOf<String>()
+    fun noteCatchUpEvent(raw: JsonObject, event: MirrorEvent?) {
+        // As iOS: messages are the entries fetched; a bot event's chat counts even with no new entries.
+        if (!catchUpDone) when (event) {
+            is MirrorEvent.EntryChanged -> {
+                messagesFetched += 1
+                chatsCaughtUp += event.entry.botId
+            }
+            is MirrorEvent.BotChanged -> chatsCaughtUp += event.bot.id
+            else -> {}
+        }
+        if (raw.text("type") == "hello") {
+            helloSeen = true
+            catchUpLeft = raw["catchUp"]?.jsonPrimitive?.longOrNull ?: 0
+        } else if (catchUpLeft > 0) {
+            catchUpLeft -= 1
+        } else {
+            return
+        }
+        if (catchUpLeft == 0L && helloSeen && !catchUpDone) catchUpDone = true
+    }
     try {
         while (isActive) {
             val batch = mutableListOf<MirrorEvent>()
             var next: JsonObject? = source.receiveCatching().getOrThrow()
             var resync = false
             while (next != null && batch.size < 64) {
-                when (val event = decode(next)) {
+                val event = decode(next)
+                if (event != MirrorEvent.Resync) noteCatchUpEvent(next, event)
+                when (event) {
                     null -> {}
                     MirrorEvent.Resync -> { resync = true; break }
                     else -> batch.add(event)
@@ -185,6 +237,10 @@ private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Lon
             }
             withContext(Dispatchers.IO) { requireNotNull(database).apply(batch) }
             refresh()
+            if (catchUpDone && caughtUpSubscription != subscription) {
+                caughtUpSubscription = subscription
+                noteCatchUp(chatsCaughtUp.size, messagesFetched)
+            }
             receiveArtifacts(batch)
             receiveNetwork(batch)
             receiveThreads(batch)
@@ -197,6 +253,18 @@ private suspend fun AppStore.consumeEvents(active: EncryptedChannel, cursor: Lon
         }
     } finally { source.cancel() }
     throw IOException("The event subscription ended.")
+}
+
+/**
+ * The mirror's part of a ready link's `hello`: app and host updates keep the event cursor (only another host
+ * database, mirror format or store schema drops it), and its icons answer this connection's request.
+ * Returns whether the held conversation was dropped (reconnecting pages it again).
+ */
+internal fun MirrorDatabase.connectedHello(hello: JsonObject, iconEpoch: Long): Boolean {
+    val changed = setHost(requireNotNull(hello.text("hostId")), MirrorDatabase.FORMAT, hello.text("schema"))
+    applyIconReply(MirrorEvent.Icons(hello["icons"]?.let(::decodeCustomIcons).orEmpty(),
+        hello["iconsRevision"]?.jsonPrimitive?.longOrNull ?: 0), iconEpoch)
+    return changed
 }
 
 /** What an event this app can't decode leads to, as on iOS: never skip data unread while fetching everything again can help. */

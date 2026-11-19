@@ -262,3 +262,97 @@ import Testing
     try await Task.sleep(for: .milliseconds(100))
     #expect(await fake.calls.filter { $0 == "respondPermission" }.count == 1)
 }
+
+/// A catch-up sized like a real mirror: thirty chats, each with days of messages.
+private func populate(_ fake: FakeRemote, bots: Int = 30, turnsPerBot: Int = 4) async -> Int64 {
+    var rev: Int64 = 0
+    for b in 0..<bots {
+        rev += 1
+        await fake.emit(botEvent("b\(b)", name: "Bot \(b)", rev: Int(rev)))
+        for t in 0..<turnsPerBot {
+            rev += 1
+            // Days apart, so the chat reads as more than one sitting's.
+            let day: Int64 = 1_700_000_000_000 + Int64(t) * 86_400_000
+            await fake.emit(#"{"type":"entry","entry":{"id":"e-b\#(b)-\#(t)","seq":\#(t + 1),"botId":"b\#(b)","rev":\#(rev),"kind":"user","turn":1,"data":{"text":"m\#(t)"},"createdAt":\#(day),"updatedAt":\#(day)}}"#)
+        }
+    }
+    return rev
+}
+
+@MainActor @Test func aHostUpdateKeepsTheCursorAndCatchesUpFromIt() async throws {
+    let (storage, suite) = context()
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let fake = FakeRemote(.ready(.relay))
+    await fake.setHello(helloJSON(version: "2.41.0"))
+    let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in fake }
+    defer { store.retire() }
+    store.setActive(true)
+    #expect(await until { await fake.subscribed })
+    // The stream's hello leads the catch-up, its `rev` the host's head (30 chats × 5 events).
+    await fake.emit(#"{"type":"hello","hostId":"h1","rev":150}"#)
+    let head = await populate(fake)
+    #expect(await until { store.bots.count == 30 && store.chat("b29").count == 4 })
+    // A chat paged to its start keeps that mark: nothing about the host updating resets it.
+    store.historyComplete.insert("b0")
+
+    // The host updates in place: its version changes, the link drops, and the phone reconnects.
+    await fake.setHello(helloJSON(version: "2.41.1"))
+    await fake.set(.connecting)
+    await fake.set(.ready(.relay))
+    #expect(await until { await fake.eventSubscriptionCount == 2 })
+    // It asks from its rev, not from 0: the catch-up is only what is newer than every chat it holds.
+    #expect(await fake.eventSinces == [0, head])
+    let cursor = await fake.eventSinces.last!
+    // The updated host's hello leads again; only the message written while the phone was away follows.
+    await fake.emit(#"{"type":"hello","hostId":"h1","rev":\#(cursor + 1)}"#)
+    await fake.emit(#"{"type":"entry","entry":{"id":"e-b29-4","seq":5,"botId":"b29","rev":\#(cursor + 1),"kind":"user","turn":1,"data":{"text":"while away"},"createdAt":1,"updatedAt":1}}"#)
+    #expect(await until { store.chat("b29").last?.data.text == "while away" })
+    // Multiday history stays as it was; paging back is untouched.
+    #expect(store.chat("b0").map(\.id) == (0..<4).map { "e-b0-\($0)" })
+    #expect(store.historyComplete.contains("b0"))
+    #expect(store.chat("b29").map(\.seq) == [1, 2, 3, 4, 5])
+}
+
+/// The `since` of the first catch-up a store asks for over a mirror file holding `stamp` (as an older app wrote
+/// it) or `format` and `schema`, with the host (store schema 8) updated meanwhile, or `hello`'s host.
+@MainActor private func firstSince(overCache field: String,
+                                   hello: String = helloJSON(version: "2.41.0", schema: 8)) async throws -> [Int64] {
+    let (storage, suite) = context()
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let computer = randomComputer("Mac")
+    let cacheURL = URL.cachesDirectory.appending(path:
+        "codync-mirror-\(Bundle.main.bundleIdentifier ?? "app")-\(storage.id)-\(computer.id).json")
+    defer { try? FileManager.default.removeItem(at: cacheURL) }
+    let bots = (0..<30).map { #"{"id":"b\#($0)","name":"Bot \#($0)","rev":\#($0 + 1)}"# }.joined(separator: ",")
+    let day: Int64 = 1_700_000_000_000
+    let entries = (0..<30).flatMap { b in (0..<4).map { t in
+        #"{"id":"e-b\#(b)-\#(t)","seq":\#(t + 1),"botId":"b\#(b)","rev":\#(100 + b * 4 + t),"kind":"user","turn":1,"data":{"text":"m\#(t)"},"createdAt":\#(day),"updatedAt":\#(day)}"#
+    } }.joined(separator: ",")
+    let cache = #"{\#(field),"hostId":"h1","rev":219,"bots":[\#(bots)],"entries":[\#(entries)]}"#
+    try Data(cache.utf8).write(to: cacheURL, options: .atomic)
+
+    let fake = FakeRemote(.ready(.relay))
+    await fake.setHello(hello)
+    let store = BotStore(computer: computer, storage: storage) { _ in fake }
+    defer { store.retire() }
+    #expect(store.chat("b0").map(\.id) == (0..<4).map { "e-b0-\($0)" })
+    store.setActive(true)
+    #expect(await until { await fake.subscribed })
+    return await fake.eventSinces
+}
+
+@MainActor @Test func aCacheAnOlderBuildWroteKeepsItsCursorAcrossAppAndHostUpdates() async throws {
+    // Another app build (Xcode Cloud numbers each one) for the host before its update.
+    #expect(try await firstSince(overCache: #""stamp":"412/2.40.0""#) == [219])
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat),"schema":8"#) == [219])
+    // An older build saved partway through a refetch, or before its first hello: the stamp lacks the host.
+    #expect(try await firstSince(overCache: #""stamp":"""#) == [0])
+    #expect(try await firstSince(overCache: #""stamp":"412/""#) == [0])
+    #expect(try await firstSince(overCache: #""stamp":"413""#) == [0])
+    // Only another mirror format or store schema (rows rewritten in place, no new rev) fetches everything again.
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat + 1)"#) == [0])
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat),"schema":7"#) == [0])
+    // A replacement host database, already past the cached cursor: its revisions say nothing about the cache's.
+    let replacement = #"{"hostId":"h2","name":"Mac","version":"2.41.0","schema":8,"os":"macos","backends":[],"rev":300}"#
+    #expect(try await firstSince(overCache: #""format":\#(BotStore.mirrorFormat),"schema":8"#, hello: replacement) == [0])
+}

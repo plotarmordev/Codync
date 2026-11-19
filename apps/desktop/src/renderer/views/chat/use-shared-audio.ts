@@ -1,40 +1,30 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { SharedFile } from '@shared/models'
 import { analytics } from '../../store/analytics'
 import { useStore } from '../../store/context'
 import { SharedAudio, type AudioSnapshot, type Sound, type SoundEvents } from './shared-audio'
 
-const IDLE: AudioSnapshot = { phase: 'idle', elapsed: 0, duration: 0 }
-
-/** A voice note's player for its card: fetched once from the computer as the card comes on screen (a tap then plays
- *  at once, and its length read off those bytes shows the bar and clock before the first play), stopped when the
- *  card goes. A chat's history mounts many cards at once; only those in view fetch, so opening it downloads only
- *  what is on screen. */
+/** A voice note's player for its card: fetched once from the computer as the card shows (a tap then plays at once),
+ *  stopped when the card goes. Its clock starts at the length the host read (or, from an older host, the card reads
+ *  from those bytes), so the bar and `0:00 / 0:09` show before the first play. */
 export function useSharedAudio(file: SharedFile, entryId: string) {
   const store = useStore()
-  const [snapshot, setSnapshot] = useState<AudioSnapshot>(IDLE)
+  const known = (file.durationMs ?? 0) / 1000
+  const [snapshot, setSnapshot] = useState<AudioSnapshot>({ phase: 'idle', elapsed: 0, duration: known })
   const [audio] = useState(() => new SharedAudio({
     load: () => store.sharedFileData(file, entryId),
     open: (data, events) => audioElement(data, events),
     length: headerLength,
-  }, setSnapshot))
+  }, setSnapshot, known))
   useEffect(() => () => audio.dispose(), [audio])
-  // The sound is fetched once the computer is online and the card shows: a chat shown before it connects reads
-  // nothing, and a card scrolled past is left alone.
-  const card = useRef<HTMLDivElement>(null)
+  // A backfilled note's length arrives after the card mounted: show it without waiting for the sound to load. The
+  // sound is fetched once the computer is online (a chat shown before it connects reads nothing).
   const online = store.connection.kind === 'online'
   useEffect(() => {
-    const element = card.current
-    if (!online || !element) return
-    const observer = new IntersectionObserver(([entry]) => {
-      if (!entry?.isIntersecting) return
-      observer.disconnect()
-      void audio.preload()
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [audio, online])
-  return { snapshot, toggle: () => void play(audio), seek: (seconds: number) => audio.seek(seconds), card }
+    audio.setKnownDuration(known)
+    if (online) void audio.preload()
+  }, [audio, known, online])
+  return { snapshot, toggle: () => void play(audio), seek: (seconds: number) => audio.seek(seconds) }
 }
 
 /** Taps the card's control; a start from the beginning reports whether the note played, else which step broke. */

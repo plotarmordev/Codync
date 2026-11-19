@@ -7,6 +7,7 @@ import { undoOnFailure } from '../lib/undo-on-failure'
 import { account } from './account'
 import { analytics } from './analytics'
 import { BotStore } from './bot-store'
+import { AccountComputers } from './account-computers'
 import { CloudModel } from './cloud'
 import { CloudComputerModel } from './cloud-computer'
 import { DeviceComputerOrder } from './computer-order'
@@ -76,6 +77,8 @@ export class AppModel extends Observable {
   readonly computerAccess: ComputerAccess
   readonly computerOrder: DeviceComputerOrder
   readonly cloud: CloudModel
+  /** The account's other computers this app opens through the relay, and its requests for access to them. */
+  readonly accountComputers: AccountComputers
   /** The account's Codync Cloud computer (Settings → Computers & devices). */
   readonly cloudComputer: CloudComputerModel
 
@@ -84,6 +87,12 @@ export class AppModel extends Observable {
     this.computerAccess = new ComputerAccess(this)
     this.computerOrder = new DeviceComputerOrder()
     this.cloud = new CloudModel(this)
+    this.accountComputers = new AccountComputers(this)
+    if (mirrors) {
+      const sync = () => this.accountComputers.sync()
+      this.subscribe(sync)
+      this.cloud.subscribe(sync)
+    }
     this.cloudComputer = new CloudComputerModel(this)
     account.subscribe(() => this.noteAccount())
   }

@@ -28,6 +28,12 @@ class MirrorDatabase(context: Context, directory: File, computerId: String) :
         private const val BYTES_PER_SHOWN = 20_000L
         /** Characters of stored payload a chat that isn't open may hold as its preview. */
         private const val PREVIEW_BYTES = 150_000L
+        /**
+         * The shape of the mirror's rows. Raise it only when held bots or entries can't be kept (a field they lack
+         * that matters): app and host updates alone keep the mirror and its cursor.
+         */
+        const val FORMAT = 1
+        private const val SCHEMA_STAMP = "schema "
 
         private fun file(directory: File, computerId: String): File {
             require(computerId.matches(Regex("[A-Za-z0-9_-]{22}")))
@@ -133,22 +139,25 @@ class MirrorDatabase(context: Context, directory: File, computerId: String) :
     @Synchronized fun revision(): Long = meta(readableDatabase, "rev")?.toLong() ?: 0
 
     /**
-     * Another computer database starts over. A host whose store schema changed may have rewritten or removed rows
-     * in place: the conversation is fetched again from rev 0, and since that catch-up brings only each chat's
-     * newest entries and never says one is gone, the held ones go too (unsent messages stay). A new app or host
-     * version alone keeps them: rows are stored as the computer sent them, and it gives a changed one a new rev.
-     * [stamp] is the host's schema, or its version before it sent one. Returns whether the conversation went.
+     * Another computer database starts over. Another mirror [format], or a host whose store schema changed (it may
+     * have rewritten or removed rows in place), fetches the conversation again from rev 0, and since that catch-up
+     * brings only each chat's newest entries and never says one is gone, the held ones go too (unsent messages
+     * stay). App and host updates alone keep the cursor: rows are stored as the computer sent them, and it gives a
+     * changed one a new rev. [schema] is the host's store schema; a host that sends none, or a mirror synced before
+     * it was recorded, can't tell, so it keeps the conversation. A mirror from before the format was
+     * recorded is format 1. Returns whether the conversation went.
      */
-    @Synchronized fun setStamp(hostId: String, stamp: String, hostVersion: String? = null): Boolean = transaction { db ->
+    @Synchronized fun setHost(hostId: String, format: Int, schema: String? = null): Boolean = transaction { db ->
         val otherHost = meta(db, "hostId")?.let { it != hostId } == true
-        val held = meta(db, "stamp")
-        // Before 2.45.1 the stamp was "<app>/<host version>": the same host version has the same schema.
-        val sameHostVersion = held != null && '/' in held && held.substringAfter('/') == hostVersion
-        val otherStamp = held != null && held != stamp && !sameHostVersion
-        if (otherHost) reset(db) else if (otherStamp) dropConversation(db)
+        val otherFormat = meta(db, "hostId") != null && (meta(db, "format")?.toInt() ?: 1) != format
+        // Before 2.45.1 the stamp was "<app>/<host version>", which says nothing about the schema.
+        val held = meta(db, "stamp")?.takeIf { it.startsWith(SCHEMA_STAMP) }
+        val otherSchema = held != null && schema != null && held != SCHEMA_STAMP + schema
+        if (otherHost) reset(db) else if (otherFormat || otherSchema) dropConversation(db)
         setMeta(db, "hostId", hostId)
-        setMeta(db, "stamp", stamp)
-        otherHost || otherStamp
+        setMeta(db, "format", format.toString())
+        if (schema != null) setMeta(db, "stamp", SCHEMA_STAMP + schema)
+        otherHost || otherFormat || otherSchema
     }
 
     @Synchronized fun apply(event: MirrorEvent) = apply(listOf(event))

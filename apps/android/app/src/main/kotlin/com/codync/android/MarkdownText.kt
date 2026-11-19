@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -32,6 +34,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
 import com.codync.android.core.MarkdownBlocks
@@ -66,7 +70,8 @@ val LocalNetworkImages = staticCompositionLocalOf<ImageLoader> { error("Missing 
     if (selectable) SelectionContainer(content = content) else content()
 }
 
-@Composable private fun MarkdownBlock(block: Block, ink: Color) {
+/** One block of a reply (or of a shared Markdown file, in `FileViewer`). */
+@Composable internal fun MarkdownBlock(block: Block, ink: Color) {
     val code = Palette.text.copy(alpha = 0.08f)
     when (block) {
         is Block.Paragraph -> Text(inline(block.text, code), style = Type.body, color = ink)
@@ -90,21 +95,98 @@ val LocalNetworkImages = staticCompositionLocalOf<ImageLoader> { error("Missing 
     }
 }
 
-/** A table: a bold header and hairlines between rows, scrolling sideways when wide. */
+/** A table: a bold header and hairlines between rows, its cells wrapping to fit the bubble; a
+ *  table with too many columns to fit scrolls sideways. */
 @Composable private fun MarkdownTable(table: Block.Table, code: Color, ink: Color) {
     val columns = maxOf(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0)
     val rows = listOf(table.header) + table.rows
-    Box(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 2.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            for (column in 0 until columns) Column(Modifier.width(IntrinsicSize.Max), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+    BoxWithConstraints(Modifier.padding(vertical = 2.dp)) {
+        val viewport = maxWidth
+        // The scroll offers no width of its own, so the grid is told the bubble's.
+        Box(Modifier.horizontalScroll(rememberScrollState())) {
+            TableGrid(columns = columns, viewport = viewport) {
                 for ((index, row) in rows.withIndex()) {
                     if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(Palette.border))
-                    Text(inline(row.getOrElse(column) { "" }, code), Modifier.heightIn(min = 22.dp),
-                        style = if (index == 0) Type.body.semibold else Type.body, color = ink, softWrap = false)
+                    for (column in 0 until columns) {
+                        Text(inline(row.getOrElse(column) { "" }, code), Modifier.heightIn(min = 22.dp),
+                            style = if (index == 0) Type.body.semibold else Type.body, color = ink)
+                    }
                 }
             }
         }
     }
+}
+
+/** A table's cells in a grid that shares each row's height across its columns. A column is as
+ *  wide as its widest cell when the columns fit in [viewport] together and, when they don't, the
+ *  space is shared out equally, a column stopping at its widest cell (the desktop's `auto` grid
+ *  tracks, iOS `TableLayout`). A cell wider than its column wraps mid-word. The children come row
+ *  by row: each row after the first preceded by its hairline. */
+@Composable private fun TableGrid(columns: Int, viewport: Dp, content: @Composable () -> Unit) {
+    Layout(content) { measurables, constraints ->
+        val gap = 16.dp.roundToPx()
+        val rowGap = 7.dp.roundToPx()
+        val available = (viewport.roundToPx() - gap * (columns - 1)).coerceAtLeast(0)
+        val height = constraints.maxHeight
+
+        // The children come row by row: the first `columns` cells, then (hairline, `columns` cells) each.
+        val rows = buildList {
+            add(measurables.take(columns))
+            var at = columns
+            while (at < measurables.size) {
+                add(measurables.slice(at..<(at + 1 + columns)))
+                at += 1 + columns
+            }
+        }
+        val hairlines = rows.map { if (it.size == 1 + columns) it.first() else null }
+        val cellRows = rows.map { if (it.size == 1 + columns) it.drop(1) else it }
+
+        val maxContent = IntArray(columns) { column -> cellRows.maxOf { it[column].maxIntrinsicWidth(height) } }
+        val widths = tableColumnWidths(maxContent, available)
+        val tableWidth = widths.sum() + gap * (columns - 1)
+
+        val placeableRows = cellRows.mapIndexed { index, row ->
+            val hairline = hairlines[index]?.measure(Constraints(minWidth = tableWidth, maxWidth = tableWidth))
+            val placeables = row.mapIndexed { column, cell -> cell.measure(Constraints(minWidth = widths[column], maxWidth = widths[column])) }
+            hairline to placeables
+        }
+        // A row's height: its hairline with the gap under it, then the tallest cell.
+        val rowHeights = placeableRows.map { (hairline, rowCells) -> (hairline?.height?.plus(rowGap) ?: 0) + rowCells.maxOf { it.height } }
+        layout(tableWidth, (rowHeights.sum() + rowGap * (rowHeights.size - 1)).coerceAtLeast(constraints.minHeight)) {
+            var y = 0
+            placeableRows.forEach { (hairline, rowCells) ->
+                hairline?.placeRelative(0, y)
+                if (hairline != null) y += hairline.height + rowGap
+                var x = 0
+                rowCells.forEachIndexed { column, cell ->
+                    cell.placeRelative(x, y)
+                    x += widths[column] + gap
+                }
+                y += rowCells.maxOf { it.height } + rowGap
+            }
+        }
+    }
+}
+
+/** A table's column widths: each as wide as its widest cell when they fit in [available]
+ *  together, otherwise the space shared out equally, a column stopping at its widest cell. */
+internal fun tableColumnWidths(maxContent: IntArray, available: Int): IntArray {
+    if (maxContent.sum() <= available) return maxContent
+    val widths = DoubleArray(maxContent.size)
+    var remaining = available.toDouble()
+    var growable = maxContent.indices.filter { maxContent[it] > 0 }
+    while (remaining > 0 && growable.isNotEmpty()) {
+        val each = remaining / growable.size
+        var used = 0.0
+        for (column in growable) {
+            val add = minOf(each, maxContent[column] - widths[column])
+            widths[column] += add
+            used += add
+        }
+        remaining -= used
+        growable = growable.filter { widths[it] < maxContent[it] }
+    }
+    return IntArray(maxContent.size) { widths[it].toInt() }
 }
 
 private val inlineParser = Parser.builder().extensions(listOf(StrikethroughExtension.create())).build()

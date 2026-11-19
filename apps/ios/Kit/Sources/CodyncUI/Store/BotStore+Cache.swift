@@ -3,8 +3,12 @@ import Foundation
 
 extension BotStore {
     private struct Cache: Codable {
-        /// What the copy was synced under (`syncStamp`); another stamp means refetch everything.
+        /// `mirrorFormat` of the app that wrote it; nil before the format was recorded (`format(of:)`).
+        var format: Int?
+        /// `<app build>/<host version>`, written before the format was recorded.
         var stamp: String?
+        /// The host's store schema the conversation was synced under (`hello.schema`).
+        var schema: Int?
         var hostId: String?
         var rev: Int64
         var bots: [Bot]
@@ -12,14 +16,9 @@ extension BotStore {
         var icons: [String: CustomIcon]?
     }
 
-    /// Raise when the app starts to need a field the rows it cached may lack.
-    static let mirrorFormat = 2
-
-    /// The mirror format and the host's store schema (its version on a host that sends none): updates of the app
-    /// or the host that keep both keep the copy and its cursor.
-    static func syncStamp(_ hello: Hello) -> String {
-        "\(mirrorFormat):\(hello.schema.map { "schema \($0)" } ?? hello.version)"
-    }
+    /// The shape of the cache. Raise it only when cached bots or entries can't be kept (a field they lack
+    /// that matters): app and host updates alone keep the cache and its `rev`.
+    static let mirrorFormat = 1
 
     /// Per app, context and computer (`SharedStore.Context.erase()` removes a context's files).
     private var cacheURL: URL {
@@ -27,16 +26,25 @@ extension BotStore {
     }
 
     func loadCache() {
-        // A cache synced under another stamp still shows at once; the next hello fetches everything
-        // again underneath it.
+        // A cache in another format still shows at once; the first hello fetches everything again
+        // underneath it.
         guard let data = try? Data(contentsOf: cacheURL),
               let cache = try? JSONDecoder().decode(Cache.self, from: data) else { return }
-        cacheStamp = cache.stamp ?? ""
+        staleCache = Self.format(of: cache) != Self.mirrorFormat
+        hostSchema = cache.schema
         hostId = cache.hostId
         rev = cache.rev
         bots = Dictionary(cache.bots.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         entries = Dictionary(grouping: cache.entries.map(Self.afterRelaunch), by: \.botId)
         applyIcons(cache.icons ?? [:])
+    }
+
+    /// Caches from before the format was recorded are format 1, unless their stamp lacks the host version: those
+    /// were saved partway through a refetch (`""`) or before the first hello, so they start over.
+    private static func format(of cache: Cache) -> Int {
+        if let format = cache.format { return format }
+        guard let stamp = cache.stamp else { return 1 }
+        return stamp.range(of: "/.", options: .regularExpression) != nil ? 1 : 0
     }
 
     /// A message on its way when the app went may or may not have arrived: failed, with a Resend that reuses its nonce.
@@ -66,9 +74,10 @@ extension BotStore {
                 + list.filter { $0.id.hasPrefix("local-") && ["sending", "waiting", "held", "delivering", "failed"].contains($0.data.status) }
         }
         let cachedBots = bots.values.map { bot in var bot = bot; bot.customIcon = nil; return bot }
-        // Saved partway through a refetch, the cache says so: the next launch begins it again.
-        let stamp = refetched == nil ? cacheStamp ?? "" : ""
-        let cache = Cache(stamp: stamp, hostId: hostId, rev: rev, bots: cachedBots, entries: kept, icons: icons)
+        // Saved partway through a refetch, or before the first hello began it, the cache stays stale: the next launch
+        // begins it again.
+        let format = refetched == nil && !staleCache ? Self.mirrorFormat : 0
+        let cache = Cache(format: format, schema: hostSchema, hostId: hostId, rev: rev, bots: cachedBots, entries: kept, icons: icons)
         if let data = try? JSONEncoder().encode(cache) {
             try? data.write(to: cacheURL, options: .atomic)
         }

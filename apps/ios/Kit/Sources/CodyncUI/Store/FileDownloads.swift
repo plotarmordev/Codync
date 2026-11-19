@@ -88,9 +88,18 @@ public final class FileDownloads {
 
     public func cancel(_ id: String) { tasks[id]?.cancel(); states[id] = nil }
 
+    /// Whether this file's download is running.
     public func isDownloading(_ id: String) -> Bool {
         if case .downloading = states[id] { return true }
         return false
+    }
+
+    /// A card's download button: cancels the running download, else saves the shared file.
+    public func toggle(client: HostClient?, entry: Entry, file: SharedFile) {
+        Motion.animate {
+            if isDownloading(file.id) { cancel(file.id) }
+            else { save(client: client, entry: entry, file: file) }
+        }
     }
 
     /// A file's Download button (its card, Library row or picture viewer): saves it, or stops its download under way.

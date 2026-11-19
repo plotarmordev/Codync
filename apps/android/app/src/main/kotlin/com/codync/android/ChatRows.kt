@@ -32,23 +32,19 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusManager
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
@@ -59,7 +55,6 @@ import com.codync.android.design.*
 import com.kyant.shapes.Capsule
 import com.kyant.shapes.RoundedRectangle
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -119,7 +114,7 @@ internal fun chatItems(entries: List<Entry>, pending: List<PendingSend>, busy: B
     return out
 }
 
-/** The text find searches (iOS `ChatView.findable`): each message's own words, not separators, notices or exchanges. */
+/** The text find searches (iOS `ThreadView.findable`): each message's own words, not separators, notices or exchanges. */
 internal fun findable(items: List<ChatItem>): List<Pair<String, String>> =
     items.mapNotNull { item -> (item as? ChatItem.Message)?.takeIf { it.entry.kind == "user" || it.entry.kind == "agent" }?.let { it.id to it.entry.text } }
 
@@ -136,16 +131,20 @@ internal fun findable(items: List<ChatItem>): List<Pair<String, String>> =
     openArtifact: (OpenArtifact) -> Unit, openQuote: ((String) -> Unit)? = null) {
     val group = chat?.kind == "group"
     when (entry.kind) {
-        "user" -> Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
-            horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            UserBubble(entry, state, store, reply, selectText, openQuote)
-            ReactionsRow(entry, state, store)
+        "user" -> SwipeToReply(ReplyDirection.Left, 56.dp, reply) {
+            Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
+                horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                UserBubble(entry, state, store, reply, selectText, openQuote)
+                ReactionsRow(entry, state, store)
+            }
         }
-        "agent" -> Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
-            verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (group && groupStart) AuthorLabel(entry.data.text("author"), state)
-            AgentBubble(entry, state, store, openTrace, reply, selectText, openArtifact, openQuote)
-            Box(Modifier.padding(start = if (group) 34.dp else 0.dp)) { ReactionsRow(entry, state, store) }
+        "agent" -> SwipeToReply(ReplyDirection.Right, 40.dp, reply) {
+            Column(Modifier.fillMaxWidth().padding(top = if (groupStart) 12.dp else 4.dp).animateContentSize(Motion.layoutSize),
+                verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (group && groupStart) AuthorLabel(entry.data.text("author"), state)
+                AgentBubble(entry, state, store, openTrace, reply, selectText, openArtifact, openQuote)
+                Box(Modifier.padding(start = if (group) 34.dp else 0.dp)) { ReactionsRow(entry, state, store) }
+            }
         }
         "permission" -> Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (group) AuthorLabel(entry.data.text("author"), state)
@@ -189,7 +188,7 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
     val focus = LocalFocusManager.current
     val attachments = entry.data["attachments"]?.jsonArray?.map { WireJson.decodeFromJsonElement<Attachment>(it) }.orEmpty()
     val menu = MessageMenu.of(entry, store, reply, trace = null, selectText)
-    Column(Modifier.fillMaxWidth().padding(start = 56.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.padding(start = 56.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (attachments.isNotEmpty()) AttachmentList(attachments, entry.botId, menu, state, store)
         val quote = entry.replyTo
         if (entry.text.isNotEmpty() || quote != null) Box(Modifier.clip(RoundedRectangle(18.dp)).background(Palette.bubbleUser)
@@ -228,8 +227,8 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
 }
 
 /**
- * A message of a thread's own transcript ([WorkThreadView]): the chat's bubble with Copy alone in its menu.
- * Those entries are the thread's, never the chat's, so the chat's reactions and replies don't reach them.
+ * A message of a task's own transcript in its thread ([WorkThreadView]): the chat's bubble with Copy alone in its menu.
+ * Those entries are the task's, never the chat's, so the chat's reactions and replies don't reach them.
  */
 @Composable internal fun PlainMessageRow(entry: Entry) {
     val context = LocalContext.current
@@ -290,12 +289,12 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
         // The message the bot answers (`reply_to`), above its bubble.
         entry.replyTo?.let { quote -> QuoteLine(quote.text, Modifier.padding(horizontal = 16.dp), open = openQuote?.let { open -> { open(quote.id) } }) }
         // An artifact card or a message with files is that: the text is only the computer's fallback. A voice note
-        // instead plays inside its bubble, over the message it captions.
+        // instead plays inside its bubble, over the message it captions; a file that plays in chat gets the same
+        // bubble with its name under the player.
         if (artifact != null) ArtifactCardView(artifact, entry.botId, state, store, Modifier.contextActions(reactions = menu.reactions,
             onClick = { focus.clearFocus(); openArtifact(OpenArtifact(entry.botId, artifact.id, artifact.title, entry.id)) }, items = textMenu))
         else if (voiceNote != null) AudioBubble(entry, voiceNote, menu, state, store, focus, attachment = false)
-        // Each card holds its own menu: a picture's copies the picture; a sound the computer marked playable is
-        // the same bubble a voice note in a message gets, its name under the row.
+        // Each card holds its own menu: a picture's copies the picture.
         else if (files.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             for (file in files) {
                 if (file.playsInChat) AudioBubble(entry, file, menu, state, store, focus, attachment = true)
@@ -305,7 +304,7 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
             .contextActions(reactions = menu.reactions, onClick = { focus.clearFocus() }, preview = { AgentText(entry.text, selectable = true) }, items = textMenu)) {
             AgentText(entry.text, selectable = false)
         }
-        WorkThreadLine(entry, Modifier.padding(start = 4.dp))
+        TaskLine(entry, Modifier.padding(start = 4.dp))
     }
 }
 
@@ -317,57 +316,27 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
 @Composable private fun AudioBubble(entry: Entry, file: SharedFile, menu: MessageMenu, state: AppState, store: AppStore,
     focus: FocusManager, attachment: Boolean) {
     val context = LocalContext.current
-    val player = rememberSharedAudio(entry, file, store, state.actualConnection is LinkState.Ready)
-    val download = state.fileDownloads[file.id]
-    val busy = download is FileDownloadState.Downloading
-    val save = { store.toggleFile(entry.id, entry.botId, file) }
-    val downloadItem = MenuItem(if (busy) "Cancel download" else "Download", icon = if (busy) "xmark" else "arrow.down.to.line", action = save)
+    val player = rememberSharedAudio(entry, file, store, online = state.connection is LinkState.Ready)
+    val busy = state.fileDownloads[file.id] is FileDownloadState.Downloading
+    val downloadItem = MenuItem(if (busy) "Cancel download" else "Download", icon = if (busy) "xmark" else "arrow.down.to.line",
+        action = { store.toggleFile(entry.id, entry.botId, file) })
     Box(Modifier.clip(RoundedRectangle(18.dp)).background(Palette.bubbleAgent)
         .contextActions(reactions = menu.reactions, onClick = { focus.clearFocus() },
-            preview = { VoiceNoteMessage(entry.text, file, player, download, save, attachment, selectable = true) },
-            items = if (attachment) { { menu.items(listOf(textCopyItem(context, entry.text), downloadItem)) } }
-                else { { menu.textItems(textCopyItem(context, entry.text), listOf(downloadItem)) } })) {
-        VoiceNoteMessage(entry.text, file, player, download, save, attachment, selectable = false)
+            preview = { AudioMessage(entry, file, player, state, store, attachment, selectable = true) },
+            items = { menu.textItems(textCopyItem(context, entry.text), listOf(downloadItem)) })) {
+        AudioMessage(entry, file, player, state, store, attachment, selectable = false)
     }
 }
 
-/**
- * Inside [AudioBubble]'s chrome: the shared player row, then the message — or the file's name, truncated to one
- * line, for a sound sent as a file (whose message is only the computer's fallback). The player row is one element —
- * "<name>, <caption>" — with the play and download actions; download has no button here, the bubble's menu and
- * those actions carry it.
- */
-@Composable private fun VoiceNoteMessage(text: String, file: SharedFile, audio: SharedAudio, download: FileDownloadState?,
-    save: () -> Unit, attachment: Boolean, selectable: Boolean) {
-    val scope = rememberCoroutineScope()
-    val translate = translator()
-    val busy = download is FileDownloadState.Downloading
-    val caption = detail(file, download, audio, translate)
-    val play = { scope.launch { audio.toggle() }; Unit }
+/** Inside [AudioBubble]'s chrome: the shared player row, then the message — or the file's name, truncated to one
+ *  line, for a sound sent as a file (whose message is only the computer's fallback). */
+@Composable private fun AudioMessage(entry: Entry, file: SharedFile, audio: SharedAudio, state: AppState, store: AppStore,
+    attachment: Boolean, selectable: Boolean) {
     Column(Modifier.background(Palette.bubbleAgent).padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        val failed = audio.phase == AudioPhase.Failed
-        val downloadFailed = download is FileDownloadState.Failed
-        Row(Modifier.fillMaxWidth().clearAndSetSemantics {
-            contentDescription = "${translate(if (attachment) file.name else "Voice note")}, $caption"
-            audioSeek(audio)
-            customActions = listOf(
-                CustomAccessibilityAction(translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true },
-                CustomAccessibilityAction(translate(if (busy) "Cancel download" else "Download")) { save(); true })
-            onClick(label = translate(if (audio.phase == AudioPhase.Playing) "Pause" else "Play")) { play(); true }
-        }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SharedAudioButton(audio, play)
-            // A note that can't play hides the bar and puts the error in its place.
-            if (!failed && audio.duration > 0.0) AudioProgress(audio, Modifier.weight(1f))
-            // Steady digits, so the bar's end doesn't move as the clock runs. A failure's text fills the bar's
-            // slot and centres in it, the row's 12 dp gap on both sides of the text.
-            Text(caption, style = Type.caption2.copy(fontFeatureSettings = "tnum"),
-                color = if (failed || downloadFailed) Palette.danger else Palette.secondary,
-                textAlign = if (failed) TextAlign.Center else null,
-                modifier = if (failed) Modifier.weight(1f).padding(end = 12.dp) else Modifier)
-        }
+        SharedAudioRow(entry, file, audio, if (attachment) file.name else tr("Voice note"), state, store)
         if (attachment) Text(file.name, style = Type.subheadline.semibold, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        else if (text.isNotEmpty()) MarkdownText(text, selectable)
+        else if (entry.text.isNotEmpty()) MarkdownText(entry.text, selectable)
     }
 }
 
@@ -446,7 +415,7 @@ internal val Entry.botReactions: Map<String, List<String>> get() =
             Symbol("exclamationmark.triangle.fill", size = 16.dp, tint = Palette.danger)
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SelectionContainer { Text(tr(text), style = Type.footnote, color = Palette.text) }
-                WorkThreadLine(entry)
+                TaskLine(entry)
                 if (addFallback != null && entry.data["addFallback"]?.jsonPrimitive?.booleanOrNull == true) SecondaryButton("Add a fallback", action = addFallback)
             }
         }

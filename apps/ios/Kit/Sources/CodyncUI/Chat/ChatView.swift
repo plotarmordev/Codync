@@ -20,6 +20,7 @@ public struct ChatView: View {
     @State var openCall: Entry?
     @State var editingGroup = false
     @State var details: DetailsRequest?
+    @State var openFile: FileViewerTarget?
     /// A picture in the chat, full size.
     @State var viewingImage: ImageViewing?
     @State var calling = false
@@ -35,6 +36,7 @@ public struct ChatView: View {
     /// The card last brought into view from the bot's details, or the message a tapped quote quotes.
     @State var revealed: ConversationReveal?
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    @Environment(\.launchCovered) var launchCovered
 
     var bot: Bot? { model.bots[botId] }
     /// The bot's work in the background, shown in its own chat only.
@@ -149,7 +151,7 @@ public struct ChatView: View {
                 if model.takeVoiceCallRequest(for: botId) { startShortcutCall() }
             }
             // The details sheet's Library and the picture viewer present their own downloads.
-            .fileExportSheet(model, botId: botId, active: details == nil && viewingImage == nil)
+            .fileExportSheet(model, botId: botId, active: details == nil && openFile == nil && viewingImage == nil)
             .imageViewer($viewingImage)
             .codyncSheet(isPresented: $showTrace) {
                 TraceView(botId: botId)
@@ -162,6 +164,7 @@ public struct ChatView: View {
             }
             .codyncSheet(item: $botChat) { BotConversationView(botId: botId, peerId: $0.id) }
             .codyncSheet(item: $openArtifact) { ArtifactView(target: $0) }
+            .codyncSheet(item: $openFile) { FileViewer(file: $0.file, entryId: $0.entryId, botId: $0.botId) }
             .codyncSheet(item: $openCall) { CallConversationView(line: $0) }
             .codyncSheet(item: $details) { request in
                 // A card is in this chat: another bot's details (a group member's) have none to go to.
@@ -219,6 +222,7 @@ public struct ChatView: View {
         showTrace = false
         botChat = nil
         openArtifact = nil
+        openFile = nil
         editingGroup = false
         details = nil
         viewingImage = nil
@@ -245,6 +249,7 @@ public struct ChatView: View {
                         // In a group, the bot whose agent failed.
                         addFallback: { details = .fallbacks(of: e.data.author ?? e.botId) },
                         openArtifact: { openArtifact = ArtifactTarget(botId: e.botId, id: $0.id, title: $0.title) },
+                        openFile: { openFile = $0 },
                         openCall: { openCall = e },
                         openQuote: { showQuoted($0) })
                     .equatable()
@@ -482,6 +487,13 @@ extension ChatView {
         ChatItem.build(model.chat(botId).hidingCalls().hidingQueue(working: busy))
     }
 
+    /// `open_chat` once this open's catch-up is in and the newest row shows, never under the launch splash.
+    private func recordNewestShown(_ item: ChatItem, in items: [ChatItem]) {
+        guard !launchCovered, item.id == items.last?.id,
+              model.openTiming.hasRecorded(.catchUp, computer: model.computer.id) else { return }
+        model.openTiming.record(.openChat, computer: model.computer.id)
+    }
+
     /// `shown`: the find's current match, whose message is highlighted and brought into view.
     func transcript(_ items: [ChatItem], shown: ConversationFind.Match?) -> some View {
         var rows: [ConversationRow] = []
@@ -505,6 +517,10 @@ extension ChatView {
                 row(item)
                     .background(shown?.id == item.id ? Palette.attention.opacity(0.18) : .clear)
                     .accessibilityAddTraits(shown?.id == item.id ? .isSelected : [])
+                    .onAppear { recordNewestShown(item, in: items) }
+                    .onChange(of: model.catchUpsCompleted) { _, _ in recordNewestShown(item, in: items) }
+                    .onChange(of: model.openTiming.opens) { _, _ in recordNewestShown(item, in: items) }
+                    .onChange(of: launchCovered) { _, _ in recordNewestShown(item, in: items) }
             }
         }
         // Offline, "working" is only what the computer last said; don't show it as live.
@@ -579,4 +595,9 @@ extension ChatView {
         }
         .symbolEffect(.pulse, options: .repeating, isActive: operating)
     }
+}
+
+public extension EnvironmentValues {
+    /// The launch splash still covers the app: nothing under it counts as shown yet.
+    @Entry var launchCovered = false
 }

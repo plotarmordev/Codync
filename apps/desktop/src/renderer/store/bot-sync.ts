@@ -1,4 +1,4 @@
-import { isChat, unseen, type AccessRequest, type CloudStatus, type Entry, type Hello, type PairingRequest } from '@shared/models'
+import { isChat, unseen, type AccessRequest, type CloudStatus, type Entry, type PairingRequest } from '@shared/models'
 import { isOutsideLoadedWindow, snapshotFloors } from '@shared/mirror-window'
 import { HostClient, HostError, type HostEvent } from '../client/host-client'
 import { undoOnFailure } from '../lib/undo-on-failure'
@@ -15,8 +15,6 @@ const ACTION_PATIENCE = 20_000
 const MISMATCH_RECHECK = 30_000
 /** The mismatch recheck while an update asked from here runs, so the notice leaves soon after. */
 const UPDATE_RECHECK = 5_000
-/** Raise when the app starts to need a field the rows it cached may lack. */
-const MIRROR_FORMAT = 2
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const same = (a: Connection, b: Connection) => a.kind === b.kind && JSON.stringify(a) === JSON.stringify(b)
@@ -31,14 +29,6 @@ function keptEntries(entries: Map<string, Entry[]>, keep: (e: Entry) => boolean)
     if (rest.length) kept.set(id, rest)
   }
   return kept
-}
-
-/**
- * The mirror format and the host's store schema (its version on a host that sends none): updates of the app or
- * the host that keep both keep the cached copy and its cursor.
- */
-function syncStamp(hello: Hello) {
-  return `${MIRROR_FORMAT}:${hello.schema == null ? hello.version : `schema ${hello.schema}`}`
 }
 
 /**
@@ -88,7 +78,7 @@ export class BotSync extends BotMirror {
     this.stopTransport()
     if (this.connection.kind !== 'online') this.setConnection({ kind: 'connecting' })
     const transport = this.makeTransport()
-    this.client = new HostClient(transport, this.hostVersion?.version)
+    this.client = new HostClient(transport)
     this.hostRoute = transport.route ?? null
     // The relay says at once when the computer is away or on its way; a waiting call only says so when it gives up.
     this.closePresence = transport.onPresence?.((p) => this.setConnection(p === 'online' ? { kind: 'connecting' } : absent(p))) ?? null
@@ -229,8 +219,9 @@ export class BotSync extends BotMirror {
         if (!alive()) return
         const message = error instanceof Error ? error.message : String(error)
         this.finishRefresh?.(new Error(message))
+        // Refused (a revoked token or device): retrying can't help until access changes.
+        if (error instanceof HostError && error.status === 401) return this.setConnection({ kind: 'unauthorized', message })
         this.setConnection(error instanceof HostError && error.presence ? absent(error.presence) : { kind: 'offline', message })
-        if (error instanceof HostError && error.status === 401) return
       }
       if (!alive()) return
       await sleep(backoff)
@@ -251,24 +242,26 @@ export class BotSync extends BotMirror {
     const epoch = ++this.iconsEpoch
     const h = await client.hello()
     if (this.retired || loop !== this.eventsLoop || epoch !== this.iconsEpoch) return
+    // Another host database: its revisions say nothing about this cache's, so start over before subscribing from it.
+    if (this.hostId && this.hostId !== h.hostId) this.resetMirror()
+    this.hostId = h.hostId
     this.iconsRevision = -1
     this.hello = h
     this.applyIcons(h.icons ?? {}, h.iconsRevision)
-    this.noteSyncStamp(syncStamp(h))
-    this.noteHostVersion({ version: h.version, minApp: h.minApp })
+    this.noteHostVersion({ version: h.version, minApp: h.minApp }, h.schema)
     if (this.isLoopback) this.updateComputer((c) => ({ ...c, name: h.name, device: h.device ?? c.device }))
     this.changed()
   }
 
-  /** A copy synced under another mirror format or host schema may lack fields or hold rows a migration changed: fetch it all again, underneath what's shown. */
-  private noteSyncStamp(stamp: string) {
-    if (this.cacheStamp !== null && this.cacheStamp !== stamp) this.refetchAll()
-    this.cacheStamp = stamp
-  }
-
-  private noteHostVersion(next: { version: string; minApp?: string | null }) {
+  private noteHostVersion(next: { version: string; minApp?: string | null }, schema?: number) {
+    // A cache in another format can't be kept, nor a conversation synced under another store schema (a migration
+    // may rewrite or delete rows in place), so everything is fetched again. A host update alone keeps the cursor.
+    const otherSchema = schema !== undefined && this.hostSchema !== null && schema !== this.hostSchema
+    if (this.staleCache || otherSchema) this.refetchAll()
+    this.staleCache = false
+    if (schema !== undefined) this.hostSchema = schema
     if (this.hostVersion && this.hostVersion.version !== next.version) {
-      // Another host: its update is done, and what the last one sent no longer says anything.
+      // Data that wouldn't read may read on the other version; the host's update request is done.
       this.rewound = false
       this.unreadable = false
       this.hostUpdate = null

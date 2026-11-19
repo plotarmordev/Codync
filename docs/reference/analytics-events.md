@@ -37,6 +37,7 @@ host answers and sends it once the host is up.
 | Event | Sent by | When | Properties |
 |---|---|---|---|
 | `app_opened` | host `track` (desktop, TUI), iOS, Android | Desktop: each launch, once the host answers. TUI: each start. Phones: each return to the foreground. | desktop `at_login` (opened by the login item); phones `notifications` (`allowed`/`denied`/`not_asked`), `widgets` (count on the Home Screen) |
+| `open_timing` | iOS, Android | One computer reaches a milestone after a cold open or return from the background: `link_ready`, `hello`, `catch_up`, then the newest message shown in `chat_list` or `open_chat` (never under the launch splash). Once per phase, computer and open. | `phase`, `open` (`cold`/`foreground`), `ms` (since the app opened), `computer` (hashed key), `computers` (the open account's saved computers); `catch_up` also has `chats` and `messages` (counts caught up and fetched in this open: both `0` when a live call kept the link current through the background) |
 | `window_opened` | host `track` (desktop) | The chat window is shown after being hidden (tray, dock, shortcut, second launch). A long-running menu bar app opens it many times per launch. | — |
 | `window_recovery` | host `track` (desktop) | A window's page crashed (`RendererGone` in error tracking): it loaded again, or crashed too often and stays down | `outcome` (`reloaded`/`gave_up`) |
 | `host_started` | host | Each start of the host process | `first_run` (the first start of a new install; `open_store` marks a new host id with an empty `analytics_version`), `updated_from` (the previous version, when it changed), `service` (started by launchd, systemd or the Windows runner: `XPC_SERVICE_NAME`, `SYSTEMD_EXEC_PID`, `CODYNC_SERVICE`), `loopback` (listening on this computer only: `install --bind 127.0.0.1`) |
@@ -86,6 +87,21 @@ host answers and sends it once the host is up.
 | `star_prompt_answered` | host `track` (desktop) | The GitHub star setup invitation or the fifth-prompt invitation was answered or closed | `ask` (`first`/`second`), `starred` |
 | `link_opened` | host `track` (desktop), iOS, Android | An outbound link was opened (`install_command`: an install command copied; `install_link`: the phone's website link copied; `whats_new_film`: a What's new highlight's full video; `docs`: the desktop's Help & documentation, and on desktop, iPhone and Android the information button under a bot's folder in Settings > Workspace, which opens the manual's working-folders page) | `link` (`github`/`docs`/`issues`/`discord`/`app_store`/`demo`/`tailscale`/`privacy`/`support`/`install_command`/`install_link`/`product_hunt`/`whats_new_film`) |
 
+PostHog → SQL editor reads the timing distribution, in milliseconds, for the last seven days. Create the
+**Variables** `os` (`iOS` or `Android`) and `person` (the account's distinct id, from its person page) so the
+numbers are one phone's, never everyone's:
+
+```sql
+SELECT properties.open, properties.phase, count() AS samples,
+       round(avg(toFloat(properties.ms))) AS average_ms,
+       round(quantile(0.95)(toFloat(properties.ms))) AS p95_ms
+FROM events
+WHERE event = 'open_timing' AND timestamp > now() - INTERVAL 7 DAY
+  AND properties.$os = {variables.os} AND distinct_id = {variables.person}
+GROUP BY properties.open, properties.phase
+ORDER BY properties.open, properties.phase
+```
+
 ## Using Codync
 
 | Event | Sent by | When | Properties |
@@ -95,6 +111,8 @@ host answers and sends it once the host is up.
 | `image_preview_action` | host `track` (desktop), iOS, Android | Something is done to a picture: zoomed in the full-size viewer (at most one `zoom` per opening), copied, or downloaded in the viewer (`download` is reported when it ends; a cancel reports nothing; a `copy_image` overtaken by a newer one before it finished reports nothing) | `action` (`zoom`/`copy_image`/`copy_name`/`download`), `from` (`viewer`: done inside the full-size viewer; `menu`: Copy image or Copy name from a picture's menu in a chat or the Library), `outcome` (`done`/`failed`), when failed `error` (`unavailable`: the picture's bytes weren't there; `convert`: it couldn't be turned into an image for the clipboard; `clipboard`: the clipboard refused it; `transfer`: a download broke); never the picture or its name |
 | `conversation_find_opened` | host `track` (desktop, TUI), iOS, Android | The find bar opens in a conversation (desktop ⌘F, the phones' magnifying glass, the terminal's `/` or ^f) | — |
 | `conversation_find_searched` | host `track` (desktop, TUI), iOS, Android | A search in the find bar settles, at most once per searched text: typing paused (desktop and phones), a step to another match, or the bar closing (phones and terminal) | `found` (whether anything matched; never the text searched for) |
+| `reply_swiped` | iOS, Android | A message dragged sideways past the threshold and let go, which starts a reply to it (Reply from the message's menu sends nothing) | — |
+| `scroll_hitches` | iOS, Android | One of the reader's scrolls of the bot list or a chat, measured from the drag until 300 ms after it comes to rest (so a jump or second bounce at the stop counts); not sent when no frame was drawn. Read per `list` and `$os` on real devices: `avg(hitch_ms_per_s)`, `sum(hitches)` and the longest `longest_ms` per `app_version` compare releases | `list` (`bots`/`chat`), `rows` (rows loaded), `frames`, `hitches` (frames that took over one and a half frame intervals), `longest_ms` (the longest frame), `hitch_ms_per_s` (time those frames ran late, per second of the scroll: under 5 feels smooth, over 10 is visible), `fps` (the display's top rate during the scroll, from its shortest frame interval: 60, 90 or 120); a chat also `stop` (`top`/`end`/`middle`: where it came to rest) and `jump` (how far the row on screen at rest moved by itself in those 300 ms, in points/dp; rows loading in above don't count). Never text, names or ids |
 | `quote_opened` | host `track` (desktop, TUI), iOS, Android | A quote at the top of a message (a reply's, or a bot's `reply_to`) is tapped, clicked or (terminal) opened with `q` to bring the quoted message into view | `found` (whether that message was among the loaded ones; never its id or text) |
 | `bot_created` | host | `createBot` | `kind` (`bot`/`group`), `agent`, `model` or `members` (count) |
 | `bots_imported` | host | `importBots` (bots it makes send no `bot_created`) | `source` (`grok-bot`/`openbot`/`other`), `bots`, `groups` (counts) |
@@ -221,6 +239,22 @@ The *Onboarding & conversion* dashboard in PostHog reads these steps, each per `
 - **Star**: `star_prompt_answered` with `starred` ÷ all `star_prompt_answered`, per `ask`.
 - **Website**: `$pageview` → `download_clicked` (per `platform`) → the first `app_opened` that day
   (counts only, no link between a visitor and an install).
+
+## Scroll smoothness
+
+`scroll_hitches` per release, list and phone (SQL insight; add `AND person.properties.email = '…'` or
+`distinct_id = '…'` for one person's phone; the simulator and emulators send none):
+
+```sql
+SELECT properties.app_version AS version, properties.$os AS os, properties.list AS list,
+       count() AS scrolls, round(avg(properties.hitch_ms_per_s), 1) AS hitch_ms_per_s,
+       sum(properties.hitches) AS hitches, max(properties.longest_ms) AS longest_ms,
+       countIf(properties.jump > 2) AS stops_that_moved, any(properties.fps) AS fps
+FROM events
+WHERE event = 'scroll_hitches' AND timestamp > now() - INTERVAL 14 DAY
+GROUP BY version, os, list
+ORDER BY version DESC, os, list
+```
 
 ## Website
 

@@ -138,11 +138,41 @@ fun isAudioName(name: String) = name.substringAfterLast('.', "").lowercase() in 
 /** The largest shared image the phone fetches whole to show. */
 private const val INLINE_BYTES = 20L * 1024 * 1024
 
-/** A file a bot shared: immutable on the computer, checked against its SHA-256 once downloaded. */
-/** [playsInChat]: a sound the chat plays in place, as the computer stamps it; missing (an older computer) means a plain file card. */
-@Serializable data class SharedFile(val id: String, val name: String, val size: Long, val sha256: String, val playsInChat: Boolean = false) {
+private const val MB = 1024L * 1024
+
+/** How a shared file opens inside the app; `maxBytes` is the largest it opens there (bigger ones say so and offer Download). */
+enum class FilePreview(val maxBytes: Long, private val extensions: Set<String>) {
+    Markdown(10 * MB, setOf("md", "markdown")),
+    Text(10 * MB, setOf("txt", "log", "csv", "tsv", "json", "jsonl", "xml", "yaml", "yml", "toml", "ini", "swift", "kt", "kts", "java",
+        "js", "jsx", "ts", "tsx", "py", "rb", "go", "rs", "c", "h", "cpp", "hpp", "cs", "sh", "sql", "html", "css")),
+    Pdf(25 * MB, setOf("pdf")),
+    Video(25 * MB, setOf("mp4", "mov", "m4v", "webm"));
+
+    companion object {
+        fun of(name: String): FilePreview? = name.substringAfterLast('.', "").lowercase().let { ext -> entries.firstOrNull { ext in it.extensions } }
+    }
+}
+
+/** Whether `head` (a file's first bytes) starts like a video container, whatever the file is called: an ISO media file
+ *  (MP4, MOV, M4V) with its `ftyp` box or an older QuickTime file's first `moov`/`mdat`/`wide` atom, or Matroska/WebM. */
+fun isVideoData(head: ByteArray): Boolean {
+    if (head.size < 8) return false
+    val ebml = byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte())
+    return head.copyOf(4).contentEquals(ebml) || head.decodeToString(4, 8) in setOf("ftyp", "moov", "mdat", "wide")
+}
+
+/** A file a bot shared: immutable on the computer, checked against its SHA-256 once downloaded.
+ *  [playsInChat]: a sound the chat plays in place, as the computer stamps it; missing (an older computer) means a plain file card.
+ *  [durationMs]: the sound's length the computer read at share time; missing (an older computer, an unreadable header) is
+ *  unknown — the player then shows its bar empty until the sound loads. */
+@Serializable data class SharedFile(val id: String, val name: String, val size: Long, val sha256: String, val playsInChat: Boolean = false,
+    val durationMs: Long? = null) {
     /** An image small enough to show in the chat. */
     val showsAsImage: Boolean get() = isImageName(name) && size <= INLINE_BYTES
+    /** How it opens inside the app, if it does. */
+    val preview: FilePreview? get() = FilePreview.of(name)
+    /** Small enough to open inside the app. */
+    val opensInline: Boolean get() = preview?.let { size <= it.maxBytes } ?: false
 
     /** Before any of it is read: a name that can't leave its folder and a hash to check. */
     fun validate() {

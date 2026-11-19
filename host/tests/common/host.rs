@@ -60,7 +60,7 @@ impl Host {
     }
 
     pub async fn post(&self, method: &str, body: &Value) -> (bool, Value) {
-        let response = reqwest::Client::new()
+        let response = super::client()
             .post(format!("{}/api/{method}", self.base))
             .bearer_auth(&self.token)
             .json(body)
@@ -94,7 +94,7 @@ impl Host {
     /// The event stream (its catch-up, then live events), each event as it arrives.
     pub async fn events(&self) -> tokio::sync::mpsc::UnboundedReceiver<Value> {
         use futures::StreamExt as _;
-        let response = reqwest::Client::new()
+        let response = super::client()
             .get(format!("{}/events?client=test", self.base))
             .bearer_auth(&self.token)
             .send()
@@ -164,8 +164,8 @@ impl Host {
         self.call("updateBot", json!({"id": bot, "manageTeam": true})).await;
     }
 
-    /// Sends `text` and waits for the bot's reply.
-    pub async fn reply(&self, bot: &str, text: &str) {
+    /// Sends `text` and waits for the bot's reply, which it returns.
+    pub async fn reply(&self, bot: &str, text: &str) -> String {
         let finals = |history: &Value| {
             history["entries"]
                 .as_array()
@@ -181,7 +181,14 @@ impl Host {
         loop {
             let history = self.call("history", json!({"botId": bot})).await;
             if finals(&history) > before {
-                return;
+                let reply = history["entries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .rev()
+                    .find(|e| e["kind"] == "agent" && e["data"]["final"] == true)
+                    .unwrap();
+                return reply["data"]["text"].as_str().unwrap().to_owned();
             }
             assert!(Instant::now() < deadline, "{bot} didn't answer {text:?}: {history}");
             tokio::time::sleep(Duration::from_millis(50)).await;

@@ -137,6 +137,12 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
         }
         // A thread's transcript, for its details: no chat an app holds has it.
         "threadEntries" => work::entries(hub, str_arg(&b, "botId")?, str_arg(&b, "threadId")?, 500)?,
+        // The roster as the event stream's `bot` events carry it, without the deletion records a catch-up keeps.
+        "bots" => {
+            let bots: Vec<Value> =
+                hub.store.bots()?.iter().filter(|row| !row.deleted).map(|row| hub.bot_json(row)).collect();
+            json!({"bots": bots})
+        }
         "history" => {
             let bot = str_arg(&b, "botId")?;
             let before = b["beforeSeq"].as_i64().unwrap_or(i64::MAX);

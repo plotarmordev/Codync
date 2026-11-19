@@ -53,19 +53,20 @@ that stays undecodable after the one rewind, or a `hello` whose other fields can
 **The cached conversation survives an update.** A client keeps a copy of each computer's bots and newest messages
 (its mirror), and an update of the app or the host never empties what a chat shows:
 
-- iPhone and desktop keep their event cursor across app and host updates, so a reconnect catches up only on what
-  is new: a catch-up from rev 0 would bring every chat again. Their copy records what it was synced under: a
-  mirror format the app raises when it starts to need a field cached rows may lack, and `hello.schema` (the
-  host's store schema; a host that sends no `schema` is judged by its version). When either changes, they fetch
-  everything again from rev 0 underneath what's shown and, once that catch-up has all arrived (`hello.catchUp`
-  events), keep exactly what the computer sent again; a refetch the link cut short starts over. A bot field a
-  host update adds shows once that bot next changes.
+- Each mirror records its format (`MIRROR_FORMAT` on desktop, `BotStore.mirrorFormat` on iPhone,
+  `MirrorDatabase.FORMAT` on Android; none recorded counts as 1, except an iPhone or desktop cache whose older
+  `<app>/<host version>` stamp lacks the host, saved partway through a refetch or before the first hello) and the
+  host's store schema (`hello.schema`). App and host updates keep the event cursor; only another host database,
+  another mirror format or another store schema (a migration may rewrite or delete rows in place) starts over. A
+  host that sends no `schema`, or a mirror synced before it was recorded, keeps the conversation.
+- iPhone and desktop start over underneath what's shown: they fetch everything again from rev 0 and, once that
+  catch-up has all arrived (`hello.catchUp` events), keep exactly what the computer sent again; a refetch the link
+  cut short starts over, and a cache saved partway through one, or before the first hello began it, is saved as
+  stale so the next launch does too.
 - Android stores each row as the computer sent it, so a new app or host version keeps the whole conversation: it
   only reads the bots again. Its event cursor stays where it was: a catch-up from rev 0 brings only each chat's
-  newest entries, and onto the rows held it could leave a gap paging never fills. The one exception is a change of `hello.schema` (the host's store
-  schema), since a migration may rewrite or delete rows in place; a host that sends no `schema` is judged by its
-  version. The conversation is dropped then and the chats are empty until the catch-up fills them: refetching
-  underneath, as the iPhone does, isn't built on Android
+  newest entries, and onto the rows held it could leave a gap paging never fills. Starting over empties its
+  chats until the catch-up fills them: refetching underneath, as the iPhone does, isn't built on Android
   ([Android parity](../plans/android-app.md#different-from-the-iphone-on-purpose-or-by-platform)).
 
 Apps older than 2.41.0 on a computer in no account lose the relay: `hello.cloud` is null there, which they save, and they have no **Add to account** row. They reach it over Wi-Fi or Tailscale until the computer joins an account some other way, and `hello.joinAccount` stays `false` so they never call `joinAccount`, which takes a certificate now. It raises no floor: a computer in an account is unchanged for them.

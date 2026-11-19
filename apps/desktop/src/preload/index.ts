@@ -23,6 +23,24 @@ function listen<T>(channel: string, cb: (value: T) => void) {
   return () => void ipcRenderer.removeListener(channel, handler)
 }
 
+/** A main-process call answering `{ ok, value }` or `{ ok, error }`: the value, or a rejection with the `CallError`. */
+async function invoke(channel: string, ...args: unknown[]) {
+  const result = (await ipcRenderer.invoke(channel, ...args)) as { ok: true; value: unknown } | { ok: false; error: CallError }
+  if (!result.ok) throw result.error
+  return result.value
+}
+
+/** Lines from a stream the main process runs (`<prefix>:stream:open`), until `onEnd` or the returned close. */
+function openStream(prefix: string, args: unknown[], onData: (line: string) => void, onEnd: (error: CallError | null) => void) {
+  const id = `s${++streamId}`
+  streams.set(id, { onData, onEnd })
+  ipcRenderer.send(`${prefix}:stream:open`, id, ...args)
+  return () => {
+    if (!streams.delete(id)) return
+    ipcRenderer.send(`${prefix}:stream:close`, id)
+  }
+}
+
 // A dev sandbox starts past onboarding (`skip`: only a window that never chose is seeded) or back at
 // its welcome flow (`reset`); see tools/dev.mjs. Skipping also answers the GitHub star ask and marks
 // What's new seen on this version, which a fresh sandbox would otherwise show at once as an installation
@@ -61,40 +79,12 @@ const bridge: CodyncBridge = {
     onChange: (cb) => listen('host:change', cb),
     install: () => ipcRenderer.send('host:install'),
     restart: () => ipcRenderer.send('host:restart'),
-    async call(baseURL, token, method, body, timeoutMs) {
-      const result = (await ipcRenderer.invoke('host:call', baseURL, token, method, body, timeoutMs)) as
-        | { ok: true; value: unknown }
-        | { ok: false; error: CallError }
-      if (!result.ok) throw result.error
-      return result.value
-    },
-    stream(url, token, onData, onEnd) {
-      const id = `s${++streamId}`
-      streams.set(id, { onData, onEnd })
-      ipcRenderer.send('host:stream:open', id, url, token)
-      return () => {
-        if (!streams.delete(id)) return
-        ipcRenderer.send('host:stream:close', id)
-      }
-    },
+    call: (baseURL, token, method, body, timeoutMs) => invoke('host:call', baseURL, token, method, body, timeoutMs),
+    stream: (url, token, onData, onEnd) => openStream('host', [url, token], onData, onEnd),
   },
   channel: {
-    async call(computerId, signKey, method, body, timeoutMs) {
-      const result = (await ipcRenderer.invoke('channel:call', computerId, signKey, method, body, timeoutMs)) as
-        | { ok: true; value: unknown }
-        | { ok: false; error: CallError }
-      if (!result.ok) throw result.error
-      return result.value
-    },
-    stream(computerId, signKey, path, onData, onEnd) {
-      const id = `s${++streamId}`
-      streams.set(id, { onData, onEnd })
-      ipcRenderer.send('channel:stream:open', id, computerId, signKey, path)
-      return () => {
-        if (!streams.delete(id)) return
-        ipcRenderer.send('channel:stream:close', id)
-      }
-    },
+    call: (computerId, signKey, method, body, timeoutMs) => invoke('channel:call', computerId, signKey, method, body, timeoutMs),
+    stream: (computerId, signKey, path, onData, onEnd) => openStream('channel', [computerId, signKey, path], onData, onEnd),
     onPresence: (cb) => listen('channel:presence', cb),
   },
   account: {
@@ -135,10 +125,12 @@ const bridge: CodyncBridge = {
     openBot: (ref) => ipcRenderer.send('island:openBot', ref),
     newBot: () => ipcRenderer.send('island:newBot'),
     openApp: () => ipcRenderer.send('island:openApp'),
+    openVoiceSettings: () => ipcRenderer.send('island:openVoiceSettings'),
   },
   cloud: {
     request: (method, path, body, signed) => ipcRenderer.invoke('cloud:request', method, path, body, signed),
     requestAccess: (computerId) => ipcRenderer.invoke('cloud:requestAccess', computerId),
+    askForAccess: (computer) => ipcRenderer.invoke('cloud:askForAccess', computer),
   },
   updates: {
     state: () => ipcRenderer.invoke('updates:state'),

@@ -7,7 +7,10 @@ private let log = Logger(subsystem: "com.pokai.Codync", category: "Account")
 /// Values shared between the app, its widgets and its notification extension through the App Group,
 /// one namespace per account context so a signed-out account's data never shows in another.
 public enum SharedStore {
-    public static let appGroup = AppEnvironment.current.appGroup
+    /// `CodyncAppGroup` from the app's or extension's Info.plist, so a build under another team uses its own group;
+    /// hostless tests fall back to the environment's group.
+    public static let appGroup = Bundle.main.object(forInfoDictionaryKey: "CodyncAppGroup") as? String
+        ?? AppEnvironment.current.appGroup
     /// The APNs push relay (relay/ in this repo).
     public static let relayURL = "https://codync-relay.kevin2005ha.workers.dev"
 

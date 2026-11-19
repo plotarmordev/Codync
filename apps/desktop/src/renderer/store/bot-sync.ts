@@ -78,7 +78,7 @@ export class BotSync extends BotMirror {
     this.stopTransport()
     if (this.connection.kind !== 'online') this.setConnection({ kind: 'connecting' })
     const transport = this.makeTransport()
-    this.client = new HostClient(transport)
+    this.client = new HostClient(transport, this.hostVersion?.version)
     this.hostRoute = transport.route ?? null
     // The relay says at once when the computer is away or on its way; a waiting call only says so when it gives up.
     this.closePresence = transport.onPresence?.((p) => this.setConnection(p === 'online' ? { kind: 'connecting' } : absent(p))) ?? null
@@ -305,8 +305,8 @@ export class BotSync extends BotMirror {
         this.bump(event.entry.rev)
         this.acknowledgeVisible(event.entry.botId, event.entry)
         break
-      case 'taskEntry':
-        this.mergeTask(event.task, [event.entry])
+      case 'threadEntry':
+        this.mergeThread(event.thread, [event.entry])
         this.bump(event.entry.rev)
         break
       case 'usage':

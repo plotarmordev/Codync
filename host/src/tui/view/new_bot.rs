@@ -63,8 +63,12 @@ pub(super) fn new_bot_view(buf: &mut Buffer, area: Rect, n: &NewBot) {
 #[cfg(test)]
 mod tests {
     use super::super::super::app::Editor;
-    use super::super::super::l10n::with_language;
+    use super::super::super::l10n::set_language;
     use super::*;
+    use crate::LockExt;
+
+    /// Keeps this module's tests from switching the shared language under each other.
+    static LANGUAGE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// The color row's cells in a 60x20 terminal, the new bot dialog on its color field.
     fn color_row(language: &str) -> Vec<String> {
@@ -78,7 +82,10 @@ mod tests {
             error: None,
             saving: false,
         };
-        with_language(language, || new_bot_view(&mut buf, area, &n));
+        let _serial = LANGUAGE.locked();
+        let previous = set_language(language);
+        new_bot_view(&mut buf, area, &n);
+        set_language(previous);
         let y = centered(area, 56, 18).y + 12;
         (area.left()..area.right()).map(|x| buf[(x, y)].symbol().to_owned()).collect()
     }

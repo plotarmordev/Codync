@@ -6,8 +6,8 @@ import { VOICE_SHORTCUT_KEYS, type VoiceKey, type VoiceShortcut } from '@shared/
 import { HostClient, LoopbackTransport } from '../../client/host-client'
 import { Observable } from '../../lib/observable'
 import { pref, prefs } from '../../lib/prefs'
-import { Dictation } from '../thread/dictation'
-import { dictationPlatform } from '../thread/dictation-platform'
+import { Dictation } from '../chat/dictation'
+import { dictationPlatform } from '../chat/dictation-platform'
 
 /** The island reaches this computer's own host through the main process's loopback address and token. */
 async function islandHost(): Promise<HostClient> {

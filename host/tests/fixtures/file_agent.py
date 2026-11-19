@@ -50,7 +50,7 @@ def prompt(message):
             for path in ['note.m4a', 'report.pdf']:
                 results.append(request('tools/call', {'name':'send_file', 'arguments':{'path':path, 'text':'Here is the **plan**.', **quote}}))
         else:
-            paths = ['note.m4a'] if 'voice-note' in text else ['binary.dat', '.hidden', 'empty', 'report.pdf']
+            paths = ['binary.dat', '.hidden', 'empty', 'report.pdf']
             for path in paths:
                 arguments = {'path':path, **(quote if 'in a reply' in text else {})}
                 results.append(request('tools/call', {'name':'send_file', 'arguments':arguments}))

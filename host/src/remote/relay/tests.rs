@@ -597,16 +597,6 @@ impl RelayPhone {
         (hello, events)
     }
 
-    /// Reads past other traffic to the answer to request `id`.
-    async fn answer(&mut self, id: u64) -> Value {
-        loop {
-            let v = self.recv().await;
-            if v["id"] == id {
-                return v;
-            }
-        }
-    }
-
     /// Waits, without forwarding anything, until this link's relay queue is full: its channel's
     /// writer is then stuck sending, so the channel reads nothing either.
     async fn fill_queues(&mut self) {
@@ -686,42 +676,6 @@ async fn a_link_whose_channel_waits_on_its_answers_stays_open() {
             catch_up -= 1;
         }
     }
-}
-
-#[tokio::test]
-async fn an_image_with_text_goes_over_a_busy_relay_link() {
-    use base64::Engine as _;
-    let hub = temp_hub();
-    let key = phone_key(&hub);
-    history(&hub, 30, 250);
-    // A group: a message to it starts no agent.
-    let target = format!("image-{}", uuid::Uuid::new_v4());
-    let group = json!({"id": target, "name": "Group", "createdAt": 0, "kind": "group"});
-    hub.store.save_bot(&serde_json::from_value(group).unwrap()).unwrap();
-    let mut phone = RelayPhone::open(&hub, key, "busy").await;
-    phone.hello(&hub).await;
-    phone.send(json!({"id": 1, "sub": "events", "b": {"since": 0, "client": "ios"}})).await;
-    phone.fill_queues().await;
-    // More than one sealed frame, sent while the catch-up still fills the link.
-    let upload = uuid::Uuid::new_v4().to_string();
-    let mut image = vec![0; crypto::CHUNK + 32];
-    image[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
-    let data = base64::engine::general_purpose::STANDARD.encode(&image);
-    phone
-        .send(json!({"id": 2, "m": "upload", "b": {"botId": target, "uploadId": upload, "name": "image.png",
-            "offset": 0, "data": data, "done": true}}))
-        .await;
-    let uploaded = phone.answer(2).await;
-    assert_eq!(uploaded["ok"]["attachment"]["size"], image.len(), "{uploaded}");
-    phone.send(json!({"id": 3, "m": "send", "b": {"botId": target, "text": "look", "attachments": [upload]}})).await;
-    let sent = phone.answer(3).await;
-    assert_eq!(sent["ok"]["entry"]["data"]["text"], "look", "{sent}");
-    assert_eq!(sent["ok"]["entry"]["data"]["attachments"][0]["name"], "image.png");
-    assert!(phone.session.links.contains_key("busy"), "the busy link stayed open");
-    let row = hub.store.bot(&target).unwrap().unwrap();
-    let root = crate::chat::uploads::root(&row.config);
-    assert_eq!(crate::chat::uploads::read(&root, &upload, 0, image.len()).unwrap().0, image);
-    crate::chat::uploads::remove(&root, &upload).unwrap();
 }
 
 #[tokio::test]

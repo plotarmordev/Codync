@@ -477,14 +477,36 @@ func helloJSON(version: String, minApp: String? = nil, backends: String = "[]", 
 }
 
 /// A cache in another mirror format for `computer`: "gone" and "kept" from the computer, and a message not sent yet.
-private func writeStaleCache(for computer: Computer, in storage: SharedStore.Context) throws -> URL {
+private func writeStaleCache(for computer: Computer, in storage: SharedStore.Context, format: Int = 0, schema: Int? = nil) throws -> URL {
     let url = URL.cachesDirectory.appending(path: "codync-mirror-\(Bundle.main.bundleIdentifier ?? "app")-\(storage.id)-\(computer.id).json")
     func cachedEntry(_ id: String, seq: Int, rev: Int) -> String {
         #"{"id":"\#(id)","seq":\#(seq),"botId":"b1","rev":\#(rev),"kind":"agent","turn":1,"createdAt":1,"updatedAt":1,"data":{"text":"old","final":true}}"#
     }
-    let cached = #"{"format":0,"hostId":"h1","rev":77,"bots":[],"entries":[\#(cachedEntry("gone", seq: 1, rev: 70)),\#(cachedEntry("kept", seq: 2, rev: 77)),\#(cachedEntry("local-unsent", seq: 3, rev: 0))]}"#
+    let cached = #"{"format":\#(format),"schema":\#(schema.map(String.init) ?? "null"),"hostId":"h1","rev":77,"bots":[],"entries":[\#(cachedEntry("gone", seq: 1, rev: 70)),\#(cachedEntry("kept", seq: 2, rev: 77)),\#(cachedEntry("local-unsent", seq: 3, rev: 0))]}"#
     try Data(cached.utf8).write(to: url)
     return url
+}
+
+/// An update of the app or the host catches up from the cache's rev while the mirror format and the host's store
+/// schema stay; a change of either fetches everything again.
+@MainActor @Test(arguments: [
+    (1, 8, #""schema":8,"#, Int64(77)),
+    (1, 8, #""schema":9,"#, Int64(0)),
+    (1, nil, "", Int64(77)),
+    (2, 8, #""schema":8,"#, Int64(0)),
+])
+func anUpdateKeepsTheCursorUnderTheSameFormatAndSchema(format: Int, schema: Int?, helloSchema: String, since: Int64) async throws {
+    let (storage, suite) = context()
+    defer { storage.erase(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let computer = randomComputer("Fixture")
+    _ = try writeStaleCache(for: computer, in: storage, format: format, schema: schema)
+    let fake = FakeRemote(.ready(.direct))
+    await fake.setHello(#"{"hostId":"h1","name":"Mac","version":"3.0.0",\#(helloSchema)"os":"macos","backends":[],"rev":0}"#)
+    let store = BotStore(computer: computer, storage: storage) { _ in fake }
+    defer { store.retire() }
+    store.setActive(true)
+    #expect(await until { await fake.subscribed })
+    #expect(store.rev == since)
 }
 
 /// A cache in another mirror format fetches everything again underneath what the chat shows.

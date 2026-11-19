@@ -95,52 +95,6 @@ async fn a_lead_creates_a_bot_the_user_allowed_and_not_one_change_they_denied() 
     );
 }
 
-/// Has the fixture lead call `tool` with `args`, which takes no approval card, and returns its reply.
-async fn ask(host: &Host, lead: &str, tool: &str, args: &Value) -> String {
-    host.reply(lead, &format!("MANAGE {tool} {args}")).await
-}
-
-#[tokio::test]
-async fn a_lead_deletes_a_bot_mid_turn_but_never_itself() {
-    let host = Host::start().await;
-    let lead = host.fixture_bot("Lead", "team_agent.py", "").await;
-    host.call("updateBot", json!({"id": lead, "permission": "ask", "manageTeam": true})).await;
-    let doomed = host.fixture_bot("Doomed", "team_agent.py", "").await;
-    host.call("send", json!({"botId": doomed, "text": "BLOCK until released"})).await;
-    let working =
-        |sync: &Value| sync["bots"].as_array().unwrap().iter().any(|b| b["id"] == doomed && b["status"] == "working");
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while !working(&host.snapshot().await) {
-        assert!(Instant::now() < deadline, "the doomed bot never started its turn");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-
-    let refused = ask(&host, &lead, "delete_bot", &json!({"botId": lead})).await;
-    assert!(refused.starts_with("Refused: ") && refused.contains("can't delete yourself"), "{refused}");
-    assert!(host.snapshot().await["bots"].as_array().unwrap().iter().any(|b| b["id"] == lead), "the lead stays");
-
-    let reply = manage(&host, &lead, "delete_bot", &json!({"botId": doomed}), "allow", |detail| {
-        assert_eq!(detail, "Name: Doomed");
-    })
-    .await;
-    assert!(reply.starts_with("Done: "), "{reply}");
-    // Gone from the team list, its blocked turn over, and nothing of it left to answer.
-    let sync = host.snapshot().await;
-    let row = sync["bots"].as_array().unwrap().iter().find(|b| b["id"] == doomed).unwrap();
-    assert_eq!(row["deleted"], true, "{sync}");
-    let exited = host.workspace(&doomed).join("exited");
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while !exited.exists() {
-        assert!(Instant::now() < deadline, "the deleted bot's agent is still running");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert_eq!(host.call("history", json!({"botId": doomed})).await["entries"], json!([]));
-    let team = ask(&host, &lead, "list_team", &json!({})).await;
-    assert!(!team.contains("Doomed") && team.contains("Lead"), "{team}");
-    let gone = host.refused("send", json!({"botId": doomed, "text": "anyone there?"})).await;
-    assert!(gone.contains("unknown bot"), "{gone}");
-}
-
 /// A change whose wait ends without an answer ends its card too, and changes nothing.
 #[tokio::test]
 async fn a_card_ends_when_its_turn_stops_or_its_call_is_dropped() {

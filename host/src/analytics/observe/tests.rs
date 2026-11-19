@@ -216,8 +216,7 @@ fn connectors_skills_and_agents() {
     );
     let (event, p) = published(json!({"path": "r.html", "artifact": "a1"}));
     let p = answered(event, p, &json!({"published": true, "card": "not posted"})).expect("published");
-    let card = (p["change"].clone(), p["card"].clone());
-    assert_eq!(card, (json!("update"), json!(false)), "a room's or a bot request's has no card");
+    assert_eq!((p["change"].clone(), p["card"].clone()), (json!("update"), json!(false)), "a room's has no card");
     let (event, p) = published(json!({"path": "r.html", "artifact": "a1", "notify": false}));
     let p = answered(event, p, &json!({"published": true, "quiet": true})).expect("published");
     assert_eq!((p["card"].clone(), p["quiet"].clone()), (json!(false), json!(true)), "a quiet update posts no card");

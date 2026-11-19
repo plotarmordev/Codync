@@ -1,6 +1,6 @@
 //! The `entries` table: the transcript of every chat.
 
-use super::model::{Entry, EntryKind, Lane, TASK_GLOB};
+use super::model::{Entry, EntryKind, Lane, thread_ids};
 use super::{Store, logged, next_rev, now_ms};
 use crate::LockExt;
 use anyhow::{Result, ensure};
@@ -164,21 +164,20 @@ impl Store {
         )?)
     }
 
-    /// Entries changed after `since`, in the chats clients list: a task's transcript is fetched by itself
-    /// (`taskEntries`). A fresh client (`since == 0`) only gets the
+    /// Entries changed after `since`, in the chats clients list: a thread's transcript is fetched by itself
+    /// (`threadEntries`). A fresh client (`since == 0`) only gets the
     /// newest `cap` entries per bot and pages older ones in with `history`.
     pub fn entries_since(&self, since: i64, cap: i64) -> Result<Vec<Entry>> {
         let c = self.db.locked();
+        let threads = thread_ids("bot_id");
         let sql = if since == 0 {
             format!(
                 "SELECT {ENTRY_COLS} FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY bot_id ORDER BY seq DESC) AS rn FROM entries
-                   WHERE bot_id NOT GLOB '{TASK_GLOB}')
+                   WHERE NOT {threads})
                  WHERE rn <= ?2 AND rev > ?1 ORDER BY seq"
             )
         } else {
-            format!(
-                "SELECT {ENTRY_COLS} FROM entries WHERE rev > ?1 AND ?2 > 0 AND bot_id NOT GLOB '{TASK_GLOB}' ORDER BY seq"
-            )
+            format!("SELECT {ENTRY_COLS} FROM entries WHERE rev > ?1 AND ?2 > 0 AND NOT {threads} ORDER BY seq")
         };
         let mut st = c.prepare(&sql)?;
         Ok(st.query_map(params![since, cap], row_entry)?.collect::<rusqlite::Result<_>>()?)
@@ -207,19 +206,6 @@ impl Store {
              ORDER BY seq DESC LIMIT ?2"
         ))?;
         Ok(st.query_map(params![bot_id, limit], row_entry)?.collect::<rusqlite::Result<_>>()?)
-    }
-
-    /// Messages with a playable sound whose length the host never stamped (shared before it read lengths): the
-    /// start-up backfill fills them in.
-    pub fn unstamped_sounds(&self) -> Result<Vec<Entry>> {
-        let c = self.db.locked();
-        let mut st = c.prepare(&format!(
-            "SELECT {ENTRY_COLS} FROM entries WHERE json_type(data, '$.files') = 'array'
-               AND EXISTS (SELECT 1 FROM json_each(data, '$.files') f
-                           WHERE json_extract(f.value, '$.playsInChat') = 1
-                             AND json_extract(f.value, '$.durationMs') IS NULL)"
-        ))?;
-        Ok(st.query_map([], row_entry)?.collect::<rusqlite::Result<_>>()?)
     }
 
     /// The user's own messages in `bot_id`'s chat that still wait for their turn (not what the host wrote there),

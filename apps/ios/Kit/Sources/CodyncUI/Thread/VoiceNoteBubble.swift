@@ -44,18 +44,20 @@ struct VoiceNoteBubble<Below: View>: View {
         }
     }
 
-    /// The play/pause button, the progress bar and its clock on one row; a failed play or download puts its error in
-    /// the bar's place. Download is in the message's menu.
+    /// The play/pause button, the progress bar and its clock on one row; a failed play puts its error in the bar's
+    /// place, a failed download only colours the clock's caption. Download is in the message's menu.
     private var player: some View {
         let state = model.fileDownloads.states[file.id]
         let caption = FileDownloadCard.voiceNoteDetail(state, play: audio.state, elapsed: audio.elapsed, duration: audio.duration)
-        let failed = if case .failed = state { true } else { audio.state == .failed }
+        let failed = audio.state == .failed
+        let downloadFailed = if case .failed = state { true } else { false }
         // The 44 pt hit area overflows the 24 pt glyph, so the glyph lines up with the text under it.
         return HStack(spacing: 12) {
             AudioPlayButton(state: audio.state, action: play).padding(-10)
             if failed {
                 Text(caption).font(.caption2).foregroundStyle(Palette.danger)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.trailing, 12)
             } else {
                 AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
                 // The clock keeps exactly its own room — the caption's shape for this length — whether the length is
@@ -63,7 +65,7 @@ struct VoiceNoteBubble<Below: View>: View {
                 // length arrives, and as the clock runs.
                 ZStack(alignment: .trailing) {
                     Text(verbatim: FileDownloadCard.voiceNoteRoom(audio.duration)).hidden()
-                    Text(verbatim: caption).foregroundStyle(Palette.secondary)
+                    Text(verbatim: caption).foregroundStyle(downloadFailed ? Palette.danger : Palette.secondary)
                 }
                 .font(.caption2.monospacedDigit())
             }

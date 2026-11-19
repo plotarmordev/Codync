@@ -323,7 +323,9 @@ internal val Entry.reactions: List<String> get() = (data["reactions"] as? JsonAr
     Box(Modifier.clip(RoundedRectangle(18.dp)).background(Palette.bubbleAgent)
         .contextActions(reactions = menu.reactions, onClick = { focus.clearFocus() },
             preview = { AudioMessage(entry, file, player, state, store, attachment, selectable = true) },
-            items = { menu.textItems(textCopyItem(context, entry.text), listOf(downloadItem)) })) {
+            // A sound on its own has no text of its own (the file's name is), so its menu offers no Select Text.
+            items = if (attachment) { { menu.items(listOf(textCopyItem(context, entry.text), downloadItem)) } }
+                else { { menu.textItems(textCopyItem(context, entry.text), listOf(downloadItem)) } })) {
         AudioMessage(entry, file, player, state, store, attachment, selectable = false)
     }
 }

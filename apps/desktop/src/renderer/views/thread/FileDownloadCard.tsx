@@ -38,9 +38,9 @@ export function VoiceNotePlayer({ entry, file, menu, named = false }: { entry: E
       <VStack gap={4} aria-hidden>
         <HStack gap={10}>
           <AudioIcon snapshot={snapshot} toggle={toggle} />
-          {stop.failed ? <Text as="div" size="caption2" tone="danger" className="file-card-detail" grow>{stop.detail}</Text> : <>
+          {stop.playFailed ? <Text as="div" size="caption2" tone="danger" className="file-card-detail voice-note-error" grow>{stop.detail}</Text> : <>
             <AudioProgress snapshot={snapshot} seek={seek} />
-            <Text as="div" size="caption2" tone="secondary" className="file-card-detail voice-note-clock" data-room={clockRoom(snapshot.duration)}>{stop.detail}</Text>
+            <Text as="div" size="caption2" tone={stop.failed ? 'danger' : 'secondary'} className="file-card-detail voice-note-clock" data-room={clockRoom(snapshot.duration)}>{stop.detail}</Text>
           </>}
         </HStack>
         {named ? <Text as="div" size="subheadline" weight="semibold" truncate title={file.name}>{file.name}</Text> : null}
@@ -123,6 +123,7 @@ function useFileStop(entry: Entry, file: SharedFile, menu: MessageMenu, audio?: 
     state,
     busy,
     failed: state?.kind === 'failed' || audio?.phase === 'failed',
+    playFailed: audio?.phase === 'failed',
     detail: cardDetail(state, file, audio, tr),
     image,
     view,

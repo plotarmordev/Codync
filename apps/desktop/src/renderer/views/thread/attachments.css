@@ -147,6 +147,14 @@
   height: 0;
   visibility: hidden;
 }
+/* A note that can't play: the error takes the bar's place, centred in it with the row's 10 px gap on both sides
+   of the text. */
+.voice-note .file-card-detail.voice-note-error {
+  flex: 1;
+  min-width: 0;
+  padding-right: 10px;
+  text-align: center;
+}
 .file-card-image-menu {
   display: flex;
   align-self: flex-start;

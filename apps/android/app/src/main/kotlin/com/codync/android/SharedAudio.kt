@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
@@ -47,6 +48,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.codync.android.core.Entry
 import com.codync.android.core.SharedFile
@@ -373,7 +375,7 @@ internal fun voiceNotePreloads(online: Boolean, metered: Boolean, bytes: Long): 
     }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         SharedAudioButton(audio, play)
         if (failed) {
-            Text(caption, Modifier.weight(1f), style = Type.caption2, color = Palette.danger, textAlign = TextAlign.Center)
+            Text(caption, Modifier.weight(1f).padding(end = 12.dp), style = Type.caption2, color = Palette.danger, textAlign = TextAlign.Center)
         } else {
             AudioProgress(audio, Modifier.weight(1f))
             // The clock keeps the room of its duration's shape, with steady digits, so the bar ends in one place

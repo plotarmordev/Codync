@@ -56,7 +56,8 @@ struct VoiceNoteBubble<Below: View>: View {
             AudioPlayButton(state: audio.state, action: play).padding(-10)
             if failed {
                 Text(caption).font(.caption2).foregroundStyle(Palette.danger)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.trailing, 12)
             } else {
                 AudioProgress(elapsed: audio.elapsed, duration: audio.duration ?? 0, seek: audio.seek)
                 // The clock keeps exactly its own room — the caption's shape for this length — whether the length is

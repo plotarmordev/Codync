@@ -144,7 +144,9 @@ fn detached_descendant(
 #[cfg(any(unix, test))]
 fn is_runtime(program: &str) -> bool {
     let program = program.trim_end_matches(|c: char| c.is_ascii_digit() || c == '.');
-    ["node", "bun", "deno", "python", "ruby", "perl", "sh", "bash", "zsh", "dash", "fish"].contains(&program)
+    // A name from `ps` is the program's own ("Python" on macOS, "python3" on Linux): match either case.
+    ["node", "bun", "deno", "python", "ruby", "perl", "sh", "bash", "zsh", "dash", "fish"]
+        .contains(&program.to_ascii_lowercase().as_str())
 }
 
 #[cfg(test)]

@@ -11,9 +11,9 @@ import { libraryGroups } from '../../lib/library-groups'
 import { useTr } from '../../lib/use-language'
 import { useScreenViewed } from '../../store/analytics'
 import { useStore } from '../../store/context'
-import { AttachmentImage, AttachmentViewer, attachmentSymbol } from '../chat/Attachments'
-import { byteCount, downloadAction, downloadDetail } from '../chat/file-card'
-import { FileViewer } from '../chat/FileViewer'
+import { AttachmentImage, AttachmentViewer, attachmentSymbol } from '../thread/Attachments'
+import { byteCount, downloadAction, downloadDetail } from '../thread/file-card'
+import { FileViewer } from '../thread/FileViewer'
 import { artifactShareItems, renameArtifact, TitleField } from './ArtifactParts'
 
 /**

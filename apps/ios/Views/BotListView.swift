@@ -296,11 +296,11 @@ struct BotListView: View {
                         accounts.selection = item.ref
                     },
                     openChat: { item, work in
-                        accounts.store(for: item.ref.computerId)?.requestCard(of: item.bot.id, task: work)
+                        accounts.store(for: item.ref.computerId)?.requestCard(of: item.bot.id, item: work)
                         accounts.selection = item.ref
                     },
                     openThread: { item, work in
-                        accounts.store(for: item.ref.computerId)?.requestThread(of: item.bot.id, task: work)
+                        accounts.store(for: item.ref.computerId)?.requestThread(of: item.bot.id, item: work)
                         accounts.selection = item.ref
                     })
     }

@@ -272,13 +272,13 @@ impl Actor {
         // A task's first session: a fork of its bot's main one where the agent can, so it starts knowing the chat;
         // otherwise a new session that is told the chat so far. A routine's run gets neither (no fork source, no
         // chat): a new session with its own prompt, as a run in the chat has.
-        if slot.is_none() && crate::chat::work::first_session(&self.hub.store, &self.cfg) {
+        if slot.is_none() && crate::chat::tasks::first_session(&self.hub.store, &self.cfg) {
             match self.fork_owner_session(&servers, &renamed, instructions).await {
                 Ok(true) => return Ok(()),
                 Ok(false) => {}
                 Err(error) => {
                     tracing::warn!(bot = %self.cfg.id, error = format!("{error:#}"), "couldn't fork the chat's session; starting from a brief");
-                    crate::chat::work::fork_failed(&self.hub, &self.cfg);
+                    crate::chat::tasks::fork_failed(&self.hub, &self.cfg);
                 }
             }
             // A fork that timed out stopped the agent: start over, on the brief's way.
@@ -286,7 +286,7 @@ impl Actor {
                 return Box::pin(self.ensure_session(slot)).await;
             }
             self.handoff = self.told_chat();
-            crate::chat::work::started(&self.hub, &self.cfg, crate::chat::work::Start::Brief);
+            crate::chat::tasks::started(&self.hub, &self.cfg, crate::chat::tasks::Start::Brief);
         }
         let (revision, system) = {
             let (hub, cfg) = (self.hub.clone(), self.cfg.as_owner());
@@ -354,7 +354,6 @@ impl Actor {
         let sid = res["sessionId"].as_str().ok_or_else(|| anyhow!("agent returned no sessionId"))?.to_owned();
         conn.loaded.insert(sid.clone(), Instant::now());
         conn.renamed.insert(sid.clone(), renamed);
-        self.unfiled.opened(conn.adapter, &sid);
         let options = select_model(&conn.acp, res, &sid, &self.cfg).await?;
         self.note_options(&sid, &options, Listing::Session);
         self.set_session(slot, Some(&sid));
@@ -372,7 +371,7 @@ impl Actor {
         renamed: &codex_names::Renamed,
         instructions: Instructions,
     ) -> Result<bool> {
-        let Some(source) = crate::chat::work::take_fork_source(&self.hub, &self.cfg) else {
+        let Some(source) = crate::chat::tasks::take_fork_source(&self.hub, &self.cfg) else {
             return Ok(false);
         };
         // The chat's session is its own agent's: a task that starts on a fallback (that agent rests) can't fork it.
@@ -405,7 +404,7 @@ impl Actor {
         if instructions == Instructions::ClaudeMeta {
             self.applied_system.insert(sid, parent.system);
         }
-        crate::chat::work::started(&self.hub, &self.cfg, crate::chat::work::Start::Fork);
+        crate::chat::tasks::started(&self.hub, &self.cfg, crate::chat::tasks::Start::Fork);
         Ok(true)
     }
 

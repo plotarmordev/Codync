@@ -21,7 +21,7 @@ export type Screen =
   | 'library'
   | 'artifact'
   | 'remote_screen'
-  | 'thread'
+  | 'task'
   | 'all_work'
 
 /** Outbound links, by what they lead to. */

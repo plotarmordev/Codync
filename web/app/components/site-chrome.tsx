@@ -1,9 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ChatsCircle, Coffee, DiscordLogo, GithubLogo } from "@phosphor-icons/react/ssr";
+import { Coffee, DiscordLogo, GithubLogo, TelegramLogo } from "@phosphor-icons/react/ssr";
 import DownloadButton from "./download-button";
 import { rivals } from "../compare/rivals";
-import { CHINA_COMMUNITY, DISCORD, EMAIL, GITHUB, KO_FI, TELEGRAM } from "../links";
+import { CHINA_COMMUNITY, DISCORD, EMAIL, GITHUB, KO_FI } from "../links";
 
 const nav: [href: string, label: string][] = [
   ["/#product", "Product"],
@@ -49,11 +49,11 @@ export function SiteHeader() {
           </a>
           <a
             href={CHINA_COMMUNITY}
-            aria-label="Feishu community for users in China"
-            title="飞书中国用户交流群"
+            aria-label="Telegram community for users in China"
+            title="Telegram 中国用户交流群"
             className="hidden rounded-full p-2 text-neutral-400 transition hover:text-neutral-100 sm:block"
           >
-            <ChatsCircle size={20} />
+            <TelegramLogo size={20} />
           </a>
           <a
             href={GITHUB}
@@ -88,8 +88,7 @@ const footerColumns: { title: string; links: [label: string, href: string][] }[]
     links: [
       ["GitHub", GITHUB],
       ["Discord", DISCORD],
-      ["Telegram (backup)", TELEGRAM],
-      ["Feishu (China)", CHINA_COMMUNITY],
+      ["Telegram (China)", CHINA_COMMUNITY],
       ["Ko-fi", KO_FI],
       ["Contact", `mailto:${EMAIL}`],
     ],

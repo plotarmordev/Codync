@@ -3,7 +3,6 @@
 pub mod artifacts;
 pub mod files;
 mod icons;
-pub mod old_host;
 
 use futures::StreamExt;
 use serde_json::{Value, json};

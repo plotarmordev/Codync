@@ -305,8 +305,8 @@ export class BotSync extends BotMirror {
         this.bump(event.entry.rev)
         this.acknowledgeVisible(event.entry.botId, event.entry)
         break
-      case 'threadEntry':
-        this.mergeThread(event.thread, [event.entry])
+      case 'taskEntry':
+        this.mergeTask(event.task, [event.entry])
         this.bump(event.entry.rev)
         break
       case 'usage':

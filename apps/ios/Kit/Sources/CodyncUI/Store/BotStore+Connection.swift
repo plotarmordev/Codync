@@ -142,8 +142,7 @@ extension BotStore {
             return
         }
         self.transport = transport
-        var client = HostClient(transport: transport)
-        client.hostVersion = hostVersion?.version
+        let client = HostClient(transport: transport)
         self.client = client
         if let remote = transport as? any RemoteTransport { watch(remote) }
         for await state in transport.states() {

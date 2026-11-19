@@ -351,8 +351,8 @@ internal fun voiceNotePreloads(online: Boolean, metered: Boolean, bytes: Long): 
 }
 
 /** The one voice-note player both bubbles share: the play button, the progress bar (empty until the length is known)
- *  and the caption; a failed play or download puts its error in the bar's place. One accessibility element —
- *  "[label], <caption>" — whose buttons become named actions; download is in the bubble's menu. */
+ *  and the caption; a failed play puts its error in the bar's place, a failed download only colours the clock.
+ *  One accessibility element — "[label], <caption>" — whose buttons become named actions; download is in the bubble's menu. */
 @Composable internal fun SharedAudioRow(entry: Entry, file: SharedFile, audio: SharedAudio, label: String,
     state: AppState, store: AppStore) {
     val scope = rememberCoroutineScope()
@@ -360,7 +360,8 @@ internal fun voiceNotePreloads(online: Boolean, metered: Boolean, bytes: Long): 
     val download = state.fileDownloads[file.id]
     val busy = download is FileDownloadState.Downloading
     val caption = voiceNoteDetail(download, audio, translate)
-    val failed = audio.phase == AudioPhase.Failed || download is FileDownloadState.Failed
+    val failed = audio.phase == AudioPhase.Failed
+    val downloadFailed = download is FileDownloadState.Failed
     val play = { scope.launch { audio.toggle() }; Unit }
     Row(Modifier.fillMaxWidth().clearAndSetSemantics {
         contentDescription = if (caption.isEmpty()) label else "$label, $caption"
@@ -372,14 +373,14 @@ internal fun voiceNotePreloads(online: Boolean, metered: Boolean, bytes: Long): 
     }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         SharedAudioButton(audio, play)
         if (failed) {
-            Text(caption, Modifier.weight(1f), style = Type.caption2, color = Palette.danger)
+            Text(caption, Modifier.weight(1f), style = Type.caption2, color = Palette.danger, textAlign = TextAlign.Center)
         } else {
             AudioProgress(audio, Modifier.weight(1f))
             // The clock keeps the room of its duration's shape, with steady digits, so the bar ends in one place
             // from the first frame, when the length arrives, and as the clock runs.
             Box(contentAlignment = Alignment.CenterEnd) {
                 Text(voiceNoteRoom(audio), Modifier.alpha(0f), style = Type.caption2.monospacedDigit)
-                Text(caption, style = Type.caption2.monospacedDigit, color = Palette.secondary)
+                Text(caption, style = Type.caption2.monospacedDigit, color = if (downloadFailed) Palette.danger else Palette.secondary)
             }
         }
     }

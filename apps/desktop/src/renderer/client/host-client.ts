@@ -15,8 +15,7 @@ import {
 import type { Artifact, ArtifactChunk, LibraryItem } from '@shared/artifacts'
 import { parseCallCue, type CallCue } from '@shared/calls'
 import type { NetworkView } from '@shared/network'
-import { fromOldAnswer, fromOldEvent, toHost } from '@shared/old-host'
-import { parseThreadEntry } from '@shared/threads'
+import { parseTaskEntry } from '@shared/tasks'
 import { trNow } from '../lib/l10n.ts'
 
 /** How a client reaches a host API: loopback (the computer's own host or an SSH tunnel) or the relay (a cloud computer). */
@@ -44,7 +43,7 @@ export class HostError extends Error {
 }
 
 export interface HostTransport {
-  /** How it reaches the host, shown in the chat header. */
+  /** How it reaches the host, shown in the thread header. */
   readonly route?: HostRoute
   call(method: string, body: unknown, timeoutMs: number): Promise<unknown>
   /** Each element is one event's JSON (what SSE puts after `data:`). */
@@ -112,8 +111,8 @@ export type HostEvent =
   | { type: 'bot'; bot: Bot }
   | { type: 'botDeleted'; id: string; rev: number }
   | { type: 'entry'; entry: Entry }
-  /** One entry of a thread's transcript (never a chat's); the catch-up has none. */
-  | { type: 'threadEntry'; thread: string; entry: Entry }
+  /** One entry of a background task's transcript (never a chat's); the catch-up has none. */
+  | { type: 'taskEntry'; task: string; entry: Entry }
   | { type: 'usage'; usage: Usage }
   /** An artifact was published, updated or renamed (the catch-up replays it too). */
   | { type: 'artifact'; artifact: Artifact }
@@ -138,8 +137,7 @@ export type HostEvent =
 export function parseEvent(line: string): HostEvent | null {
   let raw: Record<string, unknown>
   try {
-    // Hosts before 2.51.0: goes when MIN_HOST reaches 2.51.0.
-    raw = fromOldEvent(JSON.parse(line) as Record<string, unknown>)
+    raw = JSON.parse(line) as Record<string, unknown>
   } catch {
     return null
   }
@@ -169,8 +167,8 @@ export function parseEvent(line: string): HostEvent | null {
       if (!entry || typeof entry.id !== 'string' || typeof entry.botId !== 'string') return { type: 'undecodable', kind: 'entry' }
       return { type, entry: { ...entry, data: entry.data ?? {} } }
     }
-    case 'threadEntry': {
-      const parsed = parseThreadEntry(raw)
+    case 'taskEntry': {
+      const parsed = parseTaskEntry(raw)
       return parsed ? { type, ...parsed } : null
     }
     case 'usage':
@@ -224,13 +222,10 @@ export class HostClient {
     return this.call('renameArtifact', { botId, artifactId, title })
   }
 
-  /** `hostVersion`: the host's version, once `hello` said it; a new connection to the same computer starts from the last one's. */
-  constructor(readonly transport: HostTransport, private hostVersion?: string) {}
+  constructor(readonly transport: HostTransport) {}
 
   call<T>(method: string, body: unknown = {}, timeoutMs = 20_000): Promise<T> {
-    // Hosts before 2.51.0: goes when MIN_HOST reaches 2.51.0.
-    const [sent, sentBody] = toHost(this.hostVersion, method, body)
-    return this.transport.call(sent, sentBody, timeoutMs).then((answer) => fromOldAnswer(method, answer)) as Promise<T>
+    return this.transport.call(method, body, timeoutMs) as Promise<T>
   }
 
   /** Catch-up since `since`, then live updates. */
@@ -243,10 +238,7 @@ export class HostClient {
   }
 
   hello() {
-    return this.call<Hello>('hello').then((h) => {
-      this.hostVersion = h.version
-      return { ...h, backends: h.backends ?? [], screen: normalizeScreen(h.screen) ?? undefined }
-    })
+    return this.call<Hello>('hello').then((h) => ({ ...h, backends: h.backends ?? [], screen: normalizeScreen(h.screen) ?? undefined }))
   }
 
   async history(botId: string, beforeSeq: number, limit = 100) {

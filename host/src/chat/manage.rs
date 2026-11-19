@@ -262,12 +262,13 @@ async fn update(hub: &Arc<Hub>, source: &BotConfig, args: &Value) -> Result<Valu
 }
 
 async fn delete(hub: &Arc<Hub>, source: &BotConfig, args: &Value) -> Result<Value> {
+    let deadline = Instant::now() + APPROVAL_TIMEOUT;
     let id = text(args, "botId")?.context("botId is required")?;
     if id == source.id {
         bail!("you can't delete yourself: ask the user to delete you from the team list");
     }
     let target = agent_bot(hub, &id)?;
-    approve(hub, source, format!("Delete bot {}", target.name), describe_deletion(hub, &target)).await?;
+    approve(hub, source, format!("Delete bot {}", target.name), describe_deletion(hub, &target), deadline).await?;
     let deleter = hub.clone();
     let doomed = id.clone();
     tokio::task::spawn_blocking(move || deleter.delete_bot(&doomed)).await??;

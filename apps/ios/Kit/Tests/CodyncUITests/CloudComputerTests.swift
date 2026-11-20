@@ -121,15 +121,22 @@ private class LostRequestStub: CloudComputerStub {
     #expect(LostRequestStub.asks.withLock { $0 } == 1)
 }
 
-/// The account refuses a request after it was committed: the next refresh asks again.
+/// The account refuses a request once the device's code was revealed: the next refresh asks again.
 private class DeniedStub: LostRequestStub {
     private static let denials = OSAllocatedUnfairLock(initialState: 0)
+    private static let revealed = OSAllocatedUnfairLock(initialState: Set<String>())
     override class var count: OSAllocatedUnfairLock<Int> { denials }
 
     override class func answer(_ request: URLRequest) -> (Int, String) {
         let path = request.url?.path ?? ""
+        if path.contains("/reveal") {
+            if let requestId = path.components(separatedBy: "/").dropLast().last { revealed.withLock { $0.insert(String(requestId)) } }
+            return (200, "{}")
+        }
         if let requestId = path.split(separator: "/").last, path.contains("/access-requests/") {
-            return (200, #"{"requestId":"\#(requestId)","status":"denied"}"#)
+            let status = revealed.withLock { $0.contains(String(requestId)) } ? "denied" : "pending"
+            let nonce = status == "pending" ? #","hostNonce":"\#(Data(repeating: 9, count: 32).base64URL)""# : ""
+            return (200, #"{"requestId":"\#(requestId)","status":"\#(status)"\#(nonce)}"#)
         }
         return super.answer(request)
     }

@@ -59,14 +59,21 @@ class CloudRefreshTest {
         val id = RelayCrypto.computerId(key)
         val requests = AtomicInteger()
         MockWebServer().use { server ->
-            // Every ask is refused after it was committed, so the next refresh asks again.
+            // Every ask shows its code, then is refused: the next refresh asks again.
+            val revealed = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+            val nonce = base64.encodeToString(ByteArray(32) { 9 })
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     val path = request.path.orEmpty()
                     return when {
                         path.endsWith("/v1/computers") -> MockResponse().setBody("""{"computers":[{"computerId":"$id","name":"Cloud","signKey":"${base64.encodeToString(key)}","access":"pending","cloud":{"provider":"boat","providerName":"Boat","region":"EU","state":"running"}}]}""")
                         path.endsWith("/access-requests") -> MockResponse().setBody("""{"requestId":"r${requests.incrementAndGet()}","expiresAt":4102444800000}""")
-                        path.contains("/access-requests/") -> MockResponse().setBody("""{"requestId":"${path.substringAfterLast('/')}","status":"denied"}""")
+                        path.contains("/reveal") -> { revealed += path.substringBeforeLast('/').substringAfterLast('/'); MockResponse().setBody("{}") }
+                        path.contains("/access-requests/") -> {
+                            val rid = path.substringAfterLast('/')
+                            val body = if (rid in revealed) """{"requestId":"$rid","status":"denied"}""" else """{"requestId":"$rid","status":"pending","hostNonce":"$nonce"}"""
+                            MockResponse().setBody(body)
+                        }
                         else -> MockResponse().setBody("{}")
                     }
                 }

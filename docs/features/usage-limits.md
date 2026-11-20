@@ -44,7 +44,11 @@ first, each with its own windows. An agent on one login looks as it always did.
 - **A row with nothing read** says **No reading yet**; so does the default login when only an account has numbers,
   and the agent's row in the chooser while none of its logins has any.
 - **What goes by them:** background work (`near_limit`) and a fallback's rest (`rest::reset_time`) go by the windows
-  of the login the bot runs on (`Usage::windows`).
+  of the login the bot runs on (`Usage::windows`). oh-my-pi's windows cover every upstream its report names, so its
+  bots' `near_limit` counts only the upstream the bot's model runs on (`omp::of_model`: a part of the model id is the
+  upstream or starts with it as a whole word, so `anthropic` or `claude` in `anthropic/claude-opus-5-5`, while
+  `google-antigravity` and `google-gemini-cli` stay apart); one with no model set goes by them all. The widgets still
+  show every upstream.
 - **One agent, one line:** the notch island, the widgets and the mascot's "nearly used up" show the login nearest a
   limit (`tightestLogin`), without its name. The Usage screens and the terminal UI's sheet show all.
 - **The menu bar, a level at a time** (`shared/tray-usage.ts`): an agent on one login lists its limits under its name,

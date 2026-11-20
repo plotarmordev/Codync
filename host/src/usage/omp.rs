@@ -205,9 +205,28 @@ fn title_case(id: &str) -> String {
         .join(" ")
 }
 
+/// `model`'s provider's windows. A window's id starts `<provider>:`, the upstream's whole id (`kimi-code`,
+/// `google-antigravity`) in a live report, a short name (`claude`, `kimi`) in a saved summary. It is the model's
+/// when a part of the model id (`anthropic/claude-opus-5-5`, split at `/`) is that provider, or starts with it
+/// as a whole word (`claude` of `claude-opus-5-5`, never `google` of `google-gemini-cli`).
+/// `model` unset: every window counts. A provider the report doesn't name has no reading, so none counts.
+pub(super) fn of_model<'a>(windows: &'a [Window], model: Option<&str>) -> Vec<&'a Window> {
+    let Some(model) = model.filter(|model| !model.is_empty()) else { return windows.iter().collect() };
+    let parts: Vec<String> = model.split('/').map(str::to_lowercase).collect();
+    let is_models = |provider: &str| {
+        let provider = provider.to_lowercase();
+        parts.iter().any(|part| {
+            part.strip_prefix(provider.as_str()).is_some_and(|rest| rest.is_empty() || rest.starts_with('-'))
+        })
+    };
+    windows.iter().filter(|window| is_models(window.id.split(':').next().unwrap_or_default())).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::LockExt;
+    use crate::usage::{Provider, near_limit, services};
 
     #[test]
     fn parses_a_used_fraction_and_a_dollar_cap() {
@@ -300,5 +319,40 @@ mod tests {
         std::fs::write(&file, r#"{"providers": {}}"#).unwrap();
         assert!(read_saved(&file).await.is_none(), "a summary without accounts is no reading");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn only_the_models_own_provider_holds_an_omp_bot_back() {
+        // A weekly summary with Kimi used up and Claude at 28 and 50.
+        let today = r#"{"providers": {"claude": {"week_pct": [28, 50]}, "kimi": {"week_pct": [100]},
+            "zai": {"week_pct": [30.4]}, "devin": {"week_pct": [100, 19.0]}, "codex": {"week_pct": [3.0]}}}"#;
+        let windows = weekly_summary(&serde_json::from_str(today).unwrap());
+        let hub = services::tests::hub();
+        hub.update_usage(|usage| usage.providers = vec![Provider::new("omp", "oh-my-pi", "test", windows)]);
+        let bot = |model: Option<&str>| {
+            serde_json::from_value(serde_json::json!({"id": "b", "name": "b", "backend": "omp", "model": model}))
+                .unwrap()
+        };
+
+        assert!(!near_limit(&hub, &bot(Some("router/anthropic/claude-opus-5-5"))), "Kimi's full week isn't Claude's");
+        assert!(near_limit(&hub, &bot(Some("router/kimi-code/k3.1-pro"))));
+        assert!(near_limit(&hub, &bot(Some("router/devin/swe-2"))), "one account used up");
+        assert!(!near_limit(&hub, &bot(Some("local/qwen-flash-next"))), "no plan window");
+        assert!(near_limit(&hub, &bot(None)), "no model: every window counts");
+        assert_eq!(hub.usage.locked().visible().providers[0].windows.len(), 7, "the widget shows every provider");
+    }
+
+    #[test]
+    fn a_live_reports_provider_ids_match_the_model() {
+        let live = [
+            Window::new("anthropic:acct:5h:0", "5h", 80.0, None),
+            Window::new("google-antigravity:acct:d:0", "Day", 100.0, None),
+            Window::new("google-gemini-cli:acct:d:0", "Day", 10.0, None),
+        ];
+        let ids = |model| of_model(&live, Some(model)).iter().map(|w| w.id.as_str()).collect::<Vec<_>>();
+        assert_eq!(ids("anthropic/claude-opus-5-5"), ["anthropic:acct:5h:0"]);
+        assert_eq!(ids("google-antigravity/gemini-3-pro"), ["google-antigravity:acct:d:0"]);
+        assert_eq!(ids("google-gemini-cli/gemini-3-pro"), ["google-gemini-cli:acct:d:0"]);
+        assert!(ids("openai-codex/gpt-6-astra").is_empty(), "the report names no codex");
     }
 }

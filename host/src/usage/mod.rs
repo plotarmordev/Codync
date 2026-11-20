@@ -55,13 +55,19 @@ const HEADROOM_PERCENT: f64 = 75.0;
 
 /// Usage of the plan `cfg`'s agent runs on (its login profile's, or the default login's) above
 /// [`HEADROOM_PERCENT`] in any window. A note (today's tokens, a dollar balance) is not a plan window.
+/// oh-my-pi's windows cover every upstream its report names; only the model's own counts.
 pub fn near_limit(hub: &Hub, cfg: &crate::store::BotConfig) -> bool {
     let profile = crate::agent::login_profiles::of_bot(&hub.store, &cfg.backend, cfg);
-    hub.usage.locked().windows(&cfg.backend, profile).is_some_and(over_headroom)
+    let usage = hub.usage.locked();
+    let Some(windows) = usage.windows(&cfg.backend, profile) else { return false };
+    if crate::agent::backends::agent_id(&cfg.backend) == "omp" {
+        return over_headroom(omp::of_model(windows, cfg.model.as_deref()));
+    }
+    over_headroom(windows.iter())
 }
 
-fn over_headroom(windows: &[Window]) -> bool {
-    windows.iter().any(|w| w.text.is_none() && w.percent > HEADROOM_PERCENT)
+fn over_headroom<'a>(windows: impl IntoIterator<Item = &'a Window>) -> bool {
+    windows.into_iter().any(|w| w.text.is_none() && w.percent > HEADROOM_PERCENT)
 }
 
 /// Everything the apps show about limits (wire shape of the `usage` event).
@@ -600,7 +606,7 @@ mod tests {
     #[test]
     fn a_note_does_not_count_as_the_plan_running_out() {
         let note = Window { percent: 99.0, ..Window::note("cost", "Cost today", "$9") };
-        assert!(!over_headroom(&[note]));
-        assert!(over_headroom(&[Window::new("five_hour", "5-hour", 80.0, None)]));
+        assert!(!over_headroom([&note]));
+        assert!(over_headroom([&Window::new("five_hour", "5-hour", 80.0, None)]));
     }
 }

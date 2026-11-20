@@ -62,6 +62,7 @@ export class BotSync extends BotMirror {
     this.stopTransport()
     if (this.saveTimer) clearTimeout(this.saveTimer)
     this.onRosterChanged = null
+    this.onAlert = null
     this.onComputerChanged = null
     this.client = null
     this.selection = null
@@ -312,6 +313,9 @@ export class BotSync extends BotMirror {
       case 'usage':
         this.usage = event.usage
         break
+      case 'alert':
+        if (!this.isReading(event.alert.botId)) this.onAlert?.(event.alert)
+        break
       case 'artifact':
         this.artifacts.upsert(event.artifact)
         break
@@ -500,9 +504,14 @@ export class BotSync extends BotMirror {
     }
   }
 
+  /** A chat of `botId`'s is on screen in a focused window. */
+  private isReading(botId: string) {
+    return [...this.readingViews.values()].includes(botId)
+  }
+
   private acknowledgeVisible(botId: string, entry?: Entry) {
     if (this.connection.kind !== 'online') return
-    if (![...this.readingViews.values()].includes(botId) || (entry && !isChat(entry))) return
+    if (!this.isReading(botId) || (entry && !isChat(entry))) return
     this.markRead(botId)
   }
 

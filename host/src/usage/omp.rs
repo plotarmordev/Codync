@@ -358,6 +358,6 @@ mod tests {
             [Window::new("anthropic:acct:5h:0", "5h", 80.0, None), Window::new("xai-oauth:acct:m:0", "M", 95.0, None)];
         assert_eq!(of_model(&live, Some("anthropic/claude-opus-5-5")).len(), 1);
         assert_eq!(of_model(&live, Some("xai/grok-4")).len(), 1, "xai-oauth's first word is xai");
-        assert!(of_model(&live, Some("openai-codex/gpt-6-astra")).is_empty());
+        assert_eq!(of_model(&live, Some("openai-codex/gpt-6-astra")).len(), 0, "the report names no codex");
     }
 }

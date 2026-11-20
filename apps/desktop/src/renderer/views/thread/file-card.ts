@@ -29,6 +29,12 @@ export function clock(seconds: number) {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
 }
 
+/** The room a sound's clock takes: its length's shape on both sides (`0:00 / 0:00` while the length is unknown). */
+export function clockRoom(duration: number) {
+  const shape = clock(duration).replace(/\d/g, '0')
+  return `${shape} / ${shape}`
+}
+
 /** What the download button does now (also the Library's file rows). */
 export function downloadAction(state: DownloadState | undefined) {
   return state?.kind === 'downloading' ? trNow('Cancel download') : state?.kind === 'failed' ? trNow('Retry download') : state?.kind === 'saved' ? trNow('Save again') : trNow('Download')

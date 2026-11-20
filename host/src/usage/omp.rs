@@ -205,31 +205,21 @@ fn title_case(id: &str) -> String {
         .join(" ")
 }
 
-/// `model`'s provider's windows: a window's id starts `<provider>:` and the provider's first word —
-/// `kimi` of `kimi-code`, `claude` of a saved summary's `claude`, `anthropic` of a live report — is a
-/// word of the model id (`anthropic/claude-opus-5-5`). `model` unset: every window counts.
-/// A provider the report doesn't name has no reading to go by, so none of it counts either.
+/// `model`'s provider's windows. A window's id starts `<provider>:`, the upstream's whole id (`kimi-code`,
+/// `google-antigravity`) in a live report, a short name (`claude`, `kimi`) in a saved summary. It is the model's
+/// when a part of the model id (`anthropic/claude-opus-5-5`, split at `/`) is that provider, or starts with it
+/// as a whole word (`claude` of `claude-opus-5-5`, never `google` of `google-gemini-cli`).
+/// `model` unset: every window counts. A provider the report doesn't name has no reading, so none counts.
 pub(super) fn of_model<'a>(windows: &'a [Window], model: Option<&str>) -> Vec<&'a Window> {
-    let words: HashSet<String> = model
-        .unwrap_or_default()
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|word| !word.is_empty())
-        .map(str::to_lowercase)
-        .collect();
-    windows
-        .iter()
-        .filter(|window| {
-            words.is_empty()
-                || window
-                    .id
-                    .split(':')
-                    .next()
-                    .unwrap_or_default()
-                    .split('-')
-                    .next()
-                    .is_some_and(|provider| words.iter().any(|word| provider.eq_ignore_ascii_case(word)))
+    let Some(model) = model.filter(|model| !model.is_empty()) else { return windows.iter().collect() };
+    let parts: Vec<String> = model.split('/').map(str::to_lowercase).collect();
+    let is_models = |provider: &str| {
+        let provider = provider.to_lowercase();
+        parts.iter().any(|part| {
+            part.strip_prefix(provider.as_str()).is_some_and(|rest| rest.is_empty() || rest.starts_with('-'))
         })
-        .collect()
+    };
+    windows.iter().filter(|window| is_models(window.id.split(':').next().unwrap_or_default())).collect()
 }
 
 #[cfg(test)]
@@ -354,10 +344,15 @@ mod tests {
 
     #[test]
     fn a_live_reports_provider_ids_match_the_model() {
-        let live =
-            [Window::new("anthropic:acct:5h:0", "5h", 80.0, None), Window::new("xai-oauth:acct:m:0", "M", 95.0, None)];
-        assert_eq!(of_model(&live, Some("anthropic/claude-opus-5-5")).len(), 1);
-        assert_eq!(of_model(&live, Some("xai/grok-4")).len(), 1, "xai-oauth's first word is xai");
-        assert_eq!(of_model(&live, Some("openai-codex/gpt-6-astra")).len(), 0, "the report names no codex");
+        let live = [
+            Window::new("anthropic:acct:5h:0", "5h", 80.0, None),
+            Window::new("google-antigravity:acct:d:0", "Day", 100.0, None),
+            Window::new("google-gemini-cli:acct:d:0", "Day", 10.0, None),
+        ];
+        let ids = |model| of_model(&live, Some(model)).iter().map(|w| w.id.as_str()).collect::<Vec<_>>();
+        assert_eq!(ids("anthropic/claude-opus-5-5"), ["anthropic:acct:5h:0"]);
+        assert_eq!(ids("google-antigravity/gemini-3-pro"), ["google-antigravity:acct:d:0"]);
+        assert_eq!(ids("google-gemini-cli/gemini-3-pro"), ["google-gemini-cli:acct:d:0"]);
+        assert!(ids("openai-codex/gpt-6-astra").is_empty(), "the report names no codex");
     }
 }

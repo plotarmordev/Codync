@@ -78,8 +78,9 @@ class CloudRefreshTest {
                     }
                 }
             }
+            val base = server.url("/").toString()
             runBlocking(Dispatchers.Main) {
-                accounts.cloud = client(server.url("/").toString())
+                accounts.cloud = client(base)
                 accounts.refreshCloud()
                 // The request that ends refused doesn't leave a dialog: nobody tapped for it.
                 withTimeout(10_000) { accounts.state.first { requests.get() == 1 && "access:$id" !in it.busy && id !in it.access } }

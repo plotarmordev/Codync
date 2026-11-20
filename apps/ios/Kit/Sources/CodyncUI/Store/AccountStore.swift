@@ -255,20 +255,25 @@ public final class AccountStore {
     }
 
     /// Codync Cloud computers approve this device by themselves: each one it can't use yet is asked once per
-    /// session, through the same request and code exchange as a tap on "Ask for access".
+    /// session, through the same request and code exchange as a tap on "Ask for access"; a request that failed or
+    /// ended unapproved is asked again on the next refresh. So is one listed as asked ("pending") that this device has
+    /// no request for: the cloud kept a request whose answer the network lost, and a new one replaces it there.
     private func askCloudComputers() {
-        for computer in cloudComputers where computer.cloud != nil && computer.access == "none" && stores[computer.computerId] == nil {
+        for computer in cloudComputers where computer.cloud != nil && stores[computer.computerId] == nil {
             let id = computer.computerId
-            guard askedCloud.insert(id).inserted else { continue }
+            let lost = computer.access == "pending" && pendingAccess[id] == nil && asks[id] == nil
+            guard computer.access == "none" || lost, askedCloud.insert(id).inserted else { continue }
             Task { [weak self] in
                 do {
                     try await self?.requestAccess(id)
                 } catch {
                     log.info("cloud computer access request failed: \(error.localizedDescription, privacy: .public)")
+                    self?.askedCloud.remove(id)
                 }
             }
         }
     }
+
 
     private func setHosting(_ store: BotStore, _ id: ComputerID) {
         let hosting = cloudComputers.first { $0.computerId == id }?.cloud
@@ -384,6 +389,8 @@ public final class AccountStore {
                 }
                 // Withdrawn by the account: the list shows what's left of it.
                 if reason == .cancelled { await refreshCloud() }
+                // A cloud computer is asked again by itself on the next refresh.
+                askedCloud.remove(ticket.computerId)
                 return
             }
         }

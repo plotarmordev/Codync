@@ -1,4 +1,4 @@
-//! An item's thread, opened from its row on the Details page: its task's own transcript (the agent session working
+//! An item's thread, opened from its row on the Details page: its task's own transcript (everything the task did, whatever session it was in
 //! the item), a line for each thing the task put in the bot's chat, which `↵` shows there, and its composer: the user
 //! writes to the thread of the bot's own item as to a chat.
 

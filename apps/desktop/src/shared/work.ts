@@ -1,6 +1,6 @@
 // The event box (host/src/chat/tasks/): what a bot works on away from its chat is an item in its box, and a bounded
 // number of its agents take items from it. The chat shows one capsule above the composer; the bot's Details lists
-// the items. A task is the agent session working an item (`tasks.ts` reads its transcript).
+// the items. A task is where an item is worked, with its own session (`tasks.ts` reads its transcript).
 
 import { fill } from './fill.ts'
 import type { Entry } from './models'
@@ -133,7 +133,7 @@ export function worksOutside(bot: { status: string; outside: OutsideStatus | nul
 
 /** The Details timeline's sections of items, each in the order its rows show. */
 export interface WorkSections {
-  /** Threads, the agent sessions that run now: items that need the user, then the working ones. */
+  /** The tasks that run now: items that need the user, then the working ones. */
   threads: WorkItem[]
   /** The most threads allowed (the heading's `2 / 3`; `2 / 1` right after the ceiling was lowered). */
   places: number

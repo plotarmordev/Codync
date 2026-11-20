@@ -77,6 +77,94 @@ private final class AutoAccessStub: CloudComputerStub {
     #expect(AutoAccessStub.appHeaders.withLock { $0 } == ["ios/\(AppVersion.current); minHost=\(VersionMismatch.minHost)"])
 }
 
+private let waitedKey = Data(repeating: 6, count: 32)
+
+/// The account lists one cloud computer as asked by this device, which holds no request for it: the answer was lost to
+/// the network, so the store asks again on its own. The new request is never approved.
+private class LostRequestStub: CloudComputerStub {
+    static let asks = OSAllocatedUnfairLock(initialState: 0)
+    class var count: OSAllocatedUnfairLock<Int> { asks }
+
+    override class func answer(_ request: URLRequest) -> (Int, String) {
+        let path = request.url?.path ?? ""
+        if path.hasSuffix("/v1/computers") {
+            let cloud = #"{"provider":"boat","providerName":"Boat","region":"EU","state":"running"}"#
+            return (200, #"{"computers":[{"computerId":"\#(RelayCrypto.computerId(signKey: waitedKey))","name":"Cloud","signKey":"\#(waitedKey.base64URL)","access":"pending","cloud":\#(cloud)}]}"#)
+        }
+        if path.hasSuffix("/access-requests") {
+            let n = count.withLock { $0 += 1; return $0 }
+            return (200, #"{"requestId":"r\#(n)","expiresAt":4102444800000}"#)
+        }
+        if let requestId = path.split(separator: "/").last, path.contains("/access-requests/") {
+            return (200, #"{"requestId":"\#(requestId)","status":"pending","hostNonce":"\#(Data(repeating: 9, count: 32).base64URL)"}"#)
+        }
+        return (200, "{}")
+    }
+}
+
+/// A cloud computer the account lists as asked while this device has no request for it is asked again, once.
+@MainActor @Test func aCloudComputerListedAsAskedWithoutARequestIsAskedAgain() async throws {
+    let suite = "CloudLost.\(UUID().uuidString)"
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let accounts = AccountStore(storage: SharedStore.Context(accountID: "account", suite: suite), cloud: stubbedCloud(LostRequestStub.self))
+    defer { accounts.retire() }
+    let id = RelayCrypto.computerId(signKey: waitedKey)
+
+    await accounts.refreshCloud()
+    for _ in 0..<100 where accounts.pendingAccess[id] == nil {
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(accounts.pendingAccess[id] != nil)
+    // The request it made is pending: a refresh doesn't ask again.
+    await accounts.refreshCloud()
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(LostRequestStub.asks.withLock { $0 } == 1)
+}
+
+/// The account refuses a request once the device's code was revealed: the next refresh asks again.
+private class DeniedStub: LostRequestStub {
+    private static let denials = OSAllocatedUnfairLock(initialState: 0)
+    private static let revealed = OSAllocatedUnfairLock(initialState: Set<String>())
+    override class var count: OSAllocatedUnfairLock<Int> { denials }
+
+    override class func answer(_ request: URLRequest) -> (Int, String) {
+        let path = request.url?.path ?? ""
+        if path.contains("/reveal") {
+            if let requestId = path.components(separatedBy: "/").dropLast().last { revealed.withLock { $0.insert(String(requestId)) } }
+            return (200, "{}")
+        }
+        if let requestId = path.split(separator: "/").last, path.contains("/access-requests/") {
+            let status = revealed.withLock { $0.contains(String(requestId)) } ? "denied" : "pending"
+            let nonce = status == "pending" ? #","hostNonce":"\#(Data(repeating: 9, count: 32).base64URL)""# : ""
+            return (200, #"{"requestId":"\#(requestId)","status":"\#(status)"\#(nonce)}"#)
+        }
+        return super.answer(request)
+    }
+}
+
+/// A request that ends unapproved frees the next refresh to ask again, so a cloud computer left declined doesn't stay
+/// without a request.
+@MainActor @Test func aRefusedCloudRequestIsAskedAgainOnTheNextRefresh() async throws {
+    let suite = "CloudDenied.\(UUID().uuidString)"
+    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let accounts = AccountStore(storage: SharedStore.Context(accountID: "account", suite: suite), cloud: stubbedCloud(DeniedStub.self))
+    defer { accounts.retire() }
+    let id = RelayCrypto.computerId(signKey: waitedKey)
+
+    await accounts.refreshCloud()
+    for _ in 0..<100 where accounts.lastError == nil {
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(accounts.lastError == "Cloud declined the request.")
+    DeniedStub.count.withLock { $0 = 0 }
+    await accounts.refreshCloud()
+    for _ in 0..<100 where DeniedStub.count.withLock({ $0 }) == 0 {
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    #expect(DeniedStub.count.withLock { $0 } == 1)
+}
+
+
 /// No cloud computer, and the account isn't on the list yet.
 private final class UnavailableStub: CloudComputerStub {
     override class func answer(_ request: URLRequest) -> (Int, String) {

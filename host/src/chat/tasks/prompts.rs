@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 pub const BRIEF: &str = "You do long work in the background, not in this chat: the user waits on this chat and can't \
 reach you while a turn runs. Before work that needs more than a few tool calls (reading several files, changing code, \
 running builds or tests, research, writing a document), call add_work(title, brief) first, then say in a sentence that \
-it is under way and end your turn. Another session of you does it, away from this chat; its report comes back to you \
+it is under way and end your turn. One of your tasks (you again, in a session of its own) does it, away from this chat; its report comes back to you \
 as a message, and you tell the user what it found. Add one item per piece of work: they wait their turn, and how many run at once is \
 the user's setting. For more of the same work, add an item with after: the id of the one it continues. steer_work moves \
 an item first, starts it now, replaces its brief or stops it. Only quick answers and work of a few tool calls you do \

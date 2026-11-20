@@ -171,7 +171,7 @@ pub fn can_cut_in(work: &[WorkItem], max_agents: Option<u8>) -> bool {
 
 /// The Details page's sections of items, each in the order its rows show.
 pub struct Sections<'a> {
-    /// The agent sessions that run now: items that need the user, then the working ones.
+    /// The tasks that run now: items that need the user, then the working ones.
     pub threads: Vec<&'a WorkItem>,
     /// What waits for a thread, in the order it will be taken.
     pub waiting: Vec<&'a WorkItem>,

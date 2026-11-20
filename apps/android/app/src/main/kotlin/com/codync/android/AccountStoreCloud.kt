@@ -199,14 +199,20 @@ internal val AccountContext.preparingCloud: Set<String>
 
 /**
  * Codync Cloud computers approve this phone by themselves: each one it can't use yet is asked once per app session,
- * through the same request and code exchange as a tap on "Ask for access" (iOS `askCloudComputers`).
+ * through the same request and code exchange as a tap on "Ask for access"; a request that failed or ended unapproved is
+ * asked again on the next refresh. So is one listed as asked ("pending") that this phone has no request for: the cloud
+ * kept a request whose answer the network lost, and a new one replaces it there (iOS `askCloudComputers`).
  */
 internal fun AccountStore.askCloudComputers(computers: List<CloudComputer>) {
+    val context = state.value
     for (computer in computers) {
-        if (computer.cloud == null || computer.access != "none" || store(computer.computerId) != null) continue
-        if (askedCloud.add(computer.computerId)) requestAccess(computer)
+        val id = computer.computerId
+        if (computer.cloud == null || store(id) != null) continue
+        val lost = computer.access == "pending" && id !in context.access && "access:$id" !in context.busy
+        if ((computer.access == "none" || lost) && askedCloud.add(id)) requestAccess(computer, quiet = true)
     }
 }
+
 
 /** Every computer's store learns what the account says about it: Codync Cloud runs it, and the cloud's floor for this app. */
 internal fun AccountStore.shareAccountView() {

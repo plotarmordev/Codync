@@ -12,7 +12,7 @@ agents take items from it. The owner's decisions are marked *(owner)*.
 - **Coordinator**: the bot's main conversation. It talks to the user, decides what is worth an item, and tells the
   user what came of it.
 - **Item**: one piece of work in the box: a title, a brief, the user's own words, a status.
-- **Task**: an agent session working items, one at a time: a task bot
+- **Task**: where the bot works items away from the chat, one at a time, with a session of its own: a task bot
   ([background tasks](../features/background-tasks.md)). An item names the task that has it.
 - **Box**: the bot's items. It is the source of truth: a task that dies leaves its item there.
 
@@ -131,7 +131,7 @@ the time, as today. It opens Details. Its Stop (one item working) asks once, the
 
 | Section | Rows |
 | --- | --- |
-| **Threads** | *(owner: the running sessions and the box are told apart.)* The agent sessions that run now. The heading carries `2 / 3`: how many run, of the most allowed. Items that need you first (the attention mark, what the card asks; opens the chat at the card), then working items (a moving dot, the task's activity, elapsed time). Both kinds of row have Stop. A working row opens its thread (stage 11; the task's transcript before it) and says where it works. A place not in use is one faint row, `Free`, so the ceiling is visible. |
+| **Threads** | *(owner: the running tasks and the box are told apart.)* The tasks that run now. The heading carries `2 / 3`: how many run, of the most allowed. Items that need you first (the attention mark, what the card asks; opens the chat at the card), then working items (a moving dot, the task's activity, elapsed time). Both kinds of row have Stop. A working row opens its thread (stage 11; the task's transcript before it) and says where it works. A place not in use is one faint row, `Free`, so the ceiling is visible. |
 | **Event box** | What waits for a thread, numbered 1, 2, 3 in the order it will be taken, with why it waits. The heading carries how many. **First** on every row but the first; **Cut in** on the first row when every place of the bot is taken (not on a row that follows unfinished work or waits for usage), which asks which working item gives way; **Drop**. Left out when nothing waits. |
 | **Later** | Follow-ups the bot set (the dashed card, as today). |
 | **Routines** | As today, with **+**. |

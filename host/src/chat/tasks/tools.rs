@@ -48,7 +48,7 @@ pub fn tools() -> Vec<Value> {
     vec![
         json!({
             "name": "add_work",
-            "description": "Put long work in your box: another session of you does it away from this chat, and you stay free to answer the user. It starts when this turn ends and a place is free; until then it waits its turn. Its report comes back to you later as a message. One item per piece of work.",
+            "description": "Put long work in your box: one of your tasks (you again, in a session of its own) does it away from this chat, and you stay free to answer the user. It starts when this turn ends and a place is free; until then it waits its turn. Its report comes back to you later as a message. One item per piece of work.",
             "inputSchema": {"type": "object", "properties": {
                 "title": {"type": "string", "description": "A few words the user sees while it works, e.g. \"Fix the login redirect\"."},
                 "brief": {"type": "string", "description": "Everything needed to do the work: the goal, what you already know, what done looks like."},

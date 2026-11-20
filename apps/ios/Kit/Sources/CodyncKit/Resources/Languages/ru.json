@@ -2234,5 +2234,17 @@
   "Connect {provider}": "Подключить {provider}",
   "Use the command line instead": "Использовать командную строку",
   "Leave it empty to use the hostname.": "Оставьте пустым, чтобы использовать имя хоста.",
-  "This work went on 8 steps in a row without you, the most it can. Continue to let it go on.": "Эта работа прошла 8 шагов подряд без вас — это предел. Нажмите «Продолжить», чтобы продолжить."
+  "Pair phone…": "Подключить телефон…",
+  "Pair phone with {name}": "Подключить телефон к {name}",
+  "Pair phone": "Подключить телефон",
+  "On your Mac, click Codync in the menu bar, then Pair phone. The same code pairs this phone.": "На вашем Mac нажмите Codync в строке меню, затем «Подключить телефон». Тот же код подключит этот телефон.",
+  "On your Mac, click Codync in the menu bar, then Pair phone.": "На вашем Mac нажмите Codync в строке меню, затем «Подключить телефон».",
+  "This work went on 8 steps in a row without you, the most it can. Continue to let it go on.": "Эта работа прошла 8 шагов подряд без вас — это предел. Нажмите «Продолжить», чтобы продолжить.",
+  "Scan with the Codync app, or open on the phone:": "Отсканируйте в приложении Codync или откройте на телефоне:",
+  "Scan with Codync Dev on your phone:": "Отсканируйте в Codync Dev на телефоне:",
+  "Start a cloud computer": "Запустить облачный компьютер",
+  "No computer? Run one on your own cloud provider account.": "Нет компьютера? Запустите его в своём аккаунте у облачного провайдера.",
+  "Starting your cloud computer": "Запускаем ваш облачный компьютер",
+  "About a minute. You can skip: it shows up on its own when it's ready.": "Около минуты. Можно пропустить: он появится сам, когда будет готов.",
+  "Alerts you when a bot is done, needs you or hits an error, unless its chat is open. A phone with Codync gets the same alerts, so this starts off.": "Сообщает, когда бот закончил, ждёт вас или столкнулся с ошибкой, если его чат не открыт. Телефон с Codync получает те же уведомления, поэтому по умолчанию это выключено."
 }

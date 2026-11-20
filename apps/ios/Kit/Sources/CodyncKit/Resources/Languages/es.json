@@ -2234,5 +2234,17 @@
   "Connect {provider}": "Conectar {provider}",
   "Use the command line instead": "Usar la línea de comandos",
   "Leave it empty to use the hostname.": "Déjalo vacío para usar el nombre de host.",
-  "This work went on 8 steps in a row without you, the most it can. Continue to let it go on.": "Este trabajo avanzó 8 pasos seguidos sin ti, el máximo posible. Pulsa «Continuar» para seguir."
+  "Pair phone…": "Vincular teléfono…",
+  "Pair phone with {name}": "Vincular teléfono con {name}",
+  "Pair phone": "Vincular teléfono",
+  "On your Mac, click Codync in the menu bar, then Pair phone. The same code pairs this phone.": "En tu Mac, haz clic en Codync en la barra de menús y luego en Vincular teléfono. El mismo código vincula este teléfono.",
+  "On your Mac, click Codync in the menu bar, then Pair phone.": "En tu Mac, haz clic en Codync en la barra de menús y luego en Vincular teléfono.",
+  "This work went on 8 steps in a row without you, the most it can. Continue to let it go on.": "Este trabajo avanzó 8 pasos seguidos sin ti, el máximo posible. Pulsa «Continuar» para seguir.",
+  "Scan with the Codync app, or open on the phone:": "Escanea con la app de Codync o ábrelo en el teléfono:",
+  "Scan with Codync Dev on your phone:": "Escanea con Codync Dev en tu teléfono:",
+  "Start a cloud computer": "Iniciar un ordenador en la nube",
+  "No computer? Run one on your own cloud provider account.": "¿No tienes computadora? Usa una en tu propia cuenta de un proveedor de nube.",
+  "Starting your cloud computer": "Iniciando tu ordenador en la nube",
+  "About a minute. You can skip: it shows up on its own when it's ready.": "Tarda un minuto. Puedes omitirlo: aparecerá solo cuando esté listo.",
+  "Alerts you when a bot is done, needs you or hits an error, unless its chat is open. A phone with Codync gets the same alerts, so this starts off.": "Te avisa cuando un bot termina, te necesita o encuentra un error, salvo que su chat esté abierto. Un teléfono con Codync recibe los mismos avisos, así que empieza desactivado."
 }

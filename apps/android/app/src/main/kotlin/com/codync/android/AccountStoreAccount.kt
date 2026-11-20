@@ -163,7 +163,7 @@ private fun AccountStore.startAccess(target: CloudComputer, renew: Boolean, quie
     catch (error: Exception) {
         // Failed or ended unapproved: a cloud computer is asked again by itself on the next refresh.
         if (error !is CancellationException) askedCloud.remove(target.computerId)
-        throw error
+        if (!quiet || error is CancellationException) throw error
     } finally { mutableState.update { it.copy(asking = it.asking - target.computerId) } }
 }
 

@@ -389,6 +389,8 @@ public final class AccountStore {
                 }
                 // Withdrawn by the account: the list shows what's left of it.
                 if reason == .cancelled { await refreshCloud() }
+                // A cloud computer is asked again by itself on the next refresh.
+                askedCloud.remove(ticket.computerId)
                 return
             }
         }

@@ -1,4 +1,4 @@
-//! The watchdog's look at a bot's own working items ([watchdog](../../../../docs/features/work.md#watchdog)): every
+//! The watchdog's look at a bot's own working items ([watchdog](../../../../docs/features/background-tasks.md#watchdog)): every
 //! five minutes, code alone reads each one's task. A task whose turn repeats one tool call, keeps failing or has
 //! shown nothing new for an hour gets its bot a turn in its chat to look at it (`Cmd::Watchdog`), at most once an
 //! hour; a card of its that has waited on the user for two hours reminds them, once. A routine's run and another

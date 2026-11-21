@@ -56,13 +56,15 @@ impl DetailsPage {
     /// box, Later, Routines (always: it says when there are none), Recent.
     pub fn sections<'a>(&'a self, work: &'a [WorkItem], max_agents: Option<u8>) -> Vec<DetailSection<'a>> {
         let Sections { threads, waiting, recent } = Sections::of(work);
-        let (running, waits, places) = (threads.len(), waiting.len(), places(max_agents));
+        let (running, waits, most) = (threads.len(), waiting.len(), places(max_agents));
+        // An item waiting on the user takes no seat.
+        let taken = work.iter().filter(|i| i.takes_seat()).count();
         let section = |title, count, rows| DetailSection { title, count, rows, free: 0 };
         let mut out = vec![];
         if running + waits > 0 {
             let rows = threads.into_iter().map(DetailRow::Thread).collect();
-            let free = places.saturating_sub(running);
-            out.push(DetailSection { title: "Threads", count: format!("{running} / {places}"), rows, free });
+            let free = most.saturating_sub(taken);
+            out.push(DetailSection { title: "Threads", count: format!("{taken} / {most}"), rows, free });
         }
         if waits > 0 {
             let rows = waiting.into_iter().enumerate().map(|(i, item)| DetailRow::Waiting(i + 1, item)).collect();
@@ -401,6 +403,24 @@ pub(in crate::tui) mod tests {
         let sections = page(&app).sections(work, max_agents);
         assert_eq!((sections[0].title, sections[0].count.as_str(), sections[0].free), ("Threads", "0 / 3", 3));
         assert_eq!(sections[1].title, "Event box");
+    }
+
+    #[test]
+    fn an_item_waiting_on_the_user_gives_its_seat_up() {
+        let page = DetailsPage::default();
+        let item = |id: &str, status: &str, seat: Option<bool>| json!({"id": id, "title": "Fix login", "status": status, "task": format!("task-{id}"), "seat": seat});
+        let work = WorkItem::list(&json!([
+            item("w", "working", Some(true)),
+            item("n", "needsYou", Some(false)),
+            item("q", "waiting", None)
+        ]));
+        let threads = |work: &[WorkItem]| {
+            let sections = page.sections(work, Some(2));
+            (sections[0].count.clone(), sections[0].free, can_cut_in(work, Some(2)))
+        };
+        assert_eq!(threads(&work), ("1 / 2".into(), 1, false), "a free seat: nothing has to give way");
+        let older: Vec<WorkItem> = work.into_iter().map(|i| WorkItem { seat: None, ..i }).collect();
+        assert_eq!(threads(&older), ("2 / 2".into(), 0, true), "an older host's: every live item takes one");
     }
 
     #[test]

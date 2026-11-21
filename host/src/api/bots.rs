@@ -14,6 +14,18 @@ use std::sync::Arc;
 /// The methods a bot's MCP servers call the host's tools through.
 const BOT_TOOL_CALLS: [&str; 5] = ["routineCall", "memoryCall", "chatCall", "teamCall", "manageCall"];
 
+/// Where a message's files go and are read back from: the chat's (`botId`), or with `itemId` the task of that item
+/// of the bot's, which the task's agent reads them from.
+fn uploads_root(hub: &Hub, b: &Value) -> Result<std::path::PathBuf> {
+    let bot = str_arg(b, "botId")?;
+    let id = match b["itemId"].as_str() {
+        Some(item) => tasks::thread_task(hub, bot, item)?,
+        None => bot.to_owned(),
+    };
+    let row = hub.store.bot(&id)?.filter(|r| !r.deleted).ok_or_else(|| anyhow!("unknown bot"))?;
+    Ok(crate::chat::uploads::root(&row.config))
+}
+
 /// What the user does to an item of a bot's box.
 async fn steer_work(hub: &Arc<Hub>, steer: Steer, b: &Value) -> Result<Value> {
     let (hub, bot) = (hub.clone(), str_arg(b, "botId")?.to_owned());
@@ -224,8 +236,7 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
         // One chunk of a file for a later `send` (`attachments`); base64 `data` at `offset`.
         "upload" => {
             use base64::Engine as _;
-            let row = hub.store.bot(str_arg(&b, "botId")?)?.filter(|r| !r.deleted);
-            let root = crate::chat::uploads::root(&row.ok_or_else(|| anyhow!("unknown bot"))?.config);
+            let root = uploads_root(hub, &b)?;
             let (id, name) = (str_arg(&b, "uploadId")?.to_owned(), str_arg(&b, "name")?.to_owned());
             let data =
                 base64::engine::general_purpose::STANDARD.decode(str_arg(&b, "data")?).context("invalid data")?;
@@ -239,8 +250,7 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
         // A sent file, back in chunks (chat previews on other devices).
         "readUpload" => {
             use base64::Engine as _;
-            let row = hub.store.bot(str_arg(&b, "botId")?)?.filter(|r| !r.deleted);
-            let root = crate::chat::uploads::root(&row.ok_or_else(|| anyhow!("unknown bot"))?.config);
+            let root = uploads_root(hub, &b)?;
             let id = str_arg(&b, "uploadId")?.to_owned();
             let offset = b["offset"].as_u64().unwrap_or(0);
             let (data, size) =
@@ -257,14 +267,16 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
                 bail!("empty message");
             }
             let nonce = b["clientNonce"].as_str().unwrap_or_default();
-            // `itemId`: to the thread of one of the bot's own items, where a running turn makes it wait as here.
+            // `itemId`: to the task of one of the bot's own items, where a running turn makes it wait as here.
             if let Some(item) = b["itemId"].as_str() {
-                if text.is_empty() || !uploads.is_empty() || !b["replyTo"].is_null() || !b["call"].is_null() {
-                    return Err(tasks::ThreadRefused::error("text_only", "a thread takes text only".into()));
+                if !b["replyTo"].is_null() || !b["call"].is_null() {
+                    return Err(tasks::ThreadRefused::error("unsupported", "a thread takes no quotes or calls".into()));
                 }
                 let hub = hub.clone();
                 let (bot, item, text, nonce) = (bot.to_owned(), item.to_owned(), text.to_owned(), nonce.to_owned());
-                let sent = tokio::task::spawn_blocking(move || tasks::message(&hub, &bot, &item, &text, &nonce));
+                let uploads: Vec<String> = uploads.into_iter().map(str::to_owned).collect();
+                let sent =
+                    tokio::task::spawn_blocking(move || tasks::message(&hub, &bot, &item, &text, &uploads, &nonce));
                 return Ok(ControlFlow::Break(sent.await??));
             }
             if !nonce.is_empty()

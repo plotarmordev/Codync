@@ -132,6 +132,31 @@ public extension BotDraft {
         if mode != nil { mode = AgentMode.auto }
         fallbacks?.removeAll { $0.login == AgentLogin(backend: backend) }
     }
+
+    /// Advisor mode on: its threads start on the bot's own agent, model and fallbacks, for the user to change (on a
+    /// custom command, which the threads' picker doesn't offer, on the first installed agent); off: none.
+    mutating func setAdvisor(_ on: Bool, backends: [Backend]) {
+        guard on else {
+            taskAgent = nil
+            taskFallbacks = []
+            return
+        }
+        guard backend == "custom" else {
+            taskAgent = BotFallback(backend: backend, loginProfile: loginProfile, model: model, modelOptions: modelOptions)
+            taskFallbacks = fallbacks ?? []
+            return
+        }
+        guard let first = backends.first(where: \.available) ?? backends.first else { return }
+        taskAgent = BotFallback.on(first, taken: [])
+        taskFallbacks = []
+    }
+
+    /// Its threads on agent `backend`, on the computer's own login: a threads' fallback on that login goes, as `setAgent`.
+    mutating func setTaskAgent(_ backend: String) {
+        guard taskAgent?.backend != backend else { return }
+        taskAgent = BotFallback(backend: backend)
+        taskFallbacks?.removeAll { $0.login == AgentLogin(backend: backend) }
+    }
 }
 
 extension HostClient {

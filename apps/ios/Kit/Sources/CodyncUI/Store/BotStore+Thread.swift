@@ -13,22 +13,29 @@ extension BotStore {
         taskEntries[task]?.removeAll { $0.id == id }
     }
 
-    /// A message for an item's thread, as text: in its transcript at once, then as the computer holds it (waiting
-    /// behind the task's turn, or starting one). A refusal leaves it failed and says why.
-    func send(_ text: String, to thread: WorkThread, nonce: String = UUID().uuidString) {
+    /// A message for an item's thread, with its files as in the chat: in its transcript at once, then as the computer
+    /// holds it (waiting behind the task's turn, or starting one). A refusal leaves it failed and says why.
+    func send(_ text: String, to thread: WorkThread, files: [OutgoingFile] = [], nonce: String = UUID().uuidString) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !retired else { return }
+        guard !trimmed.isEmpty || !files.isEmpty, !retired else { return }
         lastSentNonce = nonce
+        var data = EntryData(text: trimmed, status: "sending", clientNonce: nonce)
+        if !files.isEmpty {
+            data.attachments = files.map { Attachment(id: $0.id.uuidString, name: $0.name, size: Int64($0.data.count)) }
+            outgoingFiles[nonce] = files
+        }
         var local = Entry(id: Entry.localId(nonce), seq: .max, botId: thread.task, rev: 0, kind: "user", turn: 0,
-                          data: EntryData(text: trimmed, status: "sending", clientNonce: nonce),
-                          createdAt: Int64(Date.now.timeIntervalSince1970 * 1000), updatedAt: 0)
+                          data: data, createdAt: Int64(Date.now.timeIntervalSince1970 * 1000), updatedAt: 0)
         putTaskEntry(local, task: thread.task)
         Task {
             do {
                 // Safe to repeat: the computer answers a nonce it already has with the same entry.
-                let e = try await withLink(replay: true) {
-                    try await $0.send(botId: thread.botId, text: trimmed, clientNonce: nonce, itemId: thread.itemId)
+                let e = try await withLink(replay: true) { client in
+                    let ids = try await self.uploadOutgoing(nonce, botId: thread.botId, itemId: thread.itemId, with: client)
+                    return try await client.send(botId: thread.botId, text: trimmed, clientNonce: nonce, attachments: ids,
+                                                 itemId: thread.itemId)
                 }
+                outgoingFiles[nonce] = nil
                 putTaskEntry(e, task: thread.task)
             } catch {
                 // A dropped link: the message's own "Failed to send" and Resend say enough.
@@ -41,12 +48,12 @@ extension BotStore {
         }
     }
 
-    /// Resend on a message that failed here; one the computer failed (a restart) goes again as a new message.
-    func resend(_ entry: Entry, to thread: WorkThread) {
-        guard let text = entry.data.text else { return }
+    /// Resend on a message that failed here, with the `files` this app still holds for it; one the computer failed (a
+    /// restart) goes again as a new message.
+    func resend(_ entry: Entry, to thread: WorkThread, files: [OutgoingFile]) {
         let local = entry.data.clientNonce.map(Entry.localId) == entry.id
         if local { dropTaskEntry(entry.id, task: thread.task) }
-        send(text, to: thread, nonce: (local ? entry.data.clientNonce : nil) ?? UUID().uuidString)
+        send(entry.data.text ?? "", to: thread, files: files, nonce: (local ? entry.data.clientNonce : nil) ?? UUID().uuidString)
     }
 
     /// Has the bot's conversation open its details on `item`'s thread once it is on screen.

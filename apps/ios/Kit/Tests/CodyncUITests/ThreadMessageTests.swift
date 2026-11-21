@@ -83,6 +83,35 @@ private let thread = WorkThread(botId: "b1", itemId: "i1", task: "task-1")
     #expect(store.entries.isEmpty)
 }
 
+/// A message's files go to the thread's own uploads (`upload` names the item), then with it; one whose files this
+/// app no longer holds can't go again.
+@MainActor @Test func filesToAThreadAreUploadedForItsItem() async throws {
+    let (store, fake, suite) = await threadStore()
+    defer { store.retire(); UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let json = { (method: String) async throws -> [String: Any] in
+        let body = try #require(await fake.rawBodies[method])
+        return try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+    }
+
+    store.send("", to: thread, files: [OutgoingFile(name: "shot.png", data: Data([1]))], nonce: "n4")
+    #expect(store.taskEntries["task-1"]?.first?.data.attachments?.map(\.name) == ["shot.png"])
+    #expect(await until { await fake.calls.contains("send") })
+    let upload = try await json("upload")
+    #expect(upload["botId"] as? String == "b1" && upload["itemId"] as? String == "i1")
+    let send = try await json("send")
+    #expect(send["itemId"] as? String == "i1")
+    #expect((send["attachments"] as? [String])?.count == 1)
+    #expect(await until { store.outgoingFiles["n4"] == nil })
+
+    await fake.refuse("send", "No")
+    store.send("", to: thread, files: [OutgoingFile(name: "log.txt", data: Data([2]))], nonce: "n5")
+    #expect(await until { store.taskEntries["task-1"]?.last?.data.status == "failed" })
+    let failed = try #require(store.taskEntries["task-1"]?.last)
+    store.outgoingFiles["n5"] = nil
+    store.retry(failed, in: thread)
+    #expect(store.lastError == "This message's files aren't on this device anymore. Delete it and attach them again.")
+}
+
 /// The view of all bots' work asks a bot's conversation to open its details on an item's thread; only that
 /// conversation takes it, once.
 @MainActor @Test func aThreadRequestIsTakenOnceByItsOwnConversation() {

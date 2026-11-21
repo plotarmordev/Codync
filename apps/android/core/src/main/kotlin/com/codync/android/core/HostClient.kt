@@ -83,6 +83,10 @@ data class Bot(
     val fallbacks: List<Fallback>? = null,
     /** The bot may set its own fallbacks, for example when the user asks it to; null from an older host. */
     val selfFallbacks: Boolean? = null,
+    /** Advisor mode: the agent its tasks run on; null when they run on the bot's own. */
+    val taskAgent: Fallback? = null,
+    /** In Advisor mode, the tasks' fallbacks; null from an older host (no Advisor mode there). */
+    val taskFallbacks: List<Fallback>? = null,
     /** The fallback it runs on right now; null on its own agent. */
     val agentStep: AgentStep? = null,
     /** Agents of its chain resting now. */

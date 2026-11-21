@@ -15,8 +15,10 @@ pub enum Cmd {
     Routine(String),
     /// A follow-up the bot set for itself is due (`routines::follow_up`): a turn in its own chat.
     FollowUp(String),
-    /// One of the bot's tasks ended (`chat::tasks`): its report, for a turn in the bot's chat.
+    /// One of the bot's items ended (`chat::tasks`): its report, for a turn in the bot's chat.
     TaskReport(crate::chat::tasks::Report),
+    /// One of the bot's items looks stuck (`chat::tasks::watch`): a turn in its chat to look at it.
+    Watchdog(crate::chat::tasks::Stuck),
     /// The user wrote in the bot's chat.
     Send {
         lane: Lane,
@@ -120,7 +122,10 @@ pub enum Cmd {
 pub(super) enum Queued {
     Routine(String),
     FollowUp(String),
+    /// One of the bot's items ended (`chat::tasks`): its report, for a turn in the bot's chat.
     TaskReport(crate::chat::tasks::Report),
+    /// One of the bot's items looks stuck (`chat::tasks::watch`): a turn in its chat to look at it.
+    Watchdog(crate::chat::tasks::Stuck),
     User {
         lane: Lane,
         entry_id: String,
@@ -151,13 +156,16 @@ pub(super) enum HostTurn {
     /// The reports of the bot's tasks (`Cmd::TaskReport`): the bot tells the user what they found, which alerts like
     /// a reply. A restart doesn't resume it: the reports it didn't answer come again (`tasks::restore`).
     TaskReport,
+    /// The watchdog's look at a task that seems stuck (`Cmd::Watchdog`): the bot acts on it, which alerts like a
+    /// reply, or passes. A restart doesn't resume it: the next look asks again if the task still seems stuck.
+    Watchdog,
 }
 
 impl HostTurn {
     /// Whether a host restart in the middle of it resumes it.
     pub(super) fn resumed(self) -> bool {
         match self {
-            Self::Opening | Self::TaskReport => false,
+            Self::Opening | Self::TaskReport | Self::Watchdog => false,
             Self::FollowUp => true,
         }
     }
@@ -166,7 +174,7 @@ impl HostTurn {
     pub(super) fn alerts(self) -> bool {
         match self {
             Self::Opening => false,
-            Self::FollowUp | Self::TaskReport => true,
+            Self::FollowUp | Self::TaskReport | Self::Watchdog => true,
         }
     }
 
@@ -175,6 +183,7 @@ impl HostTurn {
         match self {
             Self::Opening | Self::TaskReport => TurnSource::Host,
             Self::FollowUp => TurnSource::FollowUp,
+            Self::Watchdog => TurnSource::Watchdog,
         }
     }
 }

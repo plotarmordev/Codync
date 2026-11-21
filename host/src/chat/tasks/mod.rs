@@ -12,28 +12,32 @@
 //! they see `work` on the bot and fetch a task's transcript by id.
 //!
 //! Here: a task's life from its turn's end to its report. [`steer`] has what the user and the bot do to an item,
-//! [`tools`] the bot's tools, [`prompts`] the words, [`worktree`] the git worktree of a task that works beside
-//! another in one repository.
+//! [`tools`] the bot's tools ([`recall`] the one that looks back), [`prompts`] the words, [`worktree`] the git
+//! worktree of a task that works beside another in one repository, [`watch`] the watchdog that wakes the bot for a
+//! task that looks stuck.
 
 mod dispatch;
 mod items;
 mod prompts;
+mod recall;
 mod sources;
 mod steer;
 mod sweep;
 mod thread;
 mod tools;
+mod watch;
 mod worktree;
 
 pub use dispatch::{Wait, dispatch};
 #[cfg(test)]
 pub use items::put_working_for_test;
 pub use items::{Source, Status, doing, lines, outside, wire, working_tasks};
-pub use prompts::{BRIEF, in_thread, reminder, report_notice, report_prompt};
+pub use prompts::{BRIEF, in_thread, relayed, reminder, report_notice, report_prompt};
 pub use sources::{access_of, add_request, add_routine, boxed, from_chat, routines_changed, source_of};
 pub use steer::{Steer, cut_in, drop_item, first, retry, stop};
-pub use thread::{Refused as ThreadRefused, heard, message, picked_up, task as thread_task};
+pub use thread::{Refused as ThreadRefused, heard, message, picked_up, task as thread_task, unhear, written};
 pub use tools::{TOOLS, acting_as, call, refuse_chat_only, refuse_in_task, tools};
+pub use watch::Stuck;
 pub use worktree::{Worktree, enter as enter_worktree, in_repo};
 
 use crate::LockExt;
@@ -46,7 +50,7 @@ use anyhow::{Result, anyhow};
 use items::Item;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
 /// Items added in a row with no message of the user's in between (a report's turn adding the next).
@@ -54,7 +58,8 @@ const MAX_HOPS: u8 = 8;
 const _: () = assert!(MAX_HOPS == 8, "chat::team::limit::NOTICE and its translations say 8");
 /// Items a box holds waiting at most.
 const MAX_WAITING: usize = 20;
-/// An ended item, and a task's transcript with its last item, are kept this long.
+/// An ended item stays in its box, and a task's transcript with its last item, this long; `recall_work` still reads
+/// the item for [`items::PAST_MS`].
 const KEEP_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 const MAX_TITLE: usize = 80;
 const MAX_BRIEF: usize = 32_000;
@@ -148,6 +153,11 @@ pub struct Tasks {
     /// Item → the request of another bot it answers (`sources`), which owns the exchange's notices and the reply.
     /// Gone with the host process: a request is never replayed.
     requests: Mutex<HashMap<String, crate::chat::team::BotRequest>>,
+    /// Bots one of whose tasks began to wait on the user, so gave its seat up: each box is looked over again.
+    freed: Mutex<BTreeSet<String>>,
+    seat_freed: tokio::sync::Notify,
+    /// What the watchdog remembers of the tasks it looks at (`watch`).
+    watch: Mutex<watch::Memory>,
 }
 
 impl Tasks {
@@ -158,6 +168,28 @@ impl Tasks {
     fn hops(&self, bot: &str) -> u8 {
         self.chain.locked().get(bot).copied().unwrap_or(0)
     }
+
+    /// A task of `bot`'s began to wait on the user (`Hub::set_runtime`): its seat is free for the next item. Called
+    /// where no `Arc<Hub>` is at hand; the look runs on the task [`restore`] starts.
+    pub fn seat_freed(&self, bot: &str) {
+        self.freed.locked().insert(bot.to_owned());
+        self.seat_freed.notify_one();
+    }
+}
+
+/// Looks over each box one of whose tasks gave its seat up ([`Tasks::seat_freed`]), for as long as the host runs.
+fn look_when_seats_free(hub: &Arc<Hub>) {
+    let Ok(runtime) = tokio::runtime::Handle::try_current() else { return };
+    let hub = hub.clone();
+    runtime.spawn(async move {
+        loop {
+            hub.tasks.seat_freed.notified().await;
+            let bots = std::mem::take(&mut *hub.tasks.freed.locked());
+            for bot in bots {
+                dispatch(&hub, &bot);
+            }
+        }
+    });
 }
 
 /// `bot`'s task bots.
@@ -178,8 +210,14 @@ pub fn of(store: &Store, bot: &str) -> Vec<BotConfig> {
 pub fn fallbacks_changed(hub: &Hub, cfg: &BotConfig) {
     let _g = hub.emit_lock.locked();
     let mut tasks = of(&hub.store, &cfg.id);
+    // A task keeps the agent it started on: it gets the chain that starts there (the tasks' own in Advisor mode,
+    // else the chat's), and one that started on another keeps its own.
+    let chains = [crate::agent::fallback::tasks(cfg), cfg.clone()];
+    let login = crate::agent::fallback::login::of;
     for task in &mut tasks {
-        task.fallbacks.clone_from(&cfg.fallbacks);
+        if let Some(chain) = chains.iter().find(|chain| login(chain) == login(task)) {
+            task.fallbacks.clone_from(&chain.fallbacks);
+        }
     }
     if let Err(error) = hub.store.save_bots(&tasks) {
         tracing::warn!(bot = %cfg.id, error = format!("{error:#}"), "couldn't give its tasks the bot's fallbacks");
@@ -371,7 +409,7 @@ fn end(items: &mut [Item], task: &str, outcome: Outcome) -> Option<Item> {
             // A report to the bot's own turn carries only so much; a routine run's or a request's result is posted
             // whole, as its message.
             let most = if item.source.is_bot() { MAX_REPORT } else { usize::MAX };
-            let text = text.map(|t| crate::agent::acp::truncate(t.trim(), most)).filter(|t| !t.is_empty());
+            let text = text.map(|t| codync_agent::acp::truncate(t.trim(), most)).filter(|t| !t.is_empty());
             match text {
                 Some(text) => (Status::Done, Some(Ok(text)), None),
                 // A routine run with nothing to tell says nothing (`(pass)`).
@@ -475,6 +513,8 @@ pub fn reported(hub: &Hub, bot: &str, delivered: &[String]) {
 
 /// At host start: old items go, and the others pick up where the last process left them.
 pub fn restore(hub: &Arc<Hub>) {
+    look_when_seats_free(hub);
+    watch::start(hub);
     let lives = |bot: &str| hub.store.bot(bot).ok().flatten().is_some_and(|r| !r.deleted);
     let tasks = hub.store.task_bots().unwrap_or_default();
     for task in tasks.iter().filter(|task| !task.config.task_of.as_deref().is_some_and(lives)) {
@@ -483,8 +523,7 @@ pub fn restore(hub: &Arc<Hub>) {
         }
     }
     // Every bot with a box, or with a task bot left to clear away.
-    let mut bots: Vec<String> =
-        hub.store.kv_prefix(items::PREFIX).iter().map(|key| key.trim_start_matches(items::PREFIX).to_owned()).collect();
+    let mut bots = items::bots(&hub.store);
     bots.extend(tasks.into_iter().filter_map(|task| task.config.task_of));
     bots.sort();
     bots.dedup();
@@ -504,7 +543,12 @@ pub fn restore(hub: &Arc<Hub>) {
 fn pick_up(hub: &Arc<Hub>, bot: &str) -> Result<()> {
     let (resumed, failed, undelivered, recheck) = items::change(hub, bot, |items| {
         let now = now_ms();
-        items.retain(|i| i.ended_at.is_none_or(|at| now - at <= KEEP_MS));
+        let (old, kept) =
+            std::mem::take(items).into_iter().partition(|i| i.ended_at.is_some_and(|at| now - at > KEEP_MS));
+        *items = kept;
+        if let Err(error) = items::put_past(&hub.store, bot, old, now) {
+            tracing::warn!(bot, error = format!("{error:#}"), "couldn't keep a bot's past items");
+        }
         let recheck = worktree::recheck(items);
         // A request lived in the last process (its notices already say it was interrupted): it is never replayed.
         items.retain(|i| i.status.ended() || !matches!(i.source, Source::Request { .. }));
@@ -561,6 +605,26 @@ pub fn entries(hub: &Hub, bot: &str, id: &str, limit: i64) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn at_host_start_an_item_ended_over_a_week_ago_leaves_the_box_and_stays_for_recall() {
+        use crate::chat::calls::context::tests::{bot, hub};
+        let hub = hub();
+        hub.store.save_bot(&bot("b1", "Mika", "/tmp")).expect("saved");
+        hub.set_runtime("b1", |rt| rt.status = crate::hub::BotStatus::Working);
+        let (now, day) = (now_ms(), 24 * 60 * 60 * 1000);
+        let ended = |id: &str, ago: i64| {
+            json!({"id": id, "title": id, "brief": "x", "status": "done", "order": 0, "createdAt": 0,
+                "endedAt": now - ago * day})
+        };
+        let items = json!([ended("old", 8), ended("new", 1)]);
+        hub.store.kv_set(&format!("{}b1", items::PREFIX), &items.to_string()).expect("saved");
+
+        pick_up(&hub, "b1").expect("picked up");
+        let ids = |items: Vec<Item>| items.into_iter().map(|i| i.id).collect::<Vec<_>>();
+        assert_eq!(ids(items::load(&hub.store, "b1")), ["new"]);
+        assert_eq!(ids(items::past(&hub.store, "b1", now)), ["old"]);
+    }
 
     fn working(id: &str, task: &str) -> Item {
         serde_json::from_value(json!({

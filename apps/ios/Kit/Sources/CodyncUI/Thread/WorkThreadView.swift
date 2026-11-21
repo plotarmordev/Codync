@@ -43,7 +43,7 @@ struct WorkThreadView: View {
         ConversationList(rows: rows(entries, of: item), following: $following)
             .background(Palette.background)
             .safeAreaInset(edge: .top, spacing: 0) { header(item) }
-            .safeAreaInset(edge: .bottom, spacing: 0) { footer(item, queued: entries.rest.queue(working: live)) }
+            .safeAreaInset(edge: .bottom, spacing: 0) { footer(item, queued: entries.queue(working: live)) }
             .environment(\.workThread, item.thread(of: botId))
             .hidesSystemNavigationBar()
             .task(id: Load(attempt: attempt, task: item.task, live: live, online: model.connection == .online)) { await load(item.task) }
@@ -79,7 +79,7 @@ struct WorkThreadView: View {
     /// above the composer, and a line where it put something in the chat (a card, a file), which opens it there.
     private func rows(_ entries: ThreadEntries, of item: WorkItem) -> [ConversationRow] {
         let live = item.status.isLive
-        let own = entries.rest.hidingQueue(working: live)
+        let own = entries.hidingQueue(working: live)
         let running = Entry.runningTurn(own, working: live)
         let shown = item.task.map { own.sharing(model.chat(botId), of: $0) } ?? own
         var rows: [ConversationRow] = []

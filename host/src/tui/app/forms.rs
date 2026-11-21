@@ -45,6 +45,9 @@ impl App {
             fast: b.fast_mode,
             fallbacks: b.fallbacks.clone(),
             self_fallbacks: b.self_fallbacks,
+            advisor: b.task_fallbacks.is_some(),
+            task_agent: b.task_agent.clone(),
+            task_fallbacks: b.task_fallbacks.clone().unwrap_or_default(),
             cwd: if b.managed_workspace { String::new() } else { b.cwd.clone() },
             max_agents: b.max_agents,
             // A bot's own folder keeps all its work in one place: no switch there.
@@ -95,7 +98,7 @@ impl App {
             return None;
         }
         let field = f.current();
-        if field == Field::Fallbacks && self.fallback_key(&mut f, k) {
+        if matches!(field, Field::Fallbacks | Field::TaskFallbacks) && self.fallback_key(&mut f, k) {
             return Some(Overlay::Form(f));
         }
         match k.code {
@@ -151,6 +154,7 @@ impl App {
                     f.model = Editor::with(&m);
                 }
             }
+            KeyCode::Char('c') if field == Field::TaskAgent => self.cycle_task_login(&mut f),
             KeyCode::Char(c) if field == Field::Compaction && c.is_ascii_digit() => f.type_compaction(Some(c)),
             KeyCode::Backspace if field == Field::Compaction => f.type_compaction(None),
             KeyCode::Enter => self.save_form(&mut f),
@@ -161,6 +165,8 @@ impl App {
                         | Field::LoginProfile
                         | Field::Fast
                         | Field::SelfFallbacks
+                        | Field::Advisor
+                        | Field::TaskAgent
                         | Field::MaxAgents
                         | Field::TaskWorktrees
                         | Field::Approvals
@@ -192,13 +198,20 @@ impl App {
                             let own = f.backend.clone();
                             f.fallbacks.retain(|x| x.backend != own || x.login_profile.is_some());
                             // Nor its mode ids: a picked mode becomes the new agent's Auto mode (or, without one, asking).
-                            f.mode = f.mode.take().map(|_| crate::agent::modes::AUTO.to_owned());
+                            f.mode = codync_agent::modes::on_other_agent(f.mode.as_deref());
                             self.want_models(&f.backend);
                         }
                     }
                     Field::LoginProfile if !space => self.cycle_login_profile(&mut f, d),
                     Field::Fast => f.fast = !f.fast,
                     Field::SelfFallbacks => f.self_fallbacks = !f.self_fallbacks,
+                    Field::Advisor => self.toggle_advisor(&mut f),
+                    Field::TaskAgent if space => {
+                        if let Some(agent) = f.task_agent.as_mut() {
+                            self.cycle_step_model(agent);
+                        }
+                    }
+                    Field::TaskAgent => self.cycle_task_agent(&mut f, d),
                     Field::TaskWorktrees => f.task_worktrees = f.task_worktrees.map(|on| !on),
                     Field::MaxAgents if !space => {
                         let step = |n: u8| if d < 0 { n.saturating_sub(1) } else { n + 1 };
@@ -298,7 +311,7 @@ impl Form {
     /// The bot as this form would save it.
     fn body(&self) -> Value {
         let model = self.model.text.trim();
-        json!({
+        let mut body = json!({
             "name": self.name.text.trim(),
             "description": self.instructions.text.trim(),
             "backend": self.backend,
@@ -326,7 +339,13 @@ impl Form {
             "avatarShape": SHAPES[self.shape],
             "connectors": self.connectors.iter().filter(|t| t.on).map(|t| t.id.clone()).collect::<Vec<_>>(),
             "skills": self.skills.iter().filter(|t| t.on).map(|t| t.id.clone()).collect::<Vec<_>>(),
-        })
+        });
+        // Only to a host that has Advisor mode.
+        if self.advisor {
+            body["taskAgent"] = json!(self.task_agent);
+            body["taskFallbacks"] = json!(self.task_fallbacks);
+        }
+        body
     }
 
     /// When Codync summarizes the chat, in the order ← → steps through: the three choices, then the sizes a menu lists.

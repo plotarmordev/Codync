@@ -127,9 +127,12 @@ fn call_event(method: &str, b: &Value, p: &mut Map<String, Value>) -> Option<Eve
             Event::ComputerRenamed
         }
         "deleteBot" => Event::BotDeleted,
-        // To an item's thread: what came of it is the answer's to say (`answered`). Never the text.
-        "send" if b["itemId"].is_string() => Event::WorkMessaged,
-        // Send now and Remove on a message that waits in an item's thread.
+        // To an item's task: what came of it is the answer's to say (`answered`). Never the text.
+        "send" if b["itemId"].is_string() => {
+            p.insert("attachments".into(), b["attachments"].as_array().map_or(0, Vec::len).into());
+            Event::WorkMessaged
+        }
+        // Send now and Remove on a message that waits in an item's task.
         "steer" | "unqueue" if b["itemId"].is_string() => {
             p.insert("how".into(), (if method == "steer" { "sendNow" } else { "remove" }).into());
             p.insert("by".into(), "user".into());
@@ -308,6 +311,14 @@ pub fn observe_call(hub: &Hub, caller: &Caller, method: &str, b: &Value) -> Opti
                     let picked = Threshold::deserialize(&b["compaction"]).unwrap_or_default();
                     p.insert("compaction".into(), picked.kind().into());
                 }
+                // Advisor mode turned on or off, and the agent its tasks run on.
+                if fields.iter().any(|f| f == "taskAgent") {
+                    let agent = b["taskAgent"]["backend"].as_str();
+                    p.insert("advisorMode".into(), agent.is_some().into());
+                    if let Some(agent) = agent {
+                        p.insert("taskAgent".into(), agent.into());
+                    }
+                }
                 p.insert("fields".into(), fields.into());
             }
         }
@@ -406,8 +417,8 @@ pub fn failed(event: Event, mut p: Map<String, Value>, error: &anyhow::Error) ->
             p.insert("error".into(), category.into());
             Some((event, p))
         }
-        // `read_only`: a routine's run or another bot's request. `not_started`, `gone`: no task to write to.
-        // `text_only`: files, a quote or a call.
+        // `read_only`: a routine's run or another bot's request. `not_started`, `gone`: no item to write to.
+        // `unsupported`: a quote or a call.
         Event::WorkMessaged => {
             let category = error.downcast_ref::<crate::chat::tasks::ThreadRefused>().map_or("other", |e| e.category);
             p.insert("outcome".into(), "failed".into());

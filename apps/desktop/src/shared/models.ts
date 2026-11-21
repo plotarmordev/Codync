@@ -43,6 +43,10 @@ export interface Bot {
   fallbacks: Fallback[]
   /** The bot may set its own fallbacks; null from an older host (no fallbacks there). */
   selfFallbacks: boolean | null
+  /** Advisor mode: the agent its threads run on, null when they run on the bot's own. */
+  taskAgent: Fallback | null
+  /** In Advisor mode, the threads' fallbacks; null from an older host (no Advisor mode there). */
+  taskFallbacks: Fallback[] | null
   /** The fallback the bot is on right now; null on its own agent. */
   agentStep: AgentStep | null
   /** Agents of its chain (its own included) resting now; one whose `until` passed isn't. */
@@ -142,6 +146,8 @@ export function normalizeBot(raw: Partial<Bot> & { id: string }): Bot {
     fastModeIssue: raw.fastModeIssue ?? null,
     fallbacks: raw.fallbacks ?? [],
     selfFallbacks: raw.selfFallbacks ?? null,
+    taskAgent: raw.taskAgent ?? null,
+    taskFallbacks: raw.taskFallbacks ?? null,
     agentStep: raw.agentStep ?? null,
     agentCommands: raw.agentCommands ?? [],
     resting: raw.resting ?? [],
@@ -825,6 +831,9 @@ export interface BotDraft {
   fastMode?: boolean
   fallbacks?: Fallback[]
   selfFallbacks?: boolean
+  /** Left out for a host before Advisor mode; null turns it off. */
+  taskAgent?: Fallback | null
+  taskFallbacks?: Fallback[]
   pinned?: boolean
   /** A name puts the bot in that roster section, null takes it out; left out, the host keeps it. */
   section?: string | null
@@ -864,6 +873,7 @@ export function draftOf(bot: Bot): BotDraft {
     fastMode: bot.fastMode,
     fallbacks: bot.fallbacks,
     selfFallbacks: bot.selfFallbacks ?? undefined,
+    ...(bot.taskFallbacks === null ? {} : { taskAgent: bot.taskAgent, taskFallbacks: bot.taskFallbacks }),
     pinned: bot.pinned,
     hidden: bot.hidden,
     notify: bot.notify ?? null,

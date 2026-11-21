@@ -104,6 +104,9 @@ pub(super) struct Item {
     /// What the user said about it since, word for word.
     #[serde(default)]
     pub notes: Vec<String>,
+    /// What the bot's chat passed on to it since (`tell_work`), word for word: never the user's own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relayed: Vec<String>,
     pub status: Status,
     /// Its place among the waiting, lowest first.
     pub order: i64,
@@ -156,7 +159,7 @@ pub(super) struct Item {
     /// The worktree its task works or worked in (`worktree`).
     #[serde(default)]
     pub worktree: Option<Worktree>,
-    /// What the user wrote to its thread since its last report, word for word (`thread`): its next report ends
+    /// What the user wrote to its task since its last report, word for word (`task`): its next report ends
     /// with it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub told: Vec<String>,
@@ -175,6 +178,7 @@ impl Item {
             source: Source::Bot,
             words,
             notes: Vec::new(),
+            relayed: Vec::new(),
             status: Status::Waiting,
             order: 0,
             after: after.map(str::to_owned),
@@ -216,6 +220,11 @@ fn key(bot: &str) -> String {
     format!("{PREFIX}{bot}")
 }
 
+/// Every bot with a box.
+pub(super) fn bots(store: &Store) -> Vec<String> {
+    store.kv_prefix(PREFIX).iter().filter_map(|key| key.strip_prefix(PREFIX)).map(str::to_owned).collect()
+}
+
 pub(super) fn load(store: &Store, bot: &str) -> Vec<Item> {
     store.kv_get(&key(bot)).and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default()
 }
@@ -230,11 +239,45 @@ pub(super) fn change<T>(hub: &Hub, bot: &str, change: impl FnOnce(&mut Vec<Item>
     Ok(out)
 }
 
-/// A deleted bot's box goes with it.
+/// A deleted bot's box goes with it, and its past tasks.
 pub(super) fn forget(store: &Store, bot: &str) {
-    if let Err(error) = store.kv_delete(&key(bot)) {
-        tracing::warn!(bot, error = format!("{error:#}"), "couldn't drop a bot's work");
+    for key in [key(bot), past_key(bot)] {
+        if let Err(error) = store.kv_delete(&key) {
+            tracing::warn!(bot, error = format!("{error:#}"), "couldn't drop a bot's work");
+        }
     }
+}
+
+/// Where a bot's items that ended over a week ago wait for `recall_work`: out of its box, which the wire and every
+/// change read whole.
+const PAST_PREFIX: &str = "work-past.";
+/// How long an ended item can still be recalled.
+pub(super) const PAST_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+/// Past items a bot keeps at most, the newest.
+const PAST_MOST: usize = 200;
+
+fn past_key(bot: &str) -> String {
+    format!("{PAST_PREFIX}{bot}")
+}
+
+/// `bot`'s items that left its box, ended within [`PAST_MS`].
+pub(super) fn past(store: &Store, bot: &str, now: i64) -> Vec<Item> {
+    let all: Vec<Item> =
+        store.kv_get(&past_key(bot)).and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default();
+    all.into_iter().filter(|i| i.ended_at.is_some_and(|at| now - at <= PAST_MS)).collect()
+}
+
+/// Keeps `old`, ended items leaving `bot`'s box, for `recall_work`, with the past ones still young enough.
+pub(super) fn put_past(store: &Store, bot: &str, old: Vec<Item>, now: i64) -> Result<()> {
+    if old.is_empty() {
+        return Ok(());
+    }
+    let mut all = past(store, bot, now);
+    all.extend(old.into_iter().map(|item| Item { report: None, ..item }));
+    all.retain(|i| i.ended_at.is_some_and(|at| now - at <= PAST_MS));
+    all.sort_by_key(|i| std::cmp::Reverse(i.ended_at));
+    all.truncate(PAST_MOST);
+    store.kv_set(&past_key(bot), &serde_json::to_string(&all)?)
 }
 
 /// An order before every waiting item's.
@@ -301,10 +344,7 @@ pub(super) fn shown(hub: &Hub, cfg: &BotConfig) -> Vec<Shown> {
         .chain(ended)
         .map(|item| {
             let rt = item.task.as_deref().filter(|_| item.status == Status::Working).map(|task| hub.runtime(task));
-            let status = match &rt {
-                Some(rt) if rt.status == BotStatus::NeedsInput => Status::NeedsYou,
-                _ => item.status,
-            };
+            let status = if asks_user(hub, &item) { Status::NeedsYou } else { item.status };
             let wait = waits.remove(&item.id);
             Shown { status, activity: rt.map(|rt| rt.activity).unwrap_or_default(), wait, item }
         })
@@ -320,6 +360,8 @@ fn folder_of<'a>(item: &Item, cwd: Option<&'a String>) -> Option<&'a String> {
 /// The bot's `work` on the wire.
 pub fn wire(hub: &Hub, cfg: &BotConfig) -> Value {
     let shown = shown(hub, cfg);
+    // The one seat a task waiting on the user lends: past it, one more waiting gives nothing (`dispatch::free_seats`).
+    let mut lent = false;
     // Where each task works: a worktree's folder, or the bot's as it was when the task began.
     let folders: HashMap<String, String> = if shown.is_empty() {
         HashMap::new()
@@ -330,15 +372,25 @@ pub fn wire(hub: &Hub, cfg: &BotConfig) -> Value {
         shown
             .into_iter()
             .map(|Shown { item, status, activity, wait }| {
+                // It takes one of the bot's seats.
+                let seat = match status {
+                    Status::Working => true,
+                    Status::NeedsYou => std::mem::replace(&mut lent, true),
+                    _ => false,
+                };
                 let cwd = item.task.as_ref().and_then(|task| folders.get(task));
                 let folder = folder_of(&item, cwd);
+                let talk = item.source.is_bot() && cwd.is_some();
                 let mut row = json!({
                     "id": item.id, "title": item.title, "status": status, "activity": activity, "task": item.task,
                     "wait": wait, "cutIn": item.cut_in, "createdAt": item.created_at, "startedAt": item.started_at,
                     "endedAt": item.ended_at,
-                    "result": item.result.map(|r| crate::agent::acp::truncate(&r, WIRE_RESULT)),
-                    // The user may write to its thread: the bot's own work, whose task is still there.
-                    "talk": item.source.is_bot() && cwd.is_some(),
+                    "result": item.result.map(|r| codync_agent::acp::truncate(&r, WIRE_RESULT)),
+                    // The user may write to its task: the bot's own work, whose task is still there; with files
+                    // too, which a host from before them doesn't say.
+                    "talk": talk,
+                    "talkFiles": talk,
+                    "seat": seat,
                 });
                 if let Some(folder) = folder {
                     row["folder"] = folder.clone().into();
@@ -382,6 +434,13 @@ pub fn doing(hub: &Hub, cfg: &BotConfig) -> Vec<Doing> {
     at_work.collect()
 }
 
+/// Whether `item` works and its task waits on the user (a card, a sign-in): it needs them, and lends its seat
+/// (`dispatch::free_seats`).
+pub(super) fn asks_user(hub: &Hub, item: &Item) -> bool {
+    item.status == Status::Working
+        && item.task.as_deref().is_some_and(|task| hub.runtime(task).status == BotStatus::NeedsInput)
+}
+
 /// How `cfg` stands to what shows it outside its chat (a Live Activity, an ongoing notification), given its
 /// chat's own runtime: it needs the user while one of its items does, and works while its box holds anything
 /// that isn't over: an item working or waiting, or one whose report its chat hasn't taken yet. Otherwise the
@@ -390,10 +449,7 @@ pub fn outside(hub: &Hub, cfg: &BotConfig, chat: &crate::hub::Runtime) -> (BotSt
     let items = load(&hub.store, &cfg.id);
     let open: Vec<&Item> =
         items.iter().filter(|i| !i.status.ended() || (i.source.is_bot() && i.report.is_some())).collect();
-    let asks = |i: &&Item| {
-        i.status == Status::Working && i.task.as_deref().is_some_and(|t| hub.runtime(t).status == BotStatus::NeedsInput)
-    };
-    let status = if chat.status == BotStatus::NeedsInput || open.iter().copied().any(|i| asks(&i)) {
+    let status = if chat.status == BotStatus::NeedsInput || open.iter().any(|i| asks_user(hub, i)) {
         BotStatus::NeedsInput
     } else if open.is_empty() {
         chat.status
@@ -540,6 +596,25 @@ mod tests {
         item("stopped", json!({"endedAt": 10}));
         hub.set_runtime(&cfg.id, |r| r.status = BotStatus::Idle);
         assert_eq!(stands(), BotStatus::Idle);
+    }
+
+    #[test]
+    fn only_one_task_waiting_on_the_user_lends_its_seat() {
+        let hub = crate::chat::calls::context::tests::hub();
+        let cfg = crate::chat::calls::context::tests::bot("b-seat", "Mika", "/tmp");
+        hub.store.save_bot(&cfg).expect("saved");
+        let item = |id: &str, at: i64| {
+            json!({"id": id, "title": id, "brief": "x", "status": "working", "order": 1, "createdAt": at,
+                "startedAt": at, "task": format!("task-{id}")})
+        };
+        let items = json!([item("a", 1), item("b", 2), item("c", 3)]);
+        hub.store.kv_set(&key(&cfg.id), &items.to_string()).expect("saved");
+        let seats =
+            || -> Vec<Value> { wire(&hub, &cfg).as_array().expect("rows").iter().map(|r| r["seat"].clone()).collect() };
+        assert_eq!(seats(), [true, true, true]);
+        hub.set_runtime("task-a", |r| r.status = BotStatus::NeedsInput);
+        hub.set_runtime("task-b", |r| r.status = BotStatus::NeedsInput);
+        assert_eq!(seats(), [false, true, true], "one seat is lent, as the dispatcher counts it");
     }
 
     #[test]

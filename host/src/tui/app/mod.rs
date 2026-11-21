@@ -158,7 +158,7 @@ pub struct App {
     /// Agents whose model list came with Fast mode.
     pub fast_mode: HashSet<String>,
     /// The modes each agent's model list came with.
-    pub modes: HashMap<String, Vec<crate::agent::modes::Mode>>,
+    pub modes: HashMap<String, Vec<codync_agent::modes::Mode>>,
     /// A setup terminal holding the screen.
     pub shell: Option<Shell>,
     /// Chats marked read since their bot's unread count last changed.
@@ -261,6 +261,14 @@ impl App {
 
     pub fn call(&self, method: &'static str, body: Value, after: After) {
         self.client.spawn_call(method, body, after, self.tx.clone());
+    }
+
+    /// `send` `body`, with `files` uploaded first when there are any.
+    pub(in crate::tui) fn send_message(&self, body: Value, files: Vec<std::path::PathBuf>, after: After) {
+        if files.is_empty() {
+            return self.call("send", body, after);
+        }
+        self.client.spawn_send_files(body, files, after, self.tx.clone());
     }
 
     // ---------- derived ----------

@@ -18,6 +18,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -195,6 +196,13 @@ class WorkWordsTest {
         assertEquals("approval", pendingCard(entries + holding("kimi", "Kimi Code", listOf("m9")) + card("approval", item = asking.id), asking)?.id)
         assertTrue(choice("c").data.let { !Entry("x", 1, "b", 1, "agent", data = it).fromTask })
         assertTrue(card("t", task = "task-1").fromTask)
+        // Own words answer the chat's card unless only an option does (an agent's own question).
+        fun decision(ownWords: Boolean?) = Entry("d", 1, "b", 1, "notice", data = buildJsonObject {
+            put("decision", true); ownWords?.let { put("ownWords", it) }
+        })
+        assertTrue(decision(null).takesOwnWords)
+        assertFalse(decision(false).takesOwnWords)
+        assertFalse(card("t", task = "task-1").takesOwnWords)
     }
 
     @Test fun `a needs-you row says what its card asks`() {

@@ -8,10 +8,13 @@ import './library.css'
 
 /**
  * An artifact in a frame of its own origin (`main/artifacts.ts`): the whole artifact, or for a card its top, scaled down and
- * out of reach of the pointer.
+ * out of reach of the pointer. A card mounts its frame only while it is on screen: off screen, its cross-process surface
+ * under the frosted chrome made the compositor drop the blur layers for single frames (#505).
  */
 export function ArtifactFrame({ id, html, title, preview = false }: { id: string; html: ArtifactHTML; title: string; preview?: boolean }) {
   const [shown, setShown] = useState<number | null>(null)
+  const [onScreen, setOnScreen] = useState(!preview)
+  const slot = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let live = true
     void window.codync.artifacts.show(id, html.bytes).then(() => live && setShown(html.updatedAt), console.error)
@@ -19,8 +22,13 @@ export function ArtifactFrame({ id, html, title, preview = false }: { id: string
       live = false
     }
   }, [id, html])
-  if (shown === null) return null
-  return (
+  useEffect(() => {
+    if (!preview) return
+    const seen = new IntersectionObserver(([entry]) => setOnScreen(entry!.isIntersecting), { rootMargin: '200px 0px' })
+    seen.observe(slot.current!)
+    return () => seen.disconnect()
+  }, [preview])
+  const frame = shown === null || !onScreen ? null : (
     <iframe
       className={preview ? 'artifact-frame preview' : 'artifact-frame'}
       src={artifactFrameURL(id, shown, preview)}
@@ -32,6 +40,7 @@ export function ArtifactFrame({ id, html, title, preview = false }: { id: string
       loading="lazy"
     />
   )
+  return preview ? <div className="artifact-frame-slot" ref={slot}>{frame}</div> : frame
 }
 
 /** A title being edited in place: Return keeps it, Escape leaves it as it was. */

@@ -42,6 +42,11 @@
   border: none;
   background: white;
 }
+/* The card's frame slot: keeps the frame's place while it is unmounted off screen (#505). */
+.artifact-frame-slot {
+  position: absolute;
+  inset: 0;
+}
 .artifact-frame.preview {
   position: relative;
   background: none;

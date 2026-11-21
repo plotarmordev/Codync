@@ -343,7 +343,8 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::app::{Msg, test_app};
+    use super::super::super::app::{Msg, next_request, recording_host, test_app};
+    use super::super::super::net::Client;
     use super::super::work::tests::{bot_with, key};
     use super::*;
 
@@ -459,6 +460,31 @@ mod tests {
         app.on_paste(&path);
         assert_eq!(sheet(&app).draft.text, path);
         let _ = std::fs::remove_file(file);
+    }
+
+    #[tokio::test]
+    async fn a_file_sent_to_a_thread_is_uploaded_to_that_thread() {
+        let (base, mut requests) = recording_host().await;
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(Client::new(&base, Some("token")), tx, String::new());
+        let work = json!([{"id": "i", "title": "Fix login", "status": "working", "task": "task-1", "talk": true,
+            "talkFiles": true}]);
+        app.on_msg(Msg::Event(json!({"type": "bot", "bot": {"id": "a", "name": "A", "work": work}})));
+        let own = app.bots["a"].work[0].clone();
+        app.open_task("a", &own);
+        key(&mut app, 'i');
+        let file = std::env::temp_dir().join(format!("codync-thread-{}.png", uuid::Uuid::new_v4()));
+        std::fs::write(&file, b"png").expect("written");
+        app.on_paste(&file.display().to_string());
+        app.on_key(KeyEvent::from(KeyCode::Enter));
+        let upload = loop {
+            let request = next_request(&mut requests).await;
+            if request.starts_with("POST /api/upload") {
+                break request;
+            }
+        };
+        let _ = std::fs::remove_file(&file);
+        assert!(upload.contains(r#""botId":"a""#) && upload.contains(r#""itemId":"i""#), "{upload}");
     }
 
     #[tokio::test]

@@ -35,6 +35,8 @@ impl App {
             Field::LoginProfile => self.login_profiles(&f.backend).is_some(),
             Field::MaxAgents => f.max_agents.is_some(),
             Field::TaskWorktrees => f.task_worktrees.is_some(),
+            Field::Advisor => f.advisor,
+            Field::TaskAgent | Field::TaskFallbacks => f.task_agent.is_some(),
             _ => true,
         }
     }

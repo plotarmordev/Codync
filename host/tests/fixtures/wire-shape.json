@@ -75,6 +75,8 @@
     "event:bot.bot.skills": "array",
     "event:bot.bot.startedAt": "null",
     "event:bot.bot.status": "string",
+    "event:bot.bot.taskAgent": "null",
+    "event:bot.bot.taskFallbacks": "array",
     "event:bot.bot.taskWorktrees": "bool",
     "event:bot.bot.unread": "number",
     "event:bot.bot.waiting": "number",

@@ -9,15 +9,18 @@ pub const BRIEF: &str = "You do long work in the background, not in this chat: t
 reach you while a turn runs. Before work that needs more than a few tool calls (reading several files, changing code, \
 running builds or tests, research, writing a document), call add_work(title, brief) first, then say in a sentence that \
 it is under way and end your turn. One of your tasks (you again, in a session of its own) does it, away from this chat; its report comes back to you \
-as a message, and you tell the user what it found. Add one item per piece of work: they wait their turn, and how many run at once is \
+as a message, and you tell the user what it found. Add one item per piece of work: they wait their turn in your box, and how many run at once is \
 the user's setting. For more of the same work, add an item with after: the id of the one it continues. steer_work moves \
-an item first, starts it now, replaces its brief or stops it. Only quick answers and work of a few tool calls you do \
-here yourself.";
+an item first, starts it now, replaces its brief or stops it. tell_work passes words on to an item without starting it \
+again: what the user adds about work under way, a fact it needs. recall_work looks back at your work, ended items too, \
+up to 30 days: what one was asked, what it found and its task's steps. Only quick answers and work of a few tool calls \
+you do here yourself.";
 
 /// Said with each message in the bot's own chat: with the instructions alone, a real agent (Claude, 2026-11-15) did
 /// 90 seconds of reading in the chat's turn instead of handing the work on.
 pub const EACH_TURN: &str = "If this needs more than a few tool calls, don't do it in this turn: call add_work first \
-(the chat must stay free for the user), then say briefly that it is under way.";
+(the chat must stay free for the user), then say briefly that it is under way. What is about work under way, \
+tell_work passes on.";
 
 /// What a message in a bot's own chat says of its box, if anything. `briefed`: the session's instructions hold
 /// [`BRIEF`]; `known`: the agent is a harness Codync knows. A known harness hears [`EACH_TURN`] with every message; a
@@ -35,10 +38,7 @@ pub(super) fn item_prompt(item: &Item, first: bool) -> String {
     } else {
         "[Task] Next, in this same session, with what you did before in mind"
     };
-    let mut said = item.words.as_deref().map(|w| format!("\n\n[The user's own words: «{w}»]")).unwrap_or_default();
-    for note in &item.notes {
-        let _ = write!(said, "\n\n[The user said since: «{note}»]");
-    }
+    let mut said = said(item);
     if item.cut_in {
         said.push_str(
             "\n\n[Codync: this work was begun before in another session and set aside. See what is already done \
@@ -47,13 +47,39 @@ pub(super) fn item_prompt(item: &Item, first: bool) -> String {
     }
     format!(
         "{lead}: \"{}\".\n\n{}{said}\n\n\
-         [Codync: work until it's done. Your last message is the report the chat gets, so end with what you did and \
-         found. Messages you send with send_message show in the task's details, not in the chat. Approvals reach the \
-         user in the chat, and so does what the user must see or decide before you can go on: request_decision \
-         asks them there, send_file and publish_artifact share there. You can't add more work, set a follow-up or \
-         message another bot from here: say in your report what you need.]",
+         [Codync: work until it's done. Don't end your turn while something you started in the background still \
+         runs: wait for it and report its result. Your last message is the report the chat gets, so end with what \
+         you did and found. Messages you send with send_message show in this task, not in the chat. Approvals \
+         reach the user in the chat, and so does what the user must see or decide before you can go on: \
+         request_decision asks them there, send_file and publish_artifact share there. You can't add more work, set \
+         a follow-up or message another bot from here: say in your report what you need.]",
         item.title, item.brief
     )
+}
+
+/// The prompt of the turn the watchdog starts in the bot's chat for `item`, which looks stuck (`evidence`: what
+/// shows it).
+pub(super) fn stuck(item: &Item, evidence: &str) -> String {
+    format!(
+        "[Codync watchdog] Work \"{}\" ({}) looks stuck: {evidence}. Look at it (work_status, recall_work) and do one \
+         thing: tell_work it what to change, steer_work it (stop, or replace it with a better brief), or, if it is \
+         fine, reply exactly (pass). This is Codync checking on your work, not the user speaking: if you act, tell \
+         the user in a sentence what you did.",
+        item.title, item.id
+    )
+}
+
+/// What was said about `item`, each on its own paragraph: the user's own words that led to it, what they said since,
+/// and what the bot's chat passed on (`tell_work`), which is never theirs.
+fn said(item: &Item) -> String {
+    let mut said = item.words.as_deref().map(|w| format!("\n\n[The user's own words: «{w}»]")).unwrap_or_default();
+    for note in &item.notes {
+        let _ = write!(said, "\n\n[The user said since: «{note}»]");
+    }
+    for passed in &item.relayed {
+        let _ = write!(said, "\n\n[Your chat passed on: «{passed}»]");
+    }
+    said
 }
 
 /// How many of the user's messages to a thread its report carries, the newest, and how much of each.
@@ -65,6 +91,15 @@ const TOLD_LONGEST: usize = 280;
 const IN_THREAD: &str = "the user wrote this to you directly, in this work's thread, which they read. Your last \
 message of this turn is again the report the chat gets.";
 
+/// Said after what the bot's chat passes on to a task (`tell_work`), so the task knows it isn't the user there.
+const RELAYED: &str = "your chat passed this on to you while you work on this item (it may carry what the user said \
+there). Take it into account and go on; your last message of this turn is again the report the chat gets.";
+
+/// What the bot's chat passed on to its working item (`text`), as the task hears it.
+pub fn relayed(text: &str) -> String {
+    format!("{text}\n\n[Codync: {RELAYED}]")
+}
+
 /// What the user wrote to a task's thread (`text`), as the task hears it: after the work itself (`picked_up`) where
 /// its session doesn't hold it, and saying who wrote it and where.
 pub fn in_thread(text: &str, picked_up: Option<String>) -> String {
@@ -75,13 +110,10 @@ pub fn in_thread(text: &str, picked_up: Option<String>) -> String {
 /// What a new session is told before the user's message to `item`'s thread, when the session that did the work
 /// can't be picked up: the work, what the user said about it, and what it reported.
 pub(super) fn picked_up(item: &Item) -> String {
-    let mut said = item.words.as_deref().map(|w| format!("\n\n[The user's own words: «{w}»]")).unwrap_or_default();
-    for note in &item.notes {
-        let _ = write!(said, "\n\n[The user said since: «{note}»]");
-    }
+    let said = said(item);
     let reported = item.said.as_deref().map_or_else(
         || "[Codync: it ended without a report.]".to_owned(),
-        |text| format!("[Codync: what you reported when it ended:]\n{}", crate::agent::acp::truncate(text, 2_000)),
+        |text| format!("[Codync: what you reported when it ended:]\n{}", codync_agent::acp::truncate(text, 2_000)),
     );
     format!(
         "[Task] You are the same bot, away from the chat. You worked on \"{}\" before, in a session that can't be \
@@ -96,7 +128,7 @@ pub(super) fn picked_up(item: &Item) -> String {
 fn told_line(told: &[String]) -> Option<String> {
     let shown = &told[told.len().saturating_sub(TOLD_IN_REPORT)..];
     let words: Vec<String> =
-        shown.iter().map(|w| format!("«{}»", crate::agent::acp::truncate(w, TOLD_LONGEST))).collect();
+        shown.iter().map(|w| format!("«{}»", codync_agent::acp::truncate(w, TOLD_LONGEST))).collect();
     let earlier = match told.len() - shown.len() {
         0 => String::new(),
         n => format!(" (and {n} earlier)"),
@@ -148,6 +180,13 @@ pub fn report_notice(report: &Report) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn what_the_chat_passes_on_says_it_is_not_the_user_there() {
+        let text = relayed("Also run the API tests.");
+        assert!(text.starts_with("Also run the API tests.\n\n[Codync: your chat passed this on"), "{text}");
+        assert!(text.ends_with("the report the chat gets.]"));
+    }
 
     #[test]
     fn a_report_turn_reads_each_item_and_says_who_speaks() {
@@ -210,6 +249,7 @@ mod tests {
         let mut item: Item = serde_json::from_value(json!({
             "id": "i1", "title": "Fix login", "brief": "The redirect drops the path.", "status": "working",
             "order": 1, "createdAt": 0, "words": "fix the login thing", "notes": ["and keep the query"],
+            "relayed": ["the API page too"],
         }))
         .expect("an item");
         let prompt = item_prompt(&item, true);
@@ -218,8 +258,10 @@ mod tests {
         );
         assert!(prompt.contains(
             "The redirect drops the path.\n\n[The user's own words: «fix the login thing»]\n\n\
-             [The user said since: «and keep the query»]\n\n[Codync: work until"
+             [The user said since: «and keep the query»]\n\n[Your chat passed on: «the API page too»]\n\n\
+             [Codync: work until"
         ));
+        assert!(prompt.contains("Don't end your turn while something you started in the background still runs"));
         item.cut_in = true;
         assert!(item_prompt(&item, true).contains("set aside"));
         assert!(item_prompt(&item, false).starts_with("[Task] Next, in this same session"));

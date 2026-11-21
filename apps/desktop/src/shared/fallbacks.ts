@@ -105,6 +105,23 @@ export function moveFallback(list: Fallback[], index: number, by: number): Fallb
   return next
 }
 
+/** Advisor mode on: its threads start on the bot's own agent, model and fallbacks, for the user to change (on a custom
+ * command, which the threads' picker doesn't offer, on the first agent that is installed); off: none. */
+export function withAdvisor(d: BotDraft, on: boolean, backends: Backend[]): BotDraft {
+  if (!on) return { ...d, taskAgent: null, taskFallbacks: [] }
+  if (d.backend !== 'custom') {
+    const own = { backend: d.backend, loginProfile: d.loginProfile ?? null, model: d.model ?? null, modelOptions: d.modelOptions ?? {} }
+    return { ...d, taskAgent: own, taskFallbacks: d.fallbacks ?? [] }
+  }
+  const first = backends.find((b) => b.available) ?? backends[0]
+  return first ? { ...d, taskAgent: stepOn(first, []), taskFallbacks: [] } : d
+}
+
+/** Its threads on agent `backend`, on the computer's own login: a threads' fallback on that login goes, as `withBackend`. */
+export const withTaskBackend = (d: BotDraft, backend: string): BotDraft => d.taskAgent?.backend === backend ? d : ({
+  ...d, taskAgent: { backend, loginProfile: null, model: null, modelOptions: {} }, taskFallbacks: d.taskFallbacks?.filter((f) => !sameLogin(f, { backend })),
+})
+
 /** The bot on agent `backend`, on the computer's own login: a fallback on that login goes (a login is in the chain once, as the host keeps it). */
 export const withBackend = (d: BotDraft, backend: string): BotDraft => d.backend === backend ? d : ({
   ...d, backend, loginProfile: null, model: null, modelOptions: {}, fallbacks: d.fallbacks?.filter((f) => !sameLogin(f, { backend })),

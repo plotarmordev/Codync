@@ -19,6 +19,7 @@
 mod background_work;
 mod cmd;
 mod codex_names;
+mod codex_section;
 mod commands;
 mod compaction;
 mod decisions;
@@ -48,14 +49,14 @@ use inflight::Inflight;
 pub(crate) use inflight::resumable;
 pub(crate) use launch::{launch_commands, select_model, start_agent, start_first, system_prompt};
 
-use crate::agent::acp::{self, Acp, Incoming};
-use crate::agent::config::FastModeSupport;
 use crate::chat::context::{Identity, Snapshot};
 use crate::chat::group::GroupTurn;
 use crate::chat::memory;
 use crate::hub::{BotStatus, Hub};
 use crate::store::{BotConfig, Entry, EntryKind, Lane};
 use anyhow::{Result, anyhow};
+use codync_agent::acp::{self, Acp, Incoming};
+use codync_agent::config::FastModeSupport;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -107,6 +108,7 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         routine_timed_out: false,
         routine_completion: None,
         session_fresh: false,
+        unfiled: codex_section::Unfiled::default(),
         profile_resend: HashSet::new(),
         compacting: None,
         raw_prompt: false,
@@ -138,6 +140,7 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         sent: Vec::new(),
         reacted: Reacted::No,
         joined: false,
+        unheard: Vec::new(),
         files: files::FileShares::default(),
         perms: HashMap::new(),
         asked: HashMap::new(),
@@ -232,7 +235,7 @@ pub(crate) struct Conn {
     /// Each live session's Fast mode option, as the agent last listed it.
     fast_options: HashMap<String, Value>,
     /// Each live session's modes, as the agent last listed them, and the sessions already switched to the bot's.
-    modes: HashMap<String, crate::agent::modes::Modes>,
+    modes: HashMap<String, codync_agent::modes::Modes>,
     mode_set: HashSet<String>,
     /// The agent reports compactions (`compaction_update`); until it does, a fall in usage stands in for them.
     reports_compaction: bool,
@@ -243,6 +246,8 @@ pub(crate) struct Conn {
     renamed: HashMap<String, codex_names::Renamed>,
     /// The login profile the process runs on, which isn't removed meanwhile.
     on_profile: Option<crate::agent::login_profiles::Running>,
+    /// The `CODEX_HOME` the process started with, when it isn't Codex's own default.
+    codex_home: Option<String>,
 }
 
 impl Conn {
@@ -308,6 +313,8 @@ struct Actor {
     routine_completion: Option<RoutineCompletion>,
     /// True until the first prompt of a new ACP session has been sent.
     session_fresh: bool,
+    /// The new Codex sessions that aren't in Codex's Codync section yet.
+    unfiled: codex_section::Unfiled,
     /// Sessions that compacted away the `<bot-profile>` their first message carried; their next prompt carries
     /// a fresh one.
     profile_resend: HashSet<String>,
@@ -367,6 +374,11 @@ struct Actor {
     // ponytail: the host can't tell which message a send answered, so a closing note after one shows too; a bubble too
     // many beats a reply lost.
     joined: bool,
+    /// Messages that joined this turn (`steer`) with nothing from the agent since: a turn its agent then cancels on its
+    /// own drops them (Codex, on a refused card), so they go out again (`requeue_unheard`).
+    // ponytail: any text or tool call counts as the agent's word on them, so a card from the step already under way when
+    // one joined, refused, still drops it; ACP doesn't say which step read the message.
+    unheard: Vec<Queued>,
     files: files::FileShares,
     /// permission entry id -> who waits for the answer
     perms: HashMap<String, updates::Answer>,

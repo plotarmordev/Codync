@@ -113,12 +113,17 @@ public struct WorkItem: Codable, Identifiable, Hashable, Sendable {
     public var worktree: Worktree?
     /// Its thread takes the user's messages (`WorkThread.swift`). False from an older host.
     public var talk: Bool
+    /// Its task takes files with the user's messages too. False from a host before them, where the composer has no +.
+    public var talkFiles: Bool
     /// The folder its task works in on the computer; nil before a task took it, and from an older host.
     public var folder: String?
+    /// It takes one of the bot's seats, as the host says (one waiting on the user gives its seat up); nil from an
+    /// older host, where every live task takes one (`takesSeat`).
+    public var seat: Bool?
 
     public init(id: String, title: String, status: Status, activity: String = "", task: String? = nil, wait: Wait? = nil,
                 cutIn: Bool = false, createdAt: Int64 = 0, startedAt: Int64? = nil, endedAt: Int64? = nil, result: String = "",
-                source: Source? = nil, worktree: Worktree? = nil, talk: Bool = false, folder: String? = nil) {
+                source: Source? = nil, worktree: Worktree? = nil, talk: Bool = false, talkFiles: Bool = false, folder: String? = nil, seat: Bool? = nil) {
         self.id = id
         self.title = title
         self.status = status
@@ -133,7 +138,9 @@ public struct WorkItem: Codable, Identifiable, Hashable, Sendable {
         self.source = source
         self.worktree = worktree
         self.talk = talk
+        self.talkFiles = talkFiles
         self.folder = folder
+        self.seat = seat
     }
 
     /// Lenient, but for what says which item it is and where it stands: one without an id, or with a status this
@@ -154,8 +161,13 @@ public struct WorkItem: Codable, Identifiable, Hashable, Sendable {
         source = try? c.decodeIfPresent(Source.self, forKey: .source)
         worktree = try? c.decodeIfPresent(Worktree.self, forKey: .worktree)
         talk = (try? c.decodeIfPresent(Bool.self, forKey: .talk)) ?? false
+        talkFiles = (try? c.decodeIfPresent(Bool.self, forKey: .talkFiles)) ?? false
         folder = try? c.decodeIfPresent(String.self, forKey: .folder)
+        seat = try? c.decodeIfPresent(Bool.self, forKey: .seat)
     }
+
+    /// It takes one of the bot's seats (`maxAgents`): the host's word, else a live task.
+    public var takesSeat: Bool { seat ?? status.isLive }
 
     /// Try again is offered on an item that failed or was stopped, unless another bot asked for it: that bot has
     /// its answer already. A routine's item runs the routine again.
@@ -272,10 +284,13 @@ public struct WorkSections: Equatable, Sendable {
     /// The one live item: the capsule's Stop is for it.
     public var stoppable: WorkItem? { live.count == 1 ? live[0] : nil }
 
-    /// How many of the bot's places no task has. A host that doesn't say how many it has: three.
+    /// How many of the bot's places are free. A host that doesn't say how many it has: three.
     public func free(maxAgents: Int?) -> Int {
-        max(0, (maxAgents ?? Bot.defaultMaxAgents) - live.count)
+        max(0, (maxAgents ?? Bot.defaultMaxAgents) - inUse)
     }
+
+    /// The seats taken: a task waiting on the user takes none.
+    public var inUse: Int { live.filter(\.takesSeat).count }
 
     /// Every place is taken: an item starts now only when a live one gives way.
     public func isFull(maxAgents: Int?) -> Bool {
@@ -292,9 +307,9 @@ public struct WorkSections: Equatable, Sendable {
         return isFull(maxAgents: maxAgents) && !givingWay.isEmpty && first.wait?.kind != .after && first.wait?.kind != .usage
     }
 
-    /// The Threads heading's `2 / 3`: how many run, of the most allowed.
+    /// The Threads heading's `2 / 3`: the seats taken, of the most allowed.
     public func threadsCount(maxAgents: Int?) -> String {
-        "\(live.count) / \(maxAgents ?? Bot.defaultMaxAgents)"
+        "\(inUse) / \(maxAgents ?? Bot.defaultMaxAgents)"
     }
 
     /// What an item's row offers, the one that shows on the row first.

@@ -423,6 +423,10 @@ public struct BotDraft: Codable, Hashable, Sendable {
     /// Nil where the host has none (an older one), so it isn't sent.
     public var fallbacks: [BotFallback]?
     public var selfFallbacks: Bool?
+    /// Advisor mode's agent for the threads; nil turns it off (sent as null by `BotUpdate`).
+    public var taskAgent: BotFallback?
+    /// Nil where the host has no Advisor mode (an older one), so neither it nor `taskAgent` is sent.
+    public var taskFallbacks: [BotFallback]?
     public var pinned: Bool?
     public var hidden: Bool?
     public var notify: Bool?
@@ -474,6 +478,8 @@ public struct BotDraft: Codable, Hashable, Sendable {
         fastMode = bot.fastMode
         fallbacks = bot.fallbacks
         selfFallbacks = bot.selfFallbacks
+        taskAgent = bot.taskAgent
+        taskFallbacks = bot.taskFallbacks
         pinned = bot.pinned
         hidden = bot.hidden
         notify = bot.notify
@@ -498,7 +504,7 @@ public struct BotDraft: Codable, Hashable, Sendable {
         }
         follow(\.name); follow(\.description); follow(\.avatarColor); follow(\.avatarShape); follow(\.backend)
         follow(\.command); follow(\.loginProfile); follow(\.cwd); follow(\.permission); follow(\.mode); follow(\.model); follow(\.modelOptions)
-        follow(\.fastMode); follow(\.fallbacks); follow(\.selfFallbacks); follow(\.pinned); follow(\.hidden)
+        follow(\.fastMode); follow(\.fallbacks); follow(\.selfFallbacks); follow(\.taskAgent); follow(\.taskFallbacks); follow(\.pinned); follow(\.hidden)
         follow(\.notify); follow(\.connectors); follow(\.skills); follow(\.computer); follow(\.manageTeam)
         follow(\.sharedMemory); follow(\.harnessMemory); follow(\.offeredToNetwork); follow(\.reachableByAssistants)
         follow(\.compaction); follow(\.maxAgents); follow(\.taskWorktrees)

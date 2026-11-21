@@ -18,7 +18,7 @@ use std::sync::Arc;
 pub(super) struct Places {
     /// New tasks the bot may start now, under its ceiling.
     pub free: usize,
-    /// The bot's tasks at work.
+    /// The bot's tasks at work, those waiting on the user included.
     pub running: usize,
     /// The bot's agent is near its usage limit: one task at a time.
     pub near_limit: bool,
@@ -137,6 +137,15 @@ pub(super) fn task_state(hub: &Hub, task: &str, over: Option<&str>) -> TaskState
     }
 }
 
+/// How many new tasks a bot that runs at most `most` tasks may still start. `live`: its tasks that have an item
+/// or are still stopping; `asking`: those of them that wait on the user (a card, a sign-in). One that waits gives its
+/// seat up, so other work goes on meanwhile; the user's answer then takes it back past the ceiling, so every live
+/// task counts toward one more than it.
+fn free_seats(most: u8, live: usize, asking: usize) -> usize {
+    let most = usize::from(most);
+    most.saturating_sub(live.saturating_sub(asking)).min((most + 1).saturating_sub(live))
+}
+
 /// What `cfg`'s waiting items can count on now. `items`: its box.
 pub(super) fn places(hub: &Hub, cfg: &BotConfig, items: &[Item], over: Option<&str>) -> Places {
     // A task told to stop (its item stopped, gave way or was replaced) still works until its turn ends.
@@ -144,18 +153,16 @@ pub(super) fn places(hub: &Hub, cfg: &BotConfig, items: &[Item], over: Option<&s
         .iter()
         .filter(|task| items::of_task(items, &task.id).is_none() && turn_runs(hub, &task.id, over))
         .count();
+    let asking = items.iter().filter(|i| items::asks_user(hub, i)).count();
     let running = items::working(items) + stopping;
+    let free = free_seats(cfg.max_agents, running, asking);
     // A turn the last host process left cut off is resumed by the bot's actor: it runs, though nothing says so yet.
     let coordinator_free = over == Some(cfg.id.as_str())
         || !(turn_runs(hub, &cfg.id, None) || crate::agent::bot::resumable(&hub.store, &cfg.id));
-    // The limit of the agent a new task starts on: past a resting one, its fallback's.
-    let starts_on = crate::agent::fallback::starting(&hub.store, cfg, now_ms());
-    Places {
-        free: usize::from(cfg.max_agents).saturating_sub(running),
-        running,
-        near_limit: crate::usage::near_limit(hub, &starts_on),
-        coordinator_free,
-    }
+    // The limit of the agent a new task starts on (the tasks' own in Advisor mode): past a resting one, its
+    // fallback's.
+    let starts_on = crate::agent::fallback::starting(&hub.store, &crate::agent::fallback::tasks(cfg), now_ms());
+    Places { free, running, near_limit: crate::usage::near_limit(hub, &starts_on), coordinator_free }
 }
 
 /// What a pass decided, done once the box is saved.
@@ -286,7 +293,7 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
             // A routine's run starts as it did in the chat: a new session that knows only its own prompt.
             // ponytail: a task in a worktree starts from a brief, not a fork: a fork is taken in another folder
             // than its session's, which no agent is checked to honor. Fork there once one is (stage 10's spikes).
-            let forks = sources::from_chat(&item.source) && item.place == Place::Folder;
+            let forks = sources::from_chat(&item.source) && item.place == Place::Folder && tasks_fork(cfg);
             item.fork_from = forks.then(|| fork_source(hub, &cfg.id)).flatten();
             item.task = Some(task.id.clone());
             {
@@ -353,8 +360,17 @@ fn task_bot(cfg: &BotConfig) -> BotConfig {
         manage_team: false,
         // As its bot's, wherever the task works (a worktree isn't the bot's own folder).
         shared_memory: Some(crate::chat::memory::shared(cfg)),
-        ..cfg.clone()
+        // A task runs no tasks of its own.
+        task_agent: None,
+        task_fallbacks: Vec::new(),
+        ..crate::agent::fallback::tasks(cfg)
     }
+}
+
+/// Whether `cfg`'s tasks run on the chat's own agent and login, so a task may start as a fork of the chat's
+/// session (its model may differ: a forked session takes the task's model like a new one).
+fn tasks_fork(cfg: &BotConfig) -> bool {
+    crate::agent::fallback::login::of(&crate::agent::fallback::tasks(cfg)) == crate::agent::fallback::login::of(cfg)
 }
 
 /// `bot`'s main session, when a task may start as a fork of it: the bot is on its own agent, and the session has
@@ -425,6 +441,31 @@ mod tests {
     }
 
     #[test]
+    fn a_task_waiting_on_the_user_gives_its_seat_up_but_one_past_the_ceiling_is_the_most() {
+        assert_eq!(free_seats(3, 3, 0), 0, "every seat taken");
+        assert_eq!(free_seats(3, 3, 1), 1, "one waits on the user: its seat is free");
+        assert_eq!(free_seats(3, 4, 1), 0, "the one that took it: four live tasks, one past the ceiling");
+        assert_eq!(free_seats(3, 4, 2), 0, "never two past it, however many wait");
+        assert_eq!(free_seats(1, 1, 1), 1);
+        assert_eq!(free_seats(2, 4, 0), 0, "the ceiling was lowered: nothing new starts");
+    }
+
+    #[test]
+    fn a_task_forks_the_chats_session_only_on_the_chats_own_agent_and_login() {
+        use crate::store::Fallback;
+        let base: BotConfig =
+            serde_json::from_value(json!({"id": "b", "name": "B", "backend": "claude", "model": "opus"}))
+                .expect("a bot");
+        assert!(tasks_fork(&base), "off: the chat's own agent");
+        let on = |backend: &str| BotConfig {
+            task_agent: Some(Fallback { backend: backend.into(), model: Some("m".into()), ..Fallback::default() }),
+            ..base.clone()
+        };
+        assert!(!tasks_fork(&on("codex")), "another agent can't take the chat's session");
+        assert!(tasks_fork(&on("claude")), "only the model differs: a fork takes the task's model");
+    }
+
+    #[test]
     fn a_new_task_waits_for_the_bots_own_turn_to_end() {
         let items = [item("a", Status::Waiting, 1)];
         let busy = Places { coordinator_free: false, ..places(3, 0) };
@@ -437,6 +478,9 @@ mod tests {
         let near = Places { near_limit: true, ..places(3, 0) };
         let standings = stand(&items, near, TaskState::Gone);
         assert_eq!(of(&standings), [("a", &Standing::Start), ("b", &Standing::Wait(Wait::Usage))]);
+        // A task waiting on the user lends its seat, but still runs.
+        let asking = Places { near_limit: true, ..places(1, 1) };
+        assert_eq!(stand(&items, asking, TaskState::Gone)[0].1, Standing::Wait(Wait::Usage));
     }
 
     #[test]
@@ -515,6 +559,17 @@ mod tests {
         let p = super::places(&hub, &cfg, &replaced, None);
         assert_eq!((p.free, p.running), (0, 1), "the replacement waits for it");
         assert_eq!(super::places(&hub, &cfg, &replaced, Some("task-1")).free, 1, "its turn is over");
+    }
+
+    #[test]
+    fn a_task_waiting_on_the_user_lends_its_seat_and_still_runs() {
+        let hub = hub();
+        let cfg = BotConfig { max_agents: 1, ..bot("b1", "Mika", "/tmp") };
+        hub.store.save_bot(&cfg).expect("saved");
+        hub.set_runtime("task-1", |rt| rt.status = BotStatus::NeedsInput);
+        let asking = [on("task-1", item("a", Status::Working, 0)), item("b", Status::Waiting, 1)];
+        let p = super::places(&hub, &cfg, &asking, None);
+        assert_eq!((p.free, p.running), (1, 1), "the next may start; near the usage limit it waits");
     }
 
     #[test]

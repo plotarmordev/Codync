@@ -197,6 +197,12 @@ pub enum Field {
     Fast,
     Fallbacks,
     SelfFallbacks,
+    /// Advisor mode: the bot's threads run on an agent of their own; only on a host that has it.
+    Advisor,
+    /// In Advisor mode, the agent its threads run on.
+    TaskAgent,
+    /// In Advisor mode, the threads' fallbacks.
+    TaskFallbacks,
     Folder,
     /// The most agents it runs at once; only on a host that sends `maxAgents`.
     MaxAgents,
@@ -215,7 +221,7 @@ pub enum Field {
     Skills,
 }
 
-pub const FIELDS: [Field; 23] = [
+pub const FIELDS: [Field; 26] = [
     Field::Name,
     Field::Instructions,
     Field::Agent,
@@ -225,6 +231,9 @@ pub const FIELDS: [Field; 23] = [
     Field::Fast,
     Field::Fallbacks,
     Field::SelfFallbacks,
+    Field::Advisor,
+    Field::TaskAgent,
+    Field::TaskFallbacks,
     Field::Compaction,
     Field::Folder,
     Field::MaxAgents,
@@ -262,12 +271,17 @@ pub struct Form {
     /// Agents that carry on, in order, when the bot's own can't answer.
     pub fallbacks: Vec<crate::store::Fallback>,
     pub self_fallbacks: bool,
+    /// The host has Advisor mode.
+    pub advisor: bool,
+    /// In Advisor mode, the agent the tasks run on; `None`: off.
+    pub task_agent: Option<crate::store::Fallback>,
+    pub task_fallbacks: Vec<crate::store::Fallback>,
     pub cwd: String,
     /// The most agents it runs at once; `None`: the host has no event box.
     pub max_agents: Option<u8>,
     /// A worktree per agent; `None`: the host has no worktrees, or the bot's folder is in no git repository.
     pub task_worktrees: Option<bool>,
-    /// Approvals: Codync approves what still asks, and the agent mode (`agent::modes`).
+    /// Approvals: Codync approves what still asks, and the agent mode (`codync_agent::modes`).
     pub auto: bool,
     pub mode: Option<String>,
     pub notify: bool,

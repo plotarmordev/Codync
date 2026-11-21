@@ -77,6 +77,9 @@ class ConversationTest {
         assertFalse("replyTo" in send.copy(replyTo = null).body())
         assertFalse("pasted" in send.body())
         assertEquals(buildJsonArray { add("Shared") }, send.copy(pasted = listOf("Shared")).body()["pasted"])
+        // A message to a thread names its item, with its files (the thread's sends carry no quote).
+        assertEquals(buildJsonObject { put("botId", "b"); put("itemId", "i"); put("text", "Ship it"); put("clientNonce", "n")
+            putJsonArray("attachments") { add("u1") } }, PendingSend("n", "b", "Ship it", 1).body(listOf("u1"), itemId = "i"))
     }
 
     @Test fun `chat shows final replies permissions notices and users without narration`() {

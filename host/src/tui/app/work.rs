@@ -59,6 +59,11 @@ pub struct WorkItem {
     pub folder: Option<String>,
     /// The user may write to its thread: the bot's own work, whose task is still there.
     pub talk: bool,
+    /// Its thread takes files too; a host from before them doesn't say, and the terminal types a dropped path there.
+    pub talk_files: bool,
+    /// It takes one of the bot's seats, as the host says (one waiting on the user gives its seat up); none from an
+    /// older host, where every live task takes one ([`Self::takes_seat`]).
+    pub seat: Option<bool>,
 }
 
 impl WorkItem {
@@ -84,7 +89,14 @@ impl WorkItem {
             branch: v["worktree"]["branch"].as_str().filter(|b| !b.is_empty()).map(str::to_owned),
             folder: v["folder"].as_str().filter(|f| !f.is_empty()).map(str::to_owned),
             talk: v["talk"] == true,
+            talk_files: v["talkFiles"] == true,
+            seat: v["seat"].as_bool(),
         })
+    }
+
+    /// It takes one of the bot's seats (`maxAgents`): the host's word, else a live task.
+    pub fn takes_seat(&self) -> bool {
+        self.seat.unwrap_or_else(|| self.status.live())
     }
 
     /// A bot's `work`; a host from before the box sends none, and the feature doesn't show.
@@ -166,7 +178,7 @@ pub fn can_cut_in(work: &[WorkItem], max_agents: Option<u8>) -> bool {
     let first = work.iter().find(|i| i.status == WorkStatus::Waiting);
     first.is_some_and(|first| !matches!(first.wait, Some(Wait::After | Wait::Usage)))
         && work.iter().any(WorkItem::gives_way)
-        && work.iter().filter(|i| i.status.live()).count() >= places(max_agents)
+        && work.iter().filter(|i| i.takes_seat()).count() >= places(max_agents)
 }
 
 /// The Details page's sections of items, each in the order its rows show.

@@ -160,6 +160,20 @@ private let traditional: @Sendable (String) -> String = { L10n.tr($0, preference
         #expect(sections(item("a", .waiting)).free(maxAgents: nil) == 3)
     }
 
+    @Test func aTaskWaitingOnTheUserGivesItsSeatUpAsTheHostSays() throws {
+        var working = item("a"), asking = item("b", .needsYou)
+        working.seat = true
+        asking.seat = false
+        let work = sections(working, asking, item("c", .waiting))
+        #expect(work.threadsCount(maxAgents: 2) == "1 / 2")
+        #expect(work.free(maxAgents: 2) == 1)
+        #expect(!work.canCutIn(maxAgents: 2), "a seat is free: nothing has to give way")
+        // An older host says nothing: every live task takes one.
+        #expect(sections(item("a"), item("b", .needsYou)).threadsCount(maxAgents: 2) == "2 / 2")
+        let wire = try bot(#","work":[{"id":"b","status":"needsYou","seat":false}]"#)
+        #expect(wire.work.first?.seat == false)
+    }
+
     @Test func everyPlaceIsTakenOnlyWhenAsManyAreLiveAsMayBe() {
         #expect(!sections(item("a", .waiting)).isFull(maxAgents: 1))
         #expect(sections(item("a"), item("b", .needsYou)).isFull(maxAgents: 2))

@@ -10,7 +10,7 @@ use super::buffer::u;
 use super::style::{spin, theme};
 use super::time::clock;
 use super::transcript::Built;
-use crate::chat::decision::Status;
+use crate::chat::decision::{Answers, Status};
 
 /// An answer's label: Codync's own words for the usual kinds, in the app's language; an agent's own option keeps
 /// its name, as on the other apps.
@@ -100,8 +100,8 @@ pub(super) fn decision_card(out: &mut Built, app: &App, e: &Entry, b: &Bot, widt
             out.buttons.push((li, 3, u(inner), Click::Option { entry: e.id.clone(), option: option.clone() }));
         }
     }
-    // The message box below takes the user's own words.
-    if from.is_none() {
+    // The message box below takes the user's own words, unless only an option answers the card.
+    if from.is_none() && Answers::of(&e.data) == Answers::OptionsOrOwnWords {
         card_row(out, vec![Span::styled(format!(" ↓ {}", tr("Something else")), t.dim)], inner);
     }
     card_foot(out, bw);
@@ -350,6 +350,8 @@ mod tests {
         let (own, own_buttons) = card(json!({}));
         let (task, task_buttons) = card(json!({"task": {"id": "task-1", "title": "Fix login"}, "item": "i"}));
         assert!(own.iter().any(|l| l.contains("↓ Something else")), "{own:?}");
+        let (options_only, _) = card(json!({"ownWords": false}));
+        assert!(!options_only.iter().any(|l| l.contains("Something else")), "only an option answers it");
         assert!(!own.iter().any(|l| l.contains("In the background")));
         assert!(task[1].contains("In the background · Fix login"), "{task:?}");
         assert!(task[2].contains("Squash or merge?"), "{task:?}");

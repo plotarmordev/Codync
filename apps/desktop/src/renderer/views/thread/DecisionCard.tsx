@@ -57,7 +57,7 @@ export function DecisionCard({ entry, answering, respond, reply }: {
                 {suggested === i ? <Text size="caption" tone="tertiary">{trNow('Suggested')}</Text> : null}
               </button>
             ))}
-            {d.task ? null : <OwnAnswer disabled={answering !== null} reply={reply} />}
+            {d.task || d.ownWords === false ? null : <OwnAnswer disabled={answering !== null} reply={reply} />}
           </VStack>
         ) : (
           <HStack gap={6}>

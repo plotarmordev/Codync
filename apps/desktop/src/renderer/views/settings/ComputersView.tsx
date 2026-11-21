@@ -437,7 +437,7 @@ function SSHProfileEditor({ profile: initial, isNew }: { profile: SSHProfile; is
       remotePort: Number(remote),
     }
     const found = await bridge.save(p)
-    if (found) return setProblem(found)
+    if (found) return setProblem(tr(found))
     dismiss()
   }
 

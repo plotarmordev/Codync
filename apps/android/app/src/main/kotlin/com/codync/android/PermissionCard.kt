@@ -58,6 +58,11 @@ import kotlinx.serialization.json.jsonPrimitive
 /** One of the bot's tasks put [this] in the chat. */
 internal val Entry.fromTask: Boolean get() = data["task"] is JsonObject
 
+/** A choice card takes the user's own words (iOS `EntryData.takesOwnWords`): not a task's, nor one only an option
+ *  answers (`ownWords: false`, an agent's own question). */
+internal val Entry.takesOwnWords: Boolean
+    get() = !fromTask && (data["ownWords"] as? JsonPrimitive)?.booleanOrNull != false
+
 /** Approval card in Grok Bot's choice-card style: what the agent wants, where it runs, and the answers as rows. */
 @Composable internal fun PermissionCard(entry: Entry, hostName: String, answering: Boolean, respond: (String?) -> Unit) {
     val d = entry.data

@@ -384,6 +384,10 @@ private let traditional: @Sendable (String) -> String = { L10n.tr($0, preference
         // The chat's own card keeps the row for the user's own words.
         #expect(try !data(#"{"decision":true,"question":"Which?"}"#).isFromTask)
         #expect(try !data(#"{"decision":true,"question":"Which?","task":"task-1","item":7}"#).isFromTask)
+        // Own words answer the chat's card unless only an option does (an agent's own question).
+        #expect(try data(#"{"decision":true,"question":"Which?"}"#).takesOwnWords)
+        #expect(try !data(#"{"decision":true,"question":"Which?","ownWords":false}"#).takesOwnWords)
+        #expect(try !data(#"{"decision":true,"question":"Which?","item":"i1"}"#).takesOwnWords)
     }
 
     // MARK: worktrees

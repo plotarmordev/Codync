@@ -15,7 +15,7 @@ use super::Window;
 
 const SAVED_REPORT: &str = "CODYNC_OMP_USAGE_FILE";
 
-pub(super) async fn collect() -> Option<Vec<Window>> {
+pub async fn collect() -> Option<Vec<Window>> {
     match saved_report() {
         Some(path) => read_saved(&path).await,
         None => super::command::windows("omp", &["usage", "--json"], None, Duration::from_secs(30), parse).await,
@@ -23,7 +23,7 @@ pub(super) async fn collect() -> Option<Vec<Window>> {
 }
 
 /// A saved report to read on a host without `omp` installed.
-pub(super) fn report_saved() -> bool {
+pub fn report_saved() -> bool {
     saved_report().is_some_and(|path| path.is_file())
 }
 
@@ -210,7 +210,7 @@ fn title_case(id: &str) -> String {
 /// when a part of the model id (`anthropic/claude-opus-5-5`, split at `/`) is that provider, or starts with it
 /// as a whole word (`claude` of `claude-opus-5-5`, never `google` of `google-gemini-cli`).
 /// `model` unset: every window counts. A provider the report doesn't name has no reading, so none counts.
-pub(super) fn of_model<'a>(windows: &'a [Window], model: Option<&str>) -> Vec<&'a Window> {
+pub fn of_model<'a>(windows: &'a [Window], model: Option<&str>) -> Vec<&'a Window> {
     let Some(model) = model.filter(|model| !model.is_empty()) else { return windows.iter().collect() };
     let parts: Vec<String> = model.split('/').map(str::to_lowercase).collect();
     let is_models = |provider: &str| {

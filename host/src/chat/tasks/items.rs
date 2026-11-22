@@ -264,7 +264,12 @@ fn past_key(bot: &str) -> String {
 pub(super) fn past(store: &Store, bot: &str, now: i64) -> Vec<Item> {
     let all: Vec<Item> =
         store.kv_get(&past_key(bot)).and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default();
-    all.into_iter().filter(|i| i.ended_at.is_some_and(|at| now - at <= PAST_MS)).collect()
+    all.into_iter().filter(|i| i.ended_at.is_some_and(|at| within_past(at, now))).collect()
+}
+
+/// Whether an item that ended `at` can still be recalled `now`.
+pub(super) fn within_past(at: i64, now: i64) -> bool {
+    now - at <= PAST_MS
 }
 
 /// Keeps `old`, ended items leaving `bot`'s box, for `recall_work`, with the past ones still young enough.
@@ -274,7 +279,7 @@ pub(super) fn put_past(store: &Store, bot: &str, old: Vec<Item>, now: i64) -> Re
     }
     let mut all = past(store, bot, now);
     all.extend(old.into_iter().map(|item| Item { report: None, ..item }));
-    all.retain(|i| i.ended_at.is_some_and(|at| now - at <= PAST_MS));
+    all.retain(|i| i.ended_at.is_some_and(|at| within_past(at, now)));
     all.sort_by_key(|i| std::cmp::Reverse(i.ended_at));
     all.truncate(PAST_MOST);
     store.kv_set(&past_key(bot), &serde_json::to_string(&all)?)
@@ -319,9 +324,13 @@ pub(super) fn shown(hub: &Hub, cfg: &BotConfig) -> Vec<Shown> {
     let items = load(&hub.store, &cfg.id);
     let mut waits: HashMap<String, Wait> = HashMap::new();
     if items.iter().any(|i| i.status == Status::Waiting) {
-        let standings = dispatch::standings(&items, &dispatch::places(hub, cfg, &items, None), |task| {
-            dispatch::task_state(hub, task, None)
-        });
+        let places = dispatch::places(hub, cfg, &items, None);
+        let standings = dispatch::standings(
+            &items,
+            &places,
+            |task| dispatch::task_state(hub, task, None),
+            |item| dispatch::held(hub, item),
+        );
         waits.extend(standings.into_iter().map(|(id, standing)| {
             let wait = match standing {
                 Standing::Wait(wait) => wait,

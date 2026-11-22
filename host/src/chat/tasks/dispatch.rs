@@ -41,7 +41,7 @@ pub(super) enum TaskState {
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Wait {
-    /// It starts when a place is free.
+    /// It starts when a place is free, or it can't start yet (`dispatch::held`) and takes no place meanwhile.
     Next,
     /// So many items are ahead of it.
     Behind { ahead: usize },
@@ -86,23 +86,34 @@ fn follows<'a>(items: &'a [Item], item: &Item, task: &impl Fn(&str) -> TaskState
 }
 
 /// Where each waiting item of `items` stands, lowest `order` first. Items that follow a finished one go to its
-/// task first: that task already has its place.
-pub(super) fn standings(items: &[Item], places: &Places, task: impl Fn(&str) -> TaskState) -> Vec<(String, Standing)> {
+/// task first: that task already has its place. A `held` item can't start whatever is free, so it waits without
+/// taking a place the items behind it could use.
+pub(super) fn standings(
+    items: &[Item],
+    places: &Places,
+    task: impl Fn(&str) -> TaskState,
+    held: impl Fn(&Item) -> bool,
+) -> Vec<(String, Standing)> {
     let mut waiting: Vec<&Item> = items.iter().filter(|i| i.status == Status::Waiting).collect();
     waiting.sort_by_key(|i| i.order);
     let (mut free, mut running) = (places.free, places.running);
     let mut taken: Vec<&str> = Vec::new();
     let mut found: Vec<Option<Standing>> = waiting
         .iter()
-        .map(|item| match follows(items, item, &task) {
-            Follows::Nothing => None,
-            Follows::Task(id) if !taken.contains(&id) => {
-                taken.push(id);
-                free = free.saturating_sub(1);
-                running += 1;
-                Some(Standing::Join(id.to_owned()))
+        .map(|item| {
+            if held(item) {
+                return Some(Standing::Wait(Wait::Next));
             }
-            Follows::Task(_) | Follows::Unfinished => Some(Standing::Wait(Wait::After)),
+            match follows(items, item, &task) {
+                Follows::Nothing => None,
+                Follows::Task(id) if !taken.contains(&id) => {
+                    taken.push(id);
+                    free = free.saturating_sub(1);
+                    running += 1;
+                    Some(Standing::Join(id.to_owned()))
+                }
+                Follows::Task(_) | Follows::Unfinished => Some(Standing::Wait(Wait::After)),
+            }
         })
         .collect();
     let mut ahead = 0;
@@ -119,6 +130,11 @@ pub(super) fn standings(items: &[Item], places: &Places, task: impl Fn(&str) -> 
         });
     }
     waiting.iter().zip(found).filter_map(|(item, standing)| Some((item.id.clone(), standing?))).collect()
+}
+
+/// Whether waiting `item` can't start now: its source holds it, or the worktree it had is still being looked over.
+pub(super) fn held(hub: &Hub, item: &Item) -> bool {
+    sources::held(hub, item) || item.worktree.as_ref().is_some_and(|w| w.left == worktree::Left::Settling)
 }
 
 /// Whether a turn of `id` runs. `over`: the actor whose turn is ending as this is asked (its status still says it
@@ -241,7 +257,8 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
     // A run whose routine was paused or deleted while it waited, a request the last host process took with it.
     items.retain(|i| i.status != Status::Waiting || !sources::withdrawn(hub, i));
     let places = places(hub, cfg, items, over);
-    for (id, standing) in standings(items, &places, |task| task_state(hub, task, over)) {
+    let standings = standings(items, &places, |task| task_state(hub, task, over), |item| held(hub, item));
+    for (id, standing) in standings {
         if matches!(standing, Standing::Wait(_)) {
             continue;
         }
@@ -252,13 +269,13 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
         // Another task of the bot works in its folder now: a new one beside it gets a worktree, in a repository.
         let side_by_side = items::working(items) > 0;
         let Some(at) = items.iter().position(|i| i.id == id) else { continue };
-        // Tried again while the worktree it had is looked over: it starts once that is done, which looks again.
-        if items[at].worktree.as_ref().is_some_and(|w| w.left == worktree::Left::Settling) {
-            continue;
-        }
         match sources::begin(hub, &cfg.id, &mut items[at])? {
             Begin::Go => {}
-            Begin::Later => continue,
+            // It became held in this pass (a run of its routine just began): another pass gives its place on.
+            Begin::Later => {
+                plan.again = true;
+                continue;
+            }
             Begin::Gone => {
                 items.remove(at);
                 plan.again = true;
@@ -409,7 +426,7 @@ mod tests {
     }
 
     fn stand(items: &[Item], places: Places, task: TaskState) -> Vec<(String, Standing)> {
-        standings(items, &places, |_| task)
+        standings(items, &places, |_| task, |_| false)
     }
 
     fn of(standings: &[(String, Standing)]) -> Vec<(&str, &Standing)> {
@@ -510,6 +527,17 @@ mod tests {
     }
 
     #[test]
+    fn an_item_that_cant_start_yet_leaves_its_place_to_the_ones_behind_it() {
+        // A routine's next runs wait for the one under way: the bot's ordinary item behind them starts.
+        let items = [item("r1", Status::Waiting, 0), item("r2", Status::Waiting, 1), item("b", Status::Waiting, 2)];
+        let standings = standings(&items, &places(1, 1), |_| TaskState::Gone, |i| i.id.starts_with('r'));
+        assert_eq!(
+            of(&standings),
+            [("r1", &Standing::Wait(Wait::Next)), ("r2", &Standing::Wait(Wait::Next)), ("b", &Standing::Start)]
+        );
+    }
+
+    #[test]
     fn an_idle_task_keeps_its_place_for_the_item_that_follows() {
         // One place: the task of `a` is idle and `c` follows `a`, so the ordinary `b` ahead of it still waits.
         let items = [on("t1", item("a", Status::Done, 0)), item("b", Status::Waiting, 1), after("c", 2, "a")];
@@ -545,6 +573,36 @@ mod tests {
         hub.store.kv_set(&format!("{}b1", items::PREFIX), &json!([waiting]).to_string()).expect("saved");
         run(&hub, "b1", None);
         assert_eq!(items::load(&hub.store, "b1")[0].status, Status::Waiting);
+    }
+
+    #[test]
+    fn a_routines_next_run_gives_its_place_to_the_item_behind_it() {
+        let hub = hub();
+        let cfg = BotConfig { max_agents: 2, ..bot("b1", "Mika", "/tmp") };
+        hub.store.save_bot(&cfg).expect("saved");
+        let routine = json!({"name": "Check", "instruction": "x", "triggers": [{"type": "interval", "seconds": 1800}]});
+        let routine =
+            hub.routines.save(&hub, "b1", &routine).expect("saved")["routine"]["id"].as_str().map(str::to_owned);
+        let routine = routine.expect("its id");
+        let run = |n: usize| {
+            let run = hub.routines.enqueue(&hub.store, "b1", &routine, json!({}), Some(format!("d{n}")), false);
+            let run = run.expect("queued")["run"]["id"].as_str().map(str::to_owned).expect("its id");
+            let source = items::Source::Routine { id: routine.clone(), run };
+            Item { source, order: i64::try_from(n).expect("small"), ..Item::waiting("Check", "", None, None, 0) }
+        };
+        let ordinary = Item { order: 2, ..Item::waiting("Dig", "x", None, None, 0) };
+        let box_ = [run(0), run(1), ordinary];
+        let ids: Vec<String> = box_.iter().map(|i| i.id.clone()).collect();
+        hub.store.kv_set(&format!("{}b1", items::PREFIX), &serde_json::to_string(&box_).expect("json")).expect("saved");
+        let pass = || items::change(&hub, "b1", |items| plan(&hub, &cfg, items, None)).expect("planned");
+        let started = |p: &Plan| p.start.iter().map(|(_, item)| item.id.clone()).collect::<Vec<_>>();
+
+        let first = pass();
+        assert_eq!((started(&first), first.again), (vec![ids[0].clone()], true), "the second run waits for the first");
+        let shown = items::shown(&hub, &cfg);
+        let wait = shown.iter().find(|i| i.item.id == ids[1]).and_then(|i| i.wait);
+        assert_eq!(wait, Some(Wait::Next));
+        assert_eq!(started(&pass()), [ids[2].clone()], "the item behind it takes the free place");
     }
 
     #[test]

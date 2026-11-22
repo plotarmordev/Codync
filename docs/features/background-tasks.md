@@ -73,6 +73,9 @@ item:
 3. **Otherwise it waits**: `wait: next` for the first in line, `behind` with how many are `ahead` for the rest.
    Nothing is refused for being over the ceiling.
 
+An item that can't start now whatever is free (`dispatch::held`: a routine run while a run of its routine is under way
+or the host is stopping, an item whose worktree is still being looked over) takes no place: it reports `wait: next`
+and the items behind it may start first.
 
 **A task waiting on the user gives its seat up** (`dispatch::free_seats`): while its runtime is `needsInput` (an approval,
 a choice, a sign-in) it doesn't count toward `maxAgents`, so the next item can start meanwhile; the user's answer
@@ -141,7 +144,8 @@ bot can say what it is doing and place an `after` without a tool call.
   waits at the front, behind the item that cut in, with `cutIn` set. It starts again later in a new task and session,
   told that the work was begun before. With a place free, cutting in is moving first; so it is for an item that
   wouldn't start in the freed place (it follows unfinished work, or waits for usage), and the clients don't offer
-  Cut in on such a row.
+  Cut in on such a row. A held item (a routine run behind its routine's run, an item whose worktree is being looked
+  over) still shows Cut in, which only moves it to the front.
 - **Replace** (`steer_work replace`): the brief is replaced. A working item's task is closed the same way and the
   item starts again from the new brief, at the front (`cutIn` stays as it was).
 - **Stop** (`stopWork`, `steer_work stop`): the item is `stopped`; a working one's task is stopped. Without an item,
@@ -390,7 +394,7 @@ A request from another computer under a network rule's `auto` or `ask` holds its
 
 What differs from the bot's own items:
 
-- **Stop** cancels the run (`Stopped by user`, no failure line) or tells the asking bot its request was stopped.
+- **Stop** cancels the run (`Stopped by user`, no failure line) or tells the asking bot its request was stopped (a reply turn of its own).
   **Drop** on a waiting one does the same.
 - **Try again** on a routine's item runs the routine again: a new run (with the failed run's event when it kept
   one, else as `runRoutine` does) and a new item in the old one's place. A request can't be tried again: the bot
@@ -399,7 +403,8 @@ What differs from the bot's own items:
   act twice.
 - **They never start twice.** Cut off by a host restart with a task that can't resume, or lost (the hourly look), a
   run ends `interrupted` at once and its routine's retry rules decide, and a request fails. A request lives in the
-  host process (its notices are marked interrupted at start, as before), so its item leaves the box at host start.
+  host process, so its item leaves the box at host start; one that hadn't started comes back as a new item, sent
+  again from its notices, and one that had fails and wakes its sender ([bot collaboration](bot-collaboration.md#stops-failures-and-restart)).
 - A run whose routine was paused or deleted while it waited leaves the box.
 - Stop in the chat no longer cancels a routine's run that waits in the box, nor a request: the box's Stop does.
 

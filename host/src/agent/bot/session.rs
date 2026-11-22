@@ -9,6 +9,7 @@ use crate::chat::{context, memory};
 use crate::store::run_session_key;
 use anyhow::{Context, Result, anyhow, bail};
 use codync_agent::acp::{self, Incoming};
+use codync_agent::events::{Event, Update};
 use codync_agent::registry::Candidate;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -167,7 +168,7 @@ impl Actor {
         // A stale process starts again and resumes its session. One that can't resume keeps its process and session:
         // its next new session gets the new tools.
         if std::mem::take(&mut self.restart_before_turn)
-            && self.conn.as_ref().is_some_and(|c| c.sessions.reopen.is_some())
+            && self.conn.as_ref().is_some_and(|c| c.sessions.reopen().is_some())
             && let Some(c) = self.conn.take()
         {
             c.acp.kill().await;
@@ -183,7 +184,7 @@ impl Actor {
         if self.conn.is_none() {
             self.start_conn(&servers).await?;
         }
-        if self.conn.as_ref().is_some_and(|c| c.adapter == Adapter::Codex) {
+        if self.conn.as_ref().is_some_and(|c| c.adapter() == Adapter::Codex) {
             renamed = codex_names::avoid_clashes(&mut servers, &self.cfg.cwd, self.saved_env("CODEX_HOME")).await;
         }
         let instructions = self.conn.as_ref().map_or(Instructions::FirstMessage, Conn::instructions);
@@ -207,7 +208,7 @@ impl Actor {
                 self.retire(Retired::ServersLost).await;
                 return Box::pin(self.ensure_session(slot)).await;
             }
-            let Some(reopen) = conn.sessions.reopen else {
+            let Some(reopen) = conn.sessions.reopen() else {
                 tracing::info!(bot = %self.cfg.id, "the agent can't resume sessions; starting a fresh one");
                 self.set_session(slot, None);
                 return Box::pin(self.ensure_session(slot)).await;
@@ -220,7 +221,7 @@ impl Actor {
             if instructions == Instructions::SystemPrompt {
                 params["systemPrompt"] = system_prompt(&self.snapshot(&sid).await?.system);
             }
-            let mut res = self.session_request(reopen, params.clone()).await;
+            let mut res = self.session_request(reopen.method(), params.clone()).await;
             if self.conn.is_none() {
                 // The reopen timed out and stopped the agent. A stop that couldn't end everything the agent started
                 // can leave its session busy for a while, so a fresh agent tries once more; a second timeout is the
@@ -229,10 +230,10 @@ impl Actor {
                 log_session_holders(&self.cfg.id, &sid).await;
                 tracing::warn!(bot = %self.cfg.id, session = %sid, "the session didn't reopen; trying once more with a new agent");
                 self.start_conn(&servers).await?;
-                res = self.session_request(reopen, params).await;
+                res = self.session_request(reopen.method(), params).await;
             }
             let Some(conn) = self.conn.as_mut() else { return res.map(drop) };
-            let about_agent = drop_replay(conn).await;
+            let about_agent = drop_replay(conn);
             match res {
                 Ok(res) => {
                     // A resumed session can come back on the agent's last-used model (Cursor
@@ -243,7 +244,7 @@ impl Actor {
                             Err(error) => {
                                 // The agent now holds a session the host doesn't track, and `session/resume` refuses
                                 // one it holds. Stopped, it takes the session again on the next message.
-                                if reopen == "session/resume"
+                                if reopen == acp::Reopen::Resume
                                     && let Some(c) = self.conn.take()
                                 {
                                     c.acp.kill().await;
@@ -271,7 +272,7 @@ impl Actor {
                     return Ok(());
                 }
                 Err(e) => {
-                    tracing::warn!(bot = %self.cfg.id, method = reopen, error = format!("{e:#}"), "couldn't reopen the session; starting fresh");
+                    tracing::warn!(bot = %self.cfg.id, method = reopen.method(), error = format!("{e:#}"), "couldn't reopen the session; starting fresh");
                 }
             }
         }
@@ -363,7 +364,7 @@ impl Actor {
         conn.loaded.insert(sid.clone(), Instant::now());
         conn.renamed.insert(sid.clone(), renamed);
         watch_servers(conn).await;
-        self.unfiled.opened(conn.adapter, &sid);
+        self.unfiled.opened(conn.adapter(), &sid);
         let options = select_model(&conn.acp, res, &sid, &self.cfg).await?;
         self.note_options(&sid, &options, Listing::Session);
         self.set_session(slot, Some(&sid));
@@ -400,7 +401,7 @@ impl Actor {
         let res = self.session_request("session/fork", params).await?;
         // A fork may replay the chat's history, as a reopened session does.
         let about_agent = match self.conn.as_mut() {
-            Some(conn) => drop_replay(conn).await,
+            Some(conn) => drop_replay(conn),
             None => Vec::new(),
         };
         let sid = self.adopt_opened(&res, None, renamed.clone()).await?;
@@ -443,7 +444,7 @@ impl Actor {
         if !std::mem::take(&mut conn.opening) {
             return;
         }
-        if conn.sessions.reopen.is_none() {
+        if conn.sessions.reopen().is_none() {
             // ponytail: that session lasts until the agent next stops; keep the cut-short request's Answer past the
             // time limit and session/close the id it returns, if that ever matters.
             tracing::warn!(bot = %self.cfg.id, "a session request was cut short; the agent can't resume, so it keeps running");
@@ -524,19 +525,14 @@ const SESSION_TIMEOUT: Duration = Duration::from_secs(6);
 /// An agent replays a session's history as `session/update` before it answers a reopen or a fork: drops it, and
 /// refuses the requests in it. What it says about itself meanwhile (its commands) isn't history: returned for
 /// `on_session_wide`.
-async fn drop_replay(conn: &mut Conn) -> Vec<Value> {
+fn drop_replay(conn: &mut Conn) -> Vec<Update> {
     let mut about_agent = Vec::new();
     while let Ok(inc) = conn.rx.try_recv() {
-        match inc {
-            Incoming::Request { id, .. } => {
-                let _ = conn.acp.respond_error(id, -32601, "not supported").await;
-            }
-            Incoming::Notification { method, params }
-                if method == "session/update" && params["update"]["sessionUpdate"] == "available_commands_update" =>
-            {
-                about_agent.push(params);
-            }
-            _ => {}
+        // A request in it is refused as it drops.
+        if let Incoming::Update(update) = inc
+            && matches!(update.event, Event::Commands(_))
+        {
+            about_agent.push(update);
         }
     }
     about_agent

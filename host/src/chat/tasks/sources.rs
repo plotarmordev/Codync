@@ -125,12 +125,18 @@ pub(super) enum Begin {
     Gone,
 }
 
+/// Whether waiting `item` can't start now, whatever places are free: the host is stopping (a routine run stays queued
+/// for the next start), or a run of its routine is under way.
+pub(super) fn held(hub: &Hub, item: &Item) -> bool {
+    matches!(&item.source, Source::Routine { run, .. } if hub.routines.stopping() || hub.routines.waits_its_turn(run))
+}
+
 /// A task is about to take `item`: its source is told, and a routine run gets its prompt and its line in the chat.
 pub(super) fn begin(hub: &Hub, bot: &str, item: &mut Item) -> Result<Begin> {
     match &item.source {
         Source::Bot => {}
         // The host is stopping: the run stays queued for the next start. Or a run of its routine has started.
-        Source::Routine { run, .. } if hub.routines.stopping() || hub.routines.waits_its_turn(run) => {
+        Source::Routine { .. } if held(hub, item) => {
             return Ok(Begin::Later);
         }
         Source::Routine { run, .. } => {

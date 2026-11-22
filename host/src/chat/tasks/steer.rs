@@ -125,7 +125,12 @@ pub fn cut_in(hub: &Arc<Hub>, bot: &str, id: &str, instead_of: Option<&str>) -> 
         // The bot's own turn (it may be the one steering) only delays the start, and so does the closed task's
         // while it stops.
         let places = Places { coordinator_free: true, ..dispatch::places(hub, &cfg, &freed, closed.as_deref()) };
-        let standings = dispatch::standings(&freed, &places, |task| dispatch::task_state(hub, task, None));
+        let standings = dispatch::standings(
+            &freed,
+            &places,
+            |task| dispatch::task_state(hub, task, None),
+            |item| dispatch::held(hub, item),
+        );
         let starts = standings.iter().any(|(item, standing)| item == id && *standing == Standing::Start);
         give_way(hub, items, id, gives_way.as_deref().filter(|_| starts))
     })?;

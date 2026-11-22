@@ -108,7 +108,6 @@ fn scan_layer(hub: &Hub, layer: Option<&str>) -> Result<bool> {
     let mut deferred = false;
     let recorded: HashMap<String, mf::File> =
         hub.store.memory_read(|c| mf::layer(c, layer))?.into_iter().map(|f| (f.name.clone(), f)).collect();
-    let now = crate::store::now_ms();
     let mut present = HashSet::new();
     // MEMORY.md last: a fact moved from it into a new note is then found in the note, not taken as forgotten.
     items.sort_by_key(|(name, _)| name == mf::MAIN);
@@ -119,8 +118,9 @@ fn scan_layer(hub: &Hub, layer: Option<&str>) -> Result<bool> {
         if known.is_some_and(|f| !f.deleted && f.mtime == mtime && f.size == size) {
             continue;
         }
-        // A time in the future isn't waited for: it would outlast the turn that set it.
-        if (0..SETTLE_MS).contains(&(now - mtime)) {
+        // Timed after its metadata, so a file written during the scan counts as fresh, not as from the future. A
+        // time in the future isn't waited for: it would outlast the turn that set it.
+        if (0..SETTLE_MS).contains(&(crate::store::now_ms() - mtime)) {
             deferred = true;
             continue;
         }

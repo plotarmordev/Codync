@@ -47,6 +47,8 @@ pub async fn serve_with(home: &Path, env: &[(&str, &std::ffi::OsStr)]) -> (Child
             .env("CODYNC_DEVICE_CERT_KEY", test_cloud_key())
             // A test host leaves the computer's agent CLIs and the user's logins alone.
             .env("CODYNC_AGENT_CHECKS", "off")
+            // Nor the public agent and MCP registries: a test reaches no internet for them.
+            .env("CODYNC_REGISTRIES", "off")
             // And the computer's credential store: its key goes with `home`, so no test can leave one behind.
             .env("CODYNC_VAULT", "folder")
             .envs(env.iter().copied())

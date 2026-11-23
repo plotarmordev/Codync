@@ -6,6 +6,7 @@
 //! disk, so they're checked before use.
 
 use crate::LockExt;
+use crate::shared_cache::{Document, Shared};
 use crate::shell;
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::Value;
@@ -16,8 +17,11 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 const URL: &str = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
-/// Upstream updates hourly; once a day is plenty for picking agents.
-const REFRESH_EVERY: Duration = Duration::from_hours(24);
+/// Upstream updates hourly; once a day is plenty for picking agents. Shared by every host on the computer.
+const REGISTRY: Document =
+    Document { name: "acp-registry.json", fresh_for: Duration::from_hours(24), retry_after: Duration::from_hours(1) };
+/// How often a host looks whether the shared copy needs a refresh (or another host refreshed it).
+const CHECK_EVERY: Duration = Duration::from_hours(1);
 
 static CACHE: Mutex<Option<Value>> = Mutex::new(None);
 
@@ -30,15 +34,11 @@ pub enum Launch {
     Uvx,
 }
 
-fn cache_file() -> PathBuf {
-    super::setup::get().data_dir.join("registry.json")
-}
-
-/// Registry agents (from memory, else the on-disk copy).
+/// Registry agents (from memory, else the shared on-disk copy).
 pub fn agents() -> Vec<Value> {
     let mut cache = CACHE.locked();
     if cache.is_none() {
-        *cache = std::fs::read_to_string(cache_file()).ok().and_then(|s| serde_json::from_str(&s).ok());
+        *cache = REGISTRY.read(Shared::computer());
     }
     cache.as_ref().and_then(|v| v["agents"].as_array().cloned()).unwrap_or_default()
 }
@@ -55,18 +55,11 @@ pub(crate) fn set_cache(registry: Option<Value>) {
 
 pub async fn refresh_loop() {
     loop {
-        match fetch().await {
-            Ok(v) => {
-                if let Err(error) = tokio::fs::write(cache_file(), v.to_string()).await {
-                    tracing::warn!(%error, "couldn't cache the ACP registry");
-                }
-                *CACHE.locked() = Some(v);
-            }
-            Err(error) => {
-                tracing::info!(error = format!("{error:#}"), "ACP registry refresh failed; using the cached copy");
-            }
+        REGISTRY.refresh(Shared::computer(), fetch).await;
+        if let Some(v) = REGISTRY.read(Shared::computer()) {
+            *CACHE.locked() = Some(v);
         }
-        tokio::time::sleep(REFRESH_EVERY).await;
+        tokio::time::sleep(CHECK_EVERY).await;
     }
 }
 

@@ -1,6 +1,6 @@
 //! The dispatcher: which waiting item a task takes next, which task ends, and why an item still waits.
 
-use super::items::{self, Item, Status};
+use super::items::{self, Item, Source, Status};
 use super::sources::{self, Begin};
 use super::worktree::{self, Place, Worktree};
 use super::{Outcome, finished, of, prompts};
@@ -295,22 +295,28 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
             item.worktree = inherited.or(item.worktree.take());
             plan.join.push((task, item.clone()));
         } else {
-            let task = task_bot(cfg);
+            let task = task_bot(cfg, &item.setup);
             item.start = None;
             item.fork_failed = false;
             // One it has from before (it gave way, or is tried again) is where its work is.
             item.worktree.take_if(|w| !worktree::usable(w));
             // A bot's own folder keeps all its work in one place, with its versions (`agent::versions`).
+            // ponytail: "beside" counts the bot's tasks wherever they work, so a task in a folder of its own may
+            // get a worktree no other task called for. Count by folder if that ever costs something.
             let beside = cfg.task_worktrees
-                && !crate::agent::workspace::is_managed(cfg)
-                && item.source.is_bot()
+                && crate::agent::workspace::own_folder(&task).is_none()
+                && item.source.own()
                 && side_by_side
-                && worktree::in_repo(&cfg.cwd);
+                && worktree::in_repo(&task.cwd);
             item.place = if item.worktree.is_some() || beside { Place::Worktree } else { Place::Folder };
             // A routine's run starts as it did in the chat: a new session that knows only its own prompt.
             // ponytail: a task in a worktree starts from a brief, not a fork: a fork is taken in another folder
             // than its session's, which no agent is checked to honor. Fork there once one is (stage 10's spikes).
-            let forks = sources::from_chat(&item.source) && item.place == Place::Folder && tasks_fork(cfg);
+            // A task its setup puts on another agent or login can't take the chat's session either.
+            let forks = sources::from_chat(&item.source)
+                && item.place == Place::Folder
+                && tasks_fork(cfg)
+                && crate::agent::fallback::login::of(&task) == crate::agent::fallback::login::of(cfg);
             item.fork_from = forks.then(|| fork_source(hub, &cfg.id)).flatten();
             item.task = Some(task.id.clone());
             {
@@ -347,8 +353,13 @@ fn begin(hub: &Arc<Hub>, bot: &str, task: &BotConfig, item: &Item, first: bool) 
             hub.spawn_bot(task.clone());
             sources::watch(hub, bot, &task.id, item);
         }
-        let text = if item.source.is_bot() { prompts::item_prompt(item, first) } else { item.brief.clone() };
-        crate::chat::messages::post(hub, task, json!({"text": text, "from": "host"}))
+        let message = match item.source {
+            Source::Bot => json!({"text": prompts::item_prompt(item, first), "from": "host"}),
+            // The user's own words, as the message that opens their thread (`thread`'s turn says who speaks).
+            Source::User => json!({"text": item.brief, "attachments": []}),
+            Source::Routine { .. } | Source::Request { .. } => json!({"text": item.brief, "from": "host"}),
+        };
+        crate::chat::messages::post(hub, task, message)
     };
     if let Err(error) = posted {
         host_error!(hub, "couldn't hand work to a task", task = %task.id, error = format!("{error:#}"));
@@ -356,8 +367,9 @@ fn begin(hub: &Arc<Hub>, bot: &str, task: &BotConfig, item: &Item, first: bool) 
     }
 }
 
-/// A task bot for `cfg`: its config, without what stays with the chat.
-fn task_bot(cfg: &BotConfig) -> BotConfig {
+/// A task bot for `cfg`: its config (on the tasks' own agent, in Advisor mode) with what its item's `setup`
+/// changes, without what stays with the chat.
+fn task_bot(cfg: &BotConfig, setup: &items::Setup) -> BotConfig {
     BotConfig {
         id: format!("{TASK_PREFIX}{}", uuid::Uuid::new_v4()),
         task_of: Some(cfg.id.clone()),
@@ -380,7 +392,7 @@ fn task_bot(cfg: &BotConfig) -> BotConfig {
         // A task runs no tasks of its own.
         task_agent: None,
         task_fallbacks: Vec::new(),
-        ..crate::agent::fallback::tasks(cfg)
+        ..setup.over(&crate::agent::fallback::tasks(cfg))
     }
 }
 
@@ -587,7 +599,7 @@ mod tests {
         let run = |n: usize| {
             let run = hub.routines.enqueue(&hub.store, "b1", &routine, json!({}), Some(format!("d{n}")), false);
             let run = run.expect("queued")["run"]["id"].as_str().map(str::to_owned).expect("its id");
-            let source = items::Source::Routine { id: routine.clone(), run };
+            let source = Source::Routine { id: routine.clone(), run };
             Item { source, order: i64::try_from(n).expect("small"), ..Item::waiting("Check", "", None, None, 0) }
         };
         let ordinary = Item { order: 2, ..Item::waiting("Dig", "x", None, None, 0) };

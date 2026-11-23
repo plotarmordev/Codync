@@ -12,7 +12,7 @@ public enum SharedStore {
     public static let appGroup = Bundle.main.object(forInfoDictionaryKey: "CodyncAppGroup") as? String
         ?? AppEnvironment.current.appGroup
     /// The APNs push relay (relay/ in this repo).
-    public static let relayURL = "https://codync-relay.kevin2005ha.workers.dev"
+    public static let relayURL = "https://push.codync.dev"
 
     /// The App Group's shared defaults, read by the app, its widgets and its notification extension alike.
     public static var defaults: UserDefaults { UserDefaults(suiteName: appGroup) ?? .standard }
@@ -240,7 +240,7 @@ public extension SharedStore.Context {
     /// Every usage provider this account's computers have reported, plus Claude and Codex so
     /// there's a choice before the first report. Sorted by name.
     var usageProviders: [(id: String, name: String)] {
-        var names = ["claude": "Claude", "codex": "Codex"]
+        var names = ["claude": "Claude Code", "codex": "Codex"]
         for report in usage.values { for provider in report.providers { names[provider.id] = provider.name } }
         return names.map { (id: $0.key, name: $0.value) }.sorted { $0.name < $1.name }
     }

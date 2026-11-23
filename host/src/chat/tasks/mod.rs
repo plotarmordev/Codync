@@ -18,6 +18,7 @@
 
 mod dispatch;
 mod items;
+pub mod plain;
 mod prompts;
 mod recall;
 mod sources;
@@ -31,9 +32,9 @@ mod worktree;
 pub use dispatch::{Wait, dispatch};
 #[cfg(test)]
 pub use items::put_working_for_test;
-pub use items::{Source, Status, doing, lines, outside, wire, working_tasks};
+pub use items::{Setup, Source, Status, doing, lines, outside, waiting_threads, wire, working_tasks};
 pub use prompts::{BRIEF, in_thread, relayed, reminder, report_notice, report_prompt};
-pub use sources::{access_of, add_request, add_routine, boxed, from_chat, routines_changed, source_of};
+pub use sources::{access_of, add_request, add_routine, add_thread, boxed, from_chat, routines_changed, source_of};
 pub use steer::{Steer, cut_in, drop_item, first, retry, stop};
 pub use thread::{Refused as ThreadRefused, heard, message, picked_up, task as thread_task, unhear, written};
 pub use tools::{TOOLS, acting_as, call, refuse_chat_only, refuse_in_task, tools};
@@ -399,7 +400,7 @@ fn end(items: &mut [Item], task: &str, outcome: Outcome) -> Option<Item> {
     let item = items.iter_mut().find(|i| i.status == Status::Working && i.task.as_deref() == Some(task))?;
     let (status, result, failure) = match outcome {
         // Only the bot's own work starts again: a routine run or a request done twice could act twice.
-        Outcome::Failed(Failure::Restart | Failure::Lost, _) if !item.restarted && item.source.is_bot() => {
+        Outcome::Failed(Failure::Restart | Failure::Lost, _) if !item.restarted && item.source.own() => {
             item.set_aside(front);
             item.restarted = true;
             item.cut_in = true;
@@ -408,7 +409,7 @@ fn end(items: &mut [Item], task: &str, outcome: Outcome) -> Option<Item> {
         Outcome::Done(text) => {
             // A report to the bot's own turn carries only so much; a routine run's or a request's result is posted
             // whole, as its message.
-            let most = if item.source.is_bot() { MAX_REPORT } else { usize::MAX };
+            let most = if item.source.own() { MAX_REPORT } else { usize::MAX };
             let text = text.map(|t| codync_agent::acp::truncate(t.trim(), most)).filter(|t| !t.is_empty());
             match text {
                 Some(text) => (Status::Done, Some(Ok(text)), None),
@@ -464,8 +465,8 @@ fn finished_properties(item: &Item, agent: Option<&str>) -> serde_json::Map<Stri
 }
 
 /// Sends what `item` came to where its source reads it: the bot's own work, as a turn in its chat; a routine run,
-/// as the routine's message there; a request, as the asking bot's reply. A report that can't be handed on stays on
-/// its item for the next host start.
+/// as the routine's message there; a request, as the asking bot's reply; a thread the user started, nowhere (they
+/// read it there). A report that can't be handed on stays on its item for the next host start.
 fn deliver(hub: &Hub, bot: &str, item: &Item) {
     if item.source.is_bot() {
         // With where its work is, as its worktree stands now.

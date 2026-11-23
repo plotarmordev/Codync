@@ -396,6 +396,7 @@ internal enum class AnalyticsScreen(override val wire: String) : CatalogValue {
     Routines("routines"), Marketplace("marketplace"), Settings("settings"), Computers("computers"), Usage("usage"),
     Account("account"), Pairing("pairing"), VoiceSettings("voice_settings"), RemoteScreen("remote_screen"),
     Library("library"), Artifact("artifact"), Network("network"), BotComputer("bot_computer"), Task("task"), AllWork("all_work"),
+    Workflows("workflows"), Workflow("workflow"), WorkflowRun("workflowRun"), WorkflowEditor("workflowEditor"),
 }
 
 /** `open_timing`'s milestones, as sent (iOS `OpenPhase`). */

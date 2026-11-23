@@ -78,7 +78,9 @@ impl Actor {
         };
         let (acp, hub, bot) = (conn.acp.clone(), self.hub.clone(), self.cfg.id.clone());
         // What the user wrote to a task's thread says so, as when it starts a turn of its own.
-        let threaded = self.cfg.is_task() && self.hub.store.entry(&entry_id).is_some_and(|e| e.data["from"] != "host");
+        let threaded = self.cfg.is_task()
+            && !self.cfg.plain
+            && self.hub.store.entry(&entry_id).is_some_and(|e| e.data["from"] != "host");
         let text = if threaded { crate::chat::tasks::in_thread(text, None) } else { text.to_owned() };
         // A turn that just ended doesn't take it: it stays queued for the next one.
         let prompt = json!([{"type": "text", "text": text}]);

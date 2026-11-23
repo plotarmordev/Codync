@@ -17,10 +17,11 @@ pub struct Shared {
 }
 
 impl Shared {
-    /// The user's cache folder for Codync (this crate's own tests use their data folder instead).
+    /// The user's cache folder for Codync; with the registries off (and in this crate's own tests) the host's data
+    /// folder instead, so a disposable host neither reads nor stamps the copies the user's own hosts share.
     pub fn computer() -> &'static Self {
         static SHARED: LazyLock<Shared> = LazyLock::new(|| {
-            Shared::at(if cfg!(test) {
+            Shared::at(if cfg!(test) || registries_off() {
                 super::setup::get().data_dir.join("cache")
             } else {
                 dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("codync")
@@ -55,6 +56,12 @@ impl Shared {
     }
 }
 
+/// `CODYNC_REGISTRIES=off`, the tests' disposable hosts: no public registry (ACP agents, MCP servers) is asked for
+/// anything, so a test run never reaches the internet for them.
+pub fn registries_off() -> bool {
+    std::env::var("CODYNC_REGISTRIES").is_ok_and(|value| value == "off")
+}
+
 /// One document in the shared folder.
 pub struct Document {
     pub name: &'static str,
@@ -71,9 +78,9 @@ impl Document {
     }
 
     /// Fetches a new copy when the shared one is stale, no host tried within `retry_after` and no host is fetching it
-    /// now. Answers whether it fetched one.
+    /// now, and the registries aren't off. Answers whether it fetched one.
     pub async fn refresh(&self, shared: &Shared, fetch: impl AsyncFnOnce() -> Result<Value>) -> bool {
-        self.refresh_at(shared, SystemTime::now(), fetch).await
+        !registries_off() && self.refresh_at(shared, SystemTime::now(), fetch).await
     }
 
     async fn refresh_at(&self, shared: &Shared, now: SystemTime, fetch: impl AsyncFnOnce() -> Result<Value>) -> bool {

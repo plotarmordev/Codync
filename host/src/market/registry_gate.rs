@@ -4,7 +4,7 @@
 
 use crate::LockExt;
 use anyhow::{Context, Result, bail};
-use codync_agent::shared_cache::Shared;
+use codync_agent::shared_cache::{Shared, registries_off};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -78,6 +78,9 @@ impl Gate {
 
     /// `fetch(url)` unless the gate answers or refuses it first.
     pub(super) async fn through(&self, url: &str, fetch: impl AsyncFnOnce(&str) -> Result<Value>) -> Result<Value> {
+        if registries_off() {
+            bail!("the MCP Registry is off on this host (CODYNC_REGISTRIES=off)");
+        }
         self.through_at(url, SystemTime::now, fetch).await
     }
 

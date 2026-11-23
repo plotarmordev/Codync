@@ -6,6 +6,7 @@ use anyhow::Result;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::fs::{File, TryLockError};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use std::time::{Duration, SystemTime};
@@ -17,14 +18,12 @@ pub struct Shared {
 }
 
 impl Shared {
-    /// The user's cache folder for Codync (this crate's own tests use their data folder instead).
+    /// The user's cache folder for Codync; without one (and in this crate's own tests), the host's private data folder,
+    /// never a temporary folder other users can write to.
     pub fn computer() -> &'static Self {
         static SHARED: LazyLock<Shared> = LazyLock::new(|| {
-            Shared::at(if cfg!(test) {
-                super::setup::get().data_dir.join("cache")
-            } else {
-                dirs::cache_dir().unwrap_or_else(std::env::temp_dir).join("codync")
-            })
+            let cache = dirs::cache_dir().filter(|_| !cfg!(test));
+            Shared::at(cache.map_or_else(|| super::setup::get().data_dir.join("cache"), |dir| dir.join("codync")))
         });
         &SHARED
     }
@@ -128,12 +127,18 @@ fn age(path: &Path, now: SystemTime) -> Option<Duration> {
 }
 
 /// Written beside `path` and renamed over it, so a reader without the lock sees the old copy or the new one, never
-/// half of one. Callers hold the lock, so the one partial file per name is theirs.
+/// half of one. Callers hold the lock, so the one partial file per name is theirs: one left by a crash is removed, and
+/// the new one is created afresh, so a link put in its place is never followed.
 fn write_at(path: &Path, bytes: &[u8], now: SystemTime) -> std::io::Result<()> {
     let mut partial = path.as_os_str().to_owned();
     partial.push(".partial");
-    std::fs::write(&partial, bytes)?;
-    File::options().write(true).open(&partial)?.set_modified(now)?;
+    match std::fs::remove_file(&partial) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    let mut file = File::options().write(true).create_new(true).open(&partial)?;
+    file.write_all(bytes)?;
+    file.set_modified(now)?;
     std::fs::rename(&partial, path)
 }
 
@@ -231,5 +236,18 @@ mod tests {
             thread.join().unwrap();
         }
         assert_eq!(shared.update("count.json", |n: &mut u32| *n).unwrap(), 400);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_in_place_of_the_partial_file_is_never_written_through() {
+        let shared = empty("link");
+        std::fs::create_dir_all(&shared.dir).unwrap();
+        let target = shared.dir.join("elsewhere");
+        std::fs::write(&target, "kept").unwrap();
+        std::os::unix::fs::symlink(&target, shared.dir.join("count.json.partial")).unwrap();
+        shared.update("count.json", |n: &mut u32| *n += 1).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "kept");
+        assert_eq!(shared.update("count.json", |n: &mut u32| *n).unwrap(), 1);
     }
 }

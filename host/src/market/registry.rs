@@ -194,9 +194,14 @@ pub async fn refresh_first_page() {
 async fn fetch_first_page() -> Result<Value> {
     let lookups = FEATURED.iter().map(|n| registry_server(n));
     let (featured, page) = tokio::join!(futures::future::join_all(lookups), registry_page("", "", 60));
-    let (page, next) = page?;
-    let servers: Vec<Value> = featured.into_iter().filter_map(Result::ok).chain(page).collect();
-    Ok(serde_json::to_value((servers, next))?)
+    Ok(serde_json::to_value(complete_first_page(featured, page?)?)?)
+}
+
+/// Featured servers lead the registry's first page. A failed lookup fails the whole page: a partial one would be shared
+/// for an hour, while failing leaves the shared copy as it was and lets the next host try again in ten minutes.
+fn complete_first_page(featured: Vec<Result<Value>>, (page, next): Page) -> Result<Page> {
+    let featured: Vec<Value> = featured.into_iter().collect::<Result<_>>()?;
+    Ok((featured.into_iter().chain(page).collect(), next))
 }
 
 /// A search, or a later page of the unfiltered list (which skips the featured servers the first page led with).
@@ -253,5 +258,17 @@ mod tests {
         assert_eq!(following("a", Some("a".into())), None);
         assert_eq!(following("a", Some("b".into())), Some("b".into()));
         assert_eq!(following("", None), None);
+    }
+
+    #[test]
+    fn a_first_page_missing_a_featured_server_is_not_kept() {
+        let page = || (vec![json!({"name": "listed"})], Some("next".to_owned()));
+        let found = || Ok(json!({"name": "featured"}));
+        let (servers, next) = complete_first_page(vec![found(), found()], page()).unwrap();
+        assert_eq!(servers.len(), 3);
+        assert_eq!(servers[0]["name"], "featured");
+        assert_eq!(next.as_deref(), Some("next"));
+        let error = complete_first_page(vec![found(), Err(anyhow!("503"))], page()).unwrap_err();
+        assert_eq!(error.to_string(), "503");
     }
 }

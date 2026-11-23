@@ -5,7 +5,7 @@
 # docs/guides/dev-app.md#worktree-sandboxes), so run it apart from `welcome`, whose clearState undoes that; the flow
 # makes its own bots there, the second in PROJECT_DIR, a git repository:
 #   project=$(mktemp -d) && git -C "$project" init -q
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags bot-settings \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags bot-settings \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" \
 #     -e FIXTURE_AGENT="$PWD/host/tests/fixtures/instructions_agent.py" -e PROJECT_DIR="$project" apps/maestro
 appId: com.pokai.Codync.ios.dev

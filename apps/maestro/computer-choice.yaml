@@ -5,7 +5,7 @@
 # whose welcome flow clears that state. It ends with a request on the computer: each computer-choice flow starts from
 # its own fresh setup, in its own run.
 # One flow for iPhone and Android (docs/guides/test-stack.md):
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags computer-choice apps/maestro
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags computer-choice apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:
   - computer-choice

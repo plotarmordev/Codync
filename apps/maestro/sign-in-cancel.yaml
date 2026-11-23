@@ -1,6 +1,6 @@
 # Leaving the provider's sign-in page returns to the welcome screen with no error, as on the iPhone
 # (`AccountSession.isCancellation`). Needs the phone signed out and online for the page:
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags sign-in apps/maestro
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags sign-in apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:
   - sign-in

@@ -9,7 +9,7 @@
 # the background keeps showing its last connection for 5 s, longer than InstaBox takes to resume a machine it just
 # suspended. Run the phones one after another, since the first to open wakes it for both, and apart from `smoke`, whose
 # welcome flow clears the sign-in:
-#   SIMCTL_CHILD_CODYNC_CLOUD_URL=<url> maestro --device <simulator udid> test --include-tags cloud-waking apps/maestro
+#   SIMCTL_CHILD_CODYNC_CLOUD_URL=<url> node tools/maestro.mjs --device <simulator udid> test --include-tags cloud-waking apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:
   - cloud-waking

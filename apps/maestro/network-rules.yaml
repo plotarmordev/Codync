@@ -3,7 +3,7 @@
 # the script sets them on the host. The phone must already be signed in and paired with the host (a worktree's sandbox,
 # docs/guides/dev-app.md#worktree-sandboxes), so run it apart from `welcome`, whose clearState undoes that. Phones in
 # one run share the host and its rules, which the first to complete puts back: run this flow on one phone at a time.
-#   maestro --device "<simulator udid or adb serial>" test --include-tags network \
+#   node tools/maestro.mjs --device "<simulator udid or adb serial>" test --include-tags network \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:

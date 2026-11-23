@@ -1,15 +1,15 @@
 //! Browsing the MCP Registry: featured servers, the shared first page, searches and listings.
 
 use super::install::install_options;
-use super::registry_gate::{Gate, through};
+use super::registry_gate::Gate;
 use super::{Connector, MCP_REGISTRY, SEARCH_TIMEOUT, connectors, get_json, get_json_within};
 use anyhow::{Context, Result, anyhow};
-use codync_agent::shared_cache::Document;
+use codync_agent::shared_cache::{Document, Shared};
 use serde_json::{Value, json};
-use std::sync::Mutex;
+use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
-static GATE: Mutex<Option<Gate>> = Mutex::new(None);
+static GATE: LazyLock<Gate> = LazyLock::new(|| Gate::new(Shared::computer().clone()));
 
 /// Well-known connectors shown before you search, by MCP Registry name.
 /// Names that aren't in the registry (yet) are simply skipped.
@@ -38,7 +38,8 @@ async fn registry_page(search: &str, cursor: &str, limit: usize) -> Result<(Vec<
     if !cursor.is_empty() {
         url.query_pairs_mut().append_pair("cursor", cursor);
     }
-    let v = through(&GATE, url.as_str(), async |url| get_json_within(url, SEARCH_TIMEOUT).await)
+    let v = GATE
+        .through(url.as_str(), async |url| get_json_within(url, SEARCH_TIMEOUT).await)
         .await
         .context("searching the MCP Registry")?;
     let servers =
@@ -50,7 +51,8 @@ async fn registry_page(search: &str, cursor: &str, limit: usize) -> Result<(Vec<
 pub(super) async fn registry_server(name: &str) -> Result<Value> {
     let mut url = reqwest::Url::parse(MCP_REGISTRY)?;
     url.path_segments_mut().map_err(|()| anyhow!("bad registry URL"))?.extend([name, "versions", "latest"]);
-    let v = through(&GATE, url.as_str(), async |url| get_json(url).await)
+    let v = GATE
+        .through(url.as_str(), async |url| get_json(url).await)
         .await
         .with_context(|| format!("{name} isn't in the MCP Registry"))?;
     Ok(v["server"].clone())
@@ -171,20 +173,22 @@ const FIRST_PAGE: Document = Document {
 
 /// Serves the shared first page at once (refreshing it in the background when stale).
 async fn first_page() -> Result<Page> {
-    if let Some(page) = FIRST_PAGE.read().and_then(|v| serde_json::from_value(v).ok()) {
+    let shared = Shared::computer();
+    if let Some(page) = FIRST_PAGE.read(shared).and_then(|v| serde_json::from_value(v).ok()) {
         tokio::spawn(refresh_first_page());
         return Ok(page);
     }
     refresh_first_page().await;
+    // Missing also while another host is still fetching it (the registry can take 45 s).
     FIRST_PAGE
-        .read()
+        .read(shared)
         .and_then(|v| serde_json::from_value(v).ok())
-        .ok_or_else(|| anyhow!("The MCP Registry isn't answering; try again in a few minutes"))
+        .ok_or_else(|| anyhow!("The MCP Registry list isn't here yet; try again in a minute"))
 }
 
 /// Fetches the first page into the shared copy when it's stale; the host runs it at launch so the Marketplace opens warm.
 pub async fn refresh_first_page() {
-    FIRST_PAGE.refresh(fetch_first_page).await;
+    FIRST_PAGE.refresh(Shared::computer(), fetch_first_page).await;
 }
 
 async fn fetch_first_page() -> Result<Value> {

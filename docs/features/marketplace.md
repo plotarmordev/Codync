@@ -11,13 +11,14 @@ Under the open section, one line says where that section comes from: agents from
 | Connected apps | `host/src/market/composio.rs` | Expose connected Composio apps as connectors |
 | Skills | `host/src/market/skills.rs` | Instruction folders containing `SKILL.md`, stored under `~/.codync/skills/<id>`; on for every bot unless a bot turns it off |
 
-Registry traffic is bounded per computer. The ACP registry (`cdn.agentclientprotocol.com`) and the Marketplace's
-first Connectors page are kept as one copy in the computer's cache folder (`codync/`, `host/crates/agent/src/shared_cache.rs`)
-for every host on it, the service, dev builds and test runs alike: the ACP copy is fetched at most once a day and the
-first page once an hour, and after any attempt no host tries again for an hour (ACP) or 10 minutes (first page).
-Every other MCP Registry request (searches, later pages, lookups by name, update checks) goes through one gate in the
-host (`registry_gate.rs`): the same URL is answered from memory for 10 minutes, a failure pauses requests for 30 s
-doubling to 15 min, and a token bucket (30 at once, then one a minute) caps the rest at 90 an hour.
+Registry traffic is bounded for all the hosts a user runs on a computer (the service, dev builds, test runs). The ACP
+registry (`cdn.agentclientprotocol.com`) and the Marketplace's first Connectors page are kept as one copy in the user's
+cache folder (`codync/`, `host/crates/agent/src/shared_cache.rs`): the ACP copy is fetched at most once a day and the
+first page once an hour, by one host at a time, and after any attempt no host tries again for an hour (ACP) or 10
+minutes (first page). Every other MCP Registry request (searches, later pages, lookups by name, update checks) goes
+through `registry_gate.rs`: a host answers the same URL from memory for 10 minutes, and a budget the hosts share in
+that folder caps the rest at 90 an hour (30 at once, then one a minute) and pauses them all for 30 s doubling to 15 min
+while the registry is down. A name the registry doesn't list fails only that request.
 
 Composio Connect is featured in Connectors through the official MCP Registry
 (`io.github.ComposioHQ/composio`, `https://connect.composio.dev/mcp`). Install it

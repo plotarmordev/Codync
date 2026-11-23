@@ -37,9 +37,9 @@ qwen-code 0.26.5.
   then finds it here instead of investigating it again.
 - **One page per agent.** An agent's first row starts its page; add the page to the table above.
 - **Remove a patch with its row.** Do it once the fixed version is the one Codync starts: the registry build
-  (`~/.codync/registry.json` pins the version), or the oldest CLI we still support for harnesses that run locally. If
-  a fix exists but users can still run an older version, keep the patch and write "fixed in X, keep until Y" in the
-  row.
+  (`codync/acp-registry.json` in the computer's cache folder pins the version), or the oldest CLI we still support
+  for harnesses that run locally. If a fix exists but users can still run an older version, keep the patch and write
+  "fixed in X, keep until Y" in the row.
 - **Check upstream when an agent's registry version moves**, and whenever a cited issue or PR closes:
   `gh issue view <n> -R <owner/repo>`, `gh pr view <n> -R <owner/repo>`. Then retest the defect with the new
   version before deleting anything, and update "Last checked" above.

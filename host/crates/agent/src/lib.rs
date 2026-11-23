@@ -16,6 +16,7 @@ pub mod node;
 pub mod process;
 pub mod registry;
 mod setup;
+pub mod shared_cache;
 pub mod shell;
 #[cfg(feature = "usage")]
 pub mod usage;

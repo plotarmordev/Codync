@@ -33,6 +33,7 @@ mod connector_keeper;
 mod custom;
 mod install;
 mod registry;
+mod registry_gate;
 mod remote_update;
 mod skills;
 mod updates;

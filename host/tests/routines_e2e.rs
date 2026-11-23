@@ -453,6 +453,7 @@ async fn only_one_host_can_own_a_data_directory_even_on_another_port() {
     let mut other = Command::new(env!("CARGO_BIN_EXE_codync-host"))
         .args(["serve", "--bind", "127.0.0.1", "--port", "0"])
         .env("CODYNC_CLOUD", "off")
+        .env("CODYNC_REGISTRIES", "off")
         .env("CODYNC_HOME", &host.home)
         .stdout(Stdio::null())
         .stderr(Stdio::null())

@@ -363,10 +363,7 @@ async fn get_json(url: &str) -> Result<Value> {
 }
 
 async fn get_json_within(url: &str, timeout: Duration) -> Result<Value> {
-    let res = crate::http().get(url).header("user-agent", UA).timeout(timeout).send().await?;
-    if !res.status().is_success() {
-        bail!("{} answered {}", url.split('/').nth(2).unwrap_or(url), res.status());
-    }
+    let res = crate::http().get(url).header("user-agent", UA).timeout(timeout).send().await?.error_for_status()?;
     Ok(res.json().await?)
 }
 

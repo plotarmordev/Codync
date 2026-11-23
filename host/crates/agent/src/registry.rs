@@ -6,7 +6,7 @@
 //! disk, so they're checked before use.
 
 use crate::LockExt;
-use crate::shared_cache::Document;
+use crate::shared_cache::{Document, Shared};
 use crate::shell;
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::Value;
@@ -38,7 +38,7 @@ pub enum Launch {
 pub fn agents() -> Vec<Value> {
     let mut cache = CACHE.locked();
     if cache.is_none() {
-        *cache = REGISTRY.read();
+        *cache = REGISTRY.read(Shared::computer());
     }
     cache.as_ref().and_then(|v| v["agents"].as_array().cloned()).unwrap_or_default()
 }
@@ -55,8 +55,8 @@ pub(crate) fn set_cache(registry: Option<Value>) {
 
 pub async fn refresh_loop() {
     loop {
-        REGISTRY.refresh(fetch).await;
-        if let Some(v) = REGISTRY.read() {
+        REGISTRY.refresh(Shared::computer(), fetch).await;
+        if let Some(v) = REGISTRY.read(Shared::computer()) {
             *CACHE.locked() = Some(v);
         }
         tokio::time::sleep(CHECK_EVERY).await;

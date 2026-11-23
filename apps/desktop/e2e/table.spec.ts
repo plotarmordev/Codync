@@ -15,9 +15,9 @@ test('a table wraps its cells inside the bubble', async () => {
     // Wait out the first-run welcome (the saved-account check can show it late) before creating
     // the bot, as decision.spec.ts does, so the roster is there when we look for it.
     const offline = page.getByRole('button', { name: 'Continue without an account', exact: false })
-    await expect(page.locator('.sidebar-account').or(offline).first()).toBeVisible()
+    await expect(page.locator('.nav-rail').or(offline).first()).toBeVisible()
     if (await offline.isVisible()) await offline.click()
-    await expect(page.locator('.sidebar-account')).toBeVisible()
+    await expect(page.locator('.nav-rail')).toBeVisible()
     const name = `Table ${Date.now()}`
     const bot = await echoBot(page, name)
     botId = bot.id

@@ -17,6 +17,14 @@ pub enum Cmd {
     FollowUp(String),
     /// One of the bot's items ended (`chat::tasks`): its report, for a turn in the bot's chat.
     TaskReport(crate::chat::tasks::Report),
+    /// One assistant step of a workflow. `step_id` is `workflow_steps.id`.
+    WorkflowStep {
+        step_id: String,
+    },
+    /// Stop that step if it is the current turn, or drop it if it is still queued.
+    WorkflowStop {
+        step_id: String,
+    },
     /// One of the bot's items looks stuck (`chat::tasks::watch`): a turn in its chat to look at it.
     Watchdog(crate::chat::tasks::Stuck),
     /// The user wrote in the bot's chat.
@@ -124,6 +132,7 @@ pub(super) enum Queued {
     FollowUp(String),
     /// One of the bot's items ended (`chat::tasks`): its report, for a turn in the bot's chat.
     TaskReport(crate::chat::tasks::Report),
+    WorkflowStep(String),
     /// One of the bot's items looks stuck (`chat::tasks::watch`): a turn in its chat to look at it.
     Watchdog(crate::chat::tasks::Stuck),
     User {

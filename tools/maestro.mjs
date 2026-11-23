@@ -3,7 +3,7 @@
 // itself keeps every run, with tens of MB of device logs each, for 14 days (docs/guides/test-stack.md#phones-maestro).
 //   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test … apps/maestro
 import { spawnSync } from 'node:child_process'
-import { readdirSync, rmSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -35,6 +35,7 @@ export const cleanRuns = (root, now = Date.now()) => {
 if (import.meta.main) {
   const result = spawnSync('maestro', process.argv.slice(2), { stdio: 'inherit' })
   if (result.error) throw result.error
-  cleanRuns(join(homedir(), '.maestro', 'tests'))
+  const runs = join(homedir(), '.maestro', 'tests')
+  if (existsSync(runs)) cleanRuns(runs)
   process.exit(result.status ?? 1)
 }

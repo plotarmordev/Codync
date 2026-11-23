@@ -2,9 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
-
-use crate::LockExt;
+use std::sync::LazyLock;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ChineseScript {
@@ -131,7 +129,34 @@ static IT: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
         .expect("it.json is a string map")
 });
 
-static PREFERENCE: LazyLock<Mutex<AppLanguage>> = LazyLock::new(|| Mutex::new(read_preference()));
+/// The saved choice. Tests each keep their own, so a test that switches the language never reaches another's assertions.
+#[cfg(not(test))]
+static PREFERENCE: LazyLock<std::sync::Mutex<AppLanguage>> = LazyLock::new(|| std::sync::Mutex::new(read_preference()));
+#[cfg(test)]
+thread_local! {
+    static PREFERENCE: std::cell::Cell<AppLanguage> = std::cell::Cell::new(read_preference());
+}
+
+#[cfg(not(test))]
+fn preference() -> AppLanguage {
+    use crate::LockExt;
+    *PREFERENCE.locked()
+}
+#[cfg(test)]
+fn preference() -> AppLanguage {
+    PREFERENCE.get()
+}
+
+/// Answers the choice it replaces.
+#[cfg(not(test))]
+fn replace_preference(language: AppLanguage) -> AppLanguage {
+    use crate::LockExt;
+    std::mem::replace(&mut *PREFERENCE.locked(), language)
+}
+#[cfg(test)]
+fn replace_preference(language: AppLanguage) -> AppLanguage {
+    PREFERENCE.replace(language)
+}
 
 const FILE: &str = "tui-language";
 
@@ -179,7 +204,7 @@ fn resolved_language(preference: AppLanguage, locale: &str) -> AppLanguage {
 }
 
 fn active_phrases() -> Option<&'static HashMap<String, String>> {
-    match resolved_language(*PREFERENCE.locked(), &system_locale().unwrap_or_default()) {
+    match resolved_language(preference(), &system_locale().unwrap_or_default()) {
         AppLanguage::Zh => Some(&HANS),
         AppLanguage::ZhHant => Some(&HANT),
         AppLanguage::Ja => Some(&JA),
@@ -434,10 +459,7 @@ fn translate_with<'a>(text: &'a str, table: &HashMap<String, String>) -> Cow<'a,
 
 /// The choice shown beside the palette row.
 pub(in crate::tui) fn language_title() -> Cow<'static, str> {
-    // Copy the choice out first. A second lock of `PREFERENCE` while this one is held freezes
-    // the terminal, and the palette asks for this title on every row.
-    let preference = *PREFERENCE.locked();
-    match preference {
+    match preference() {
         AppLanguage::Zh => Cow::Borrowed("简体中文"),
         AppLanguage::ZhHant => Cow::Borrowed("繁體中文"),
         AppLanguage::En => Cow::Borrowed("English"),
@@ -455,12 +477,8 @@ pub(in crate::tui) fn language_title() -> Cow<'static, str> {
 
 /// Cycle all supported languages and keep the choice for the next run.
 pub(in crate::tui) fn cycle_language() -> Cow<'static, str> {
-    let next = {
-        let mut preference = PREFERENCE.locked();
-        let next = preference.next();
-        *preference = next;
-        next
-    };
+    let next = preference().next();
+    replace_preference(next);
     if let Err(error) = super::choice::write(FILE, next.stored()) {
         tracing::warn!(%error, "couldn't save the terminal language");
     }
@@ -470,7 +488,7 @@ pub(in crate::tui) fn cycle_language() -> Cow<'static, str> {
 /// Sets the language for a test; returns the previous choice's identifier to put back.
 #[cfg(test)]
 pub(in crate::tui) fn set_language(identifier: &str) -> &'static str {
-    std::mem::replace(&mut *PREFERENCE.locked(), AppLanguage::parse(identifier)).stored()
+    replace_preference(AppLanguage::parse(identifier)).stored()
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 # The phone must already be signed in or paired with the host (a worktree's sandbox,
 # docs/guides/dev-app.md#worktree-sandboxes), and the computer must hold no OpenAI key; run it apart from `welcome`,
 # whose clearState undoes the pairing.
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags call \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags call \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:

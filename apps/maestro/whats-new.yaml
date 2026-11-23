@@ -5,7 +5,7 @@
 # `welcome`. The iPhone gets its last seen version from the launch argument (`-<key>` reaches UserDefaults for that
 # launch only), Android from its preference file, written before the run:
 #   adb shell run-as com.pokai.Codync.android.dev sh -c 'mkdir -p shared_prefs && echo "<map><string name=\"whatsNewSeen\">0.0.0</string></map>" > shared_prefs/codync-whats-new.xml'
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags whats-new apps/maestro
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags whats-new apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:
   - whats-new

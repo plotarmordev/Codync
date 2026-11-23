@@ -1,7 +1,7 @@
 # The computer card's "Move active bots to the top" switch follows a change made on another device (the desktop, the
 # terminal UI) while the phone stays connected: the host's `autoOrder` event. The phone must already be signed in and
 # connected to the host (a worktree's sandbox, docs/guides/dev-app.md#worktree-sandboxes), so run it apart from `welcome`:
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags computer-order \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags computer-order \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" apps/maestro
 # Android reports the switch's state on its row and matches only `checked: true` there, hence the per-platform checks.
 appId: com.pokai.Codync.ios.dev

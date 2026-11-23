@@ -3,7 +3,7 @@
 # the host (a worktree's sandbox, docs/guides/dev-app.md#worktree-sandboxes), so run it apart from `welcome`; the iPhone
 # gets Italian from its launch arguments, Android from its language file, written before the run:
 #   adb shell run-as com.pokai.Codync.android.dev sh -c 'mkdir -p shared_prefs && echo "<map><string name=\"appLanguage\">it</string></map>" > shared_prefs/codync-language.xml'
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags routines \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags routines \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:

@@ -3,7 +3,7 @@
 # can reach, a signed-out phone (`xcrun simctl keychain <device> reset` on a simulator), the link from
 # `codync-host pair --json`, and, while it runs, `codync-host access approve <code>` with the code the phone shows.
 # Pairing finishes setup, so it runs on its own, apart from `smoke`:
-#   maestro --device "<simulator udid>" test --include-tags signed-out-pairing -e PAIRING_URL="<link>" apps/maestro
+#   node tools/maestro.mjs --device "<simulator udid>" test --include-tags signed-out-pairing -e PAIRING_URL="<link>" apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:
   - signed-out-pairing

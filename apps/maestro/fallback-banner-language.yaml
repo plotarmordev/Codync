@@ -3,7 +3,7 @@
 # iPhone gets it from the launch argument below; set the Android app's locale first with
 # `adb shell cmd locale set-app-locales com.pokai.Codync.android.dev --locales zh-CN` (`--locales ""` resets it), so run
 # it apart from the English flows:
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags language \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags language \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" \
 #     -e FIXTURE_AGENT="$PWD/host/tests/fixtures/relay_agent.py" apps/maestro
 appId: com.pokai.Codync.ios.dev

@@ -5,7 +5,7 @@
 # docs/guides/dev-app.md#worktree-sandboxes); run it apart from `welcome`, whose clearState undoes the pairing, and
 # from `voice-server`, which needs the computer without an OpenAI key.
 #   node apps/maestro/dictation-send-server.mjs <sandbox port> "$(cat ~/.codync-dev-<sandbox name>/token)" &
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags dictation \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags dictation \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" \
 #     -e ECHO_AGENT="$PWD/host/tests/fixtures/mode_agent.py" apps/maestro
 appId: com.pokai.Codync.ios.dev

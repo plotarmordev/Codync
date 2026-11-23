@@ -5,7 +5,7 @@
 # voice note and a PDF:
 #   mkdir files && ffmpeg -f lavfi -i "sine=duration=9" files/note.m4a && printf '%%PDF-1.4\n' > files/report.pdf \
 #     && touch files/binary.dat files/.hidden files/empty
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags conversation \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags conversation \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" \
 #     -e FILE_AGENT="$PWD/host/tests/fixtures/file_agent.py" -e FILES="$PWD/files" apps/maestro
 appId: com.pokai.Codync.ios.dev

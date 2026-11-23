@@ -12,7 +12,7 @@
 # another, or on accounts of their own.
 # Run it apart from `smoke`, whose welcome flow clears the sign-in.
 # One flow for iPhone and Android (docs/guides/test-stack.md):
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags codync-cloud -e BOAT_KEY=<key> apps/maestro
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags codync-cloud -e BOAT_KEY=<key> apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:
   - codync-cloud

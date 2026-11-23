@@ -6,7 +6,7 @@
 #     -d '{"name":"Held check","backend":"custom","command":"python3 -X utf8 -u '"$PWD"'/host/tests/fixtures/steer_agent.py plain 1","connectors":[],"skills":[],"notify":false}' \
 #     http://127.0.0.1:<sandbox port>/api/createBot
 # Stop the sandbox, and only then:
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags held-message -e BOT_NAME="Held check" apps/maestro
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags held-message -e BOT_NAME="Held check" apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:
   - held-message

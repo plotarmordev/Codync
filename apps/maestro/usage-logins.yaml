@@ -5,7 +5,7 @@
 # one signed in in the sandbox host's own store, as apps/desktop/e2e/usage-logins.spec.ts does. Without
 # LOGIN_PROFILE the flow does nothing. Checked again, that login profile's own check fails (nothing is signed in), so
 # its limits stay, marked Out of date (docs/features/usage-limits.md#a-check-that-fails).
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags usage \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags usage \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" \
 #     -e LOGIN_PROFILE=<login profile id> apps/maestro
 appId: com.pokai.Codync.ios.dev

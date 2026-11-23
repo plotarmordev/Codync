@@ -12,7 +12,7 @@
 # the iPhone stays on the first real one.
 # Not here: a fallback on a login profile, which needs a signed-in one (the desktop spec adds the default login as
 # one), and importing from the login shell (the desktop spec opens its list).
-#   maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags agents \
+#   node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags agents \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" apps/maestro
 appId: com.pokai.Codync.ios.dev
 tags:

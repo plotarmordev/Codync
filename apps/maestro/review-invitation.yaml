@@ -3,7 +3,7 @@
 # nothing runs there. The launch argument seeds the review history with three prompts and no requests (`-<key>` reaches
 # UserDefaults, as hex JSON), so every run starts from the same place. The phone must already be signed in and paired,
 # as for `queue.yaml`, whose bot it borrows:
-#   maestro --device "<simulator udid>" test --include-tags review-invitation \
+#   node tools/maestro.mjs --device "<simulator udid>" test --include-tags review-invitation \
 #     -e HOST_PORT=<sandbox port> -e HOST_TOKEN="$(cat ~/.codync-dev-<sandbox name>/token)" \
 #     -e STEER_AGENT="$PWD/host/tests/fixtures/steer_agent.py" apps/maestro
 appId: com.pokai.Codync.ios.dev

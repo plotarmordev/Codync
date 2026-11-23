@@ -85,8 +85,10 @@ Run it only when the maintainer asks for a real login test. It needs Claude Code
 One flow in `apps/maestro/` serves both phones: it launches the iPhone or Android Dev app by platform (`runFlow` with `when: platform`) and asserts the same copy, since the apps match screen for screen. Run every phone in one Maestro process, with the tags [the check needs](#what-each-e2e-check-runs):
 
 ```sh
-maestro --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags smoke,<area> apps/maestro
+node tools/maestro.mjs --device "<simulator udid>,<adb serial>" test --shard-all 2 --include-tags smoke,<area> apps/maestro
 ```
+
+`tools/maestro.mjs` runs `maestro` with the same arguments and then clears its run folders in `~/.maestro/tests`, since Maestro keeps every run for 14 days with tens of MB of device logs each (18 GB from 860 runs in two weeks). Each run keeps only its screenshots (the failed step's and each `takeScreenshot`) and `maestro.log`; runs older than one day are removed. Run Maestro only through it, and check that no older run is left with `find ~/.maestro/tests -mindepth 1 -maxdepth 1 -mtime +0`, which prints nothing. Its own check: `node --test tools/maestro-test.mjs`.
 
 The devices are the worktree's own simulator `Codync <sandbox name>` and the shared `codync_worktree` emulator, under its lock ([worktree sandboxes](dev-app.md#worktree-sandboxes)). Install the worktree's builds first: `xcodebuild … -scheme "iOS Dev" -configuration DevDebug -derivedDataPath build/dd` for the simulator, `./gradlew :app:assembleDebug` for the emulator.
 

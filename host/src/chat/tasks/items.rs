@@ -73,7 +73,7 @@ impl Source {
         *self == Self::User
     }
 
-    /// It takes one of the bot's seats under `maxThreads` while it works: everything but a thread the user started.
+    /// It takes one of the bot's seats under `maxAgents` while it works: everything but a thread the user started.
     pub fn seated(&self) -> bool {
         !self.is_user()
     }

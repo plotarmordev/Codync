@@ -3,9 +3,9 @@
 //!
 //! What the bot should work on is an **item** in its box ([`items`]). A **task** works items, one at a time: a
 //! **task bot**, a `bots` row of its own (`BotConfig::task_of`) copied from its bot, with its own actor, agent
-//! process, session and transcript, because everything a running turn touches is keyed by bot id. Its memory and
-//! instructions are its bot's (`BotConfig::as_owner`). It starts by forking its bot's main session where the agent
-//! can (`agent::bot::session`), otherwise from a new session and a brief. [`dispatch`] gives waiting items to
+//! process, session and transcript, because everything a running turn touches is keyed by bot id. Its memory is its
+//! bot's (`BotConfig::as_owner`). It starts in a new session of its own with its item's message, never told the chat;
+//! its instructions depend on where the item came from (`chat::context::render`). [`dispatch`] gives waiting items to
 //! tasks, up to the bot's `maxAgents`; a task's last message of a turn is its item's result and goes back as a turn
 //! in the bot's chat (`Cmd::TaskReport`). A routine run and another bot's request are items too ([`sources`]): their
 //! result goes to the chat as the routine's message, or to the asking bot as its reply. No client lists a task bot:
@@ -34,12 +34,12 @@ pub use dispatch::{Wait, dispatch};
 pub use items::put_working_for_test;
 pub use items::{Setup, Source, Status, doing, lines, outside, waiting_threads, wire, working_tasks};
 pub use prompts::{BRIEF, in_thread, relayed, reminder, report_notice, report_prompt};
-pub use sources::{access_of, add_request, add_routine, add_thread, boxed, from_chat, routines_changed, source_of};
+pub use sources::{access_of, add_request, add_routine, add_thread, boxed, routines_changed, source_of};
 pub use steer::{Steer, cut_in, drop_item, first, retry, stop};
 pub use thread::{Refused as ThreadRefused, heard, message, picked_up, task as thread_task, unhear, written};
-pub use tools::{TOOLS, acting_as, call, refuse_chat_only, refuse_in_task, tools};
+pub use tools::{TOOLS, acting_as, call, chat_only, refuse_chat_only, refuse_in_task, tools};
 pub use watch::Stuck;
-pub use worktree::{Worktree, enter as enter_worktree, in_repo};
+pub use worktree::{Worktree, enter as enter_worktree, in_repo, is_worktree};
 
 use crate::LockExt;
 use crate::agent::bot::Cmd;
@@ -70,14 +70,6 @@ const MAX_REPORT: usize = 8_000;
 pub const CUT_OFF: &str = "the computer's Codync restarted while it worked";
 /// Why an item whose task's turn never began didn't finish; the error follows.
 const NOT_STARTED: &str = "it could not start: ";
-
-/// How a task's session began.
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
-#[serde(rename_all = "camelCase")]
-pub enum Start {
-    Fork,
-    Brief,
-}
 
 /// What an item came to, for its bot.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -299,37 +291,16 @@ pub fn mark(store: &Store, cfg: &BotConfig) -> Option<ItemMark> {
     Some(ItemMark { bot, task: cfg.id.clone(), title: title.unwrap_or_default(), item })
 }
 
-/// The session a task's first session forks, if any; taken once.
-pub fn take_fork_source(hub: &Hub, cfg: &BotConfig) -> Option<String> {
-    let mut source = None;
-    update(hub, cfg, "its fork", |item| source = item.fork_from.take());
-    source
+/// Task `cfg`'s session began on its item: once, so a later session of the task (a restart, a fallback) doesn't
+/// make the item's worktree again.
+pub fn began(hub: &Hub, cfg: &BotConfig) {
+    if cfg.is_task() && item_of(&hub.store, cfg).is_some_and(|item| !item.began) {
+        update(hub, cfg, "its start", |item| item.began = true);
+    }
 }
 
-/// Whether `cfg` is a task whose session hasn't begun yet.
-pub fn first_session(store: &Store, cfg: &BotConfig) -> bool {
-    cfg.is_task() && item_of(store, cfg).is_some_and(|item| item.start.is_none())
-}
-
-/// The agent couldn't fork the chat's session for this task.
-pub fn fork_failed(hub: &Hub, cfg: &BotConfig) {
-    update(hub, cfg, "its failed fork", |item| item.fork_failed = true);
-}
-
-/// How the task's session began, once its actor knows.
-pub fn started(hub: &Hub, cfg: &BotConfig, start: Start) {
-    update(hub, cfg, "how it started", |item| item.start = Some(start));
-}
-
-/// What a task that starts from a new session is told of the chat it comes from.
-pub fn chat_so_far(store: &Store, bot: &str) -> Option<String> {
-    let session = store.bot(bot).ok().flatten()?.session_id.unwrap_or_default();
-    let text = crate::chat::handoff::build(store, bot, &session).ok()?;
-    Some(format!("[The chat you come from, so far]\n{text}"))
-}
-
-/// `bot`'s own turn ended: the items it added may start now (a fork taken mid-turn would carry an unanswered tool
-/// call). A turn the user stopped takes the items it added with it.
+/// `bot`'s own turn ended: the items it added may start now, since stopping that turn drops them. A turn the user
+/// stopped takes the items it added with it.
 pub fn turn_over(hub: &Arc<Hub>, bot: &str, stopped: bool) {
     hub.tasks.chain.locked().remove(bot);
     let added = hub.tasks.added.locked().remove(bot).unwrap_or_default();
@@ -445,7 +416,7 @@ fn end(items: &mut [Item], task: &str, outcome: Outcome) -> Option<Item> {
 /// that fell back names the agent it ran on in `turn_finished`).
 fn finished_properties(item: &Item, agent: Option<&str>) -> serde_json::Map<String, Value> {
     let mut properties = json!({
-        "outcome": item.status, "start": item.start, "forkFailed": item.fork_failed,
+        "outcome": item.status,
         "minutes": (now_ms() - item.started_at.unwrap_or(item.created_at)) / 60_000,
         "source": item.source.kind(), "worktree": item.worktree.is_some(),
     });
@@ -598,7 +569,7 @@ pub fn entries(hub: &Hub, bot: &str, id: &str, limit: i64) -> Result<Value> {
     let item = worked.iter().find(|i| !i.status.ended()).or(worked.last()).ok_or_else(|| anyhow!("unknown task"))?;
     Ok(json!({
         "task": {"id": cfg.id, "title": item.title, "status": item.status, "startedAt": item.started_at,
-                 "endedAt": item.ended_at, "start": item.start},
+                 "endedAt": item.ended_at},
         "entries": hub.store.history(id, i64::MAX, limit)?,
     }))
 }

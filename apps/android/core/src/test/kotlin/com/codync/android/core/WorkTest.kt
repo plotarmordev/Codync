@@ -128,24 +128,42 @@ class WorkTest {
         assertEquals(listOf(WorkAction.Stop, WorkAction.Drop), WorkAction.entries.filter { it.destructive })
     }
 
-    @Test fun `all bots' work lists the roster's bots with a live or waiting item, in roster order, and counts what is worked on`() {
-        val roster = listOf(
-            "idle" to emptyList(),
-            "done" to listOf(item("a", WorkStatus.Done), item("b", WorkStatus.Stopped), item("c", WorkStatus.Failed)),
-            "busy" to listOf(item("d", WorkStatus.Working), item("e", WorkStatus.Working), item("f", WorkStatus.Waiting), item("g", WorkStatus.Done)),
-            "asks" to listOf(item("h", WorkStatus.NeedsYou)),
-            "queued" to listOf(item("i", WorkStatus.Waiting)),
-            "one" to listOf(item("j", WorkStatus.Working)),
-        )
-        val all = allWork(roster) { it.second }
-        assertEquals(listOf("busy", "asks", "queued", "one"), all.bots.map { it.first })
-        // Items that need the user or wait are not counted as working.
-        assertEquals(3, all.working)
-        // Nothing live or waiting: no button, and an open view closes.
-        assertEquals(AllWork(emptyList<Pair<String, List<WorkItem>>>(), 0), allWork(roster.take(2)) { it.second })
-        // The button shows without a count.
-        assertEquals(0, allWork(listOf(roster[3], roster[4])) { it.second }.working)
-        assertEquals(listOf(WorkStatus.Waiting, WorkStatus.Working, WorkStatus.NeedsYou), WorkStatus.entries.filter { it.open })
+    @Test fun `the threads list puts what needs you first, groups folders and routines, and keeps the rest newest first`() {
+        val home = bot(""","cwd":"/home/me/app"""").copy(work = listOf(
+            WorkItem("old", "Old", WorkStatus.Done, createdAt = 1),
+            WorkItem("asks", "Asks", WorkStatus.NeedsYou, createdAt = 2),
+            WorkItem("own", "Own folder", WorkStatus.Working, createdAt = 3, folder = "/home/me/app"),
+            WorkItem("docs", "Docs", WorkStatus.Done, createdAt = 4, folder = "/home/me/docs"),
+            WorkItem("run1", "Nightly", WorkStatus.Done, createdAt = 5, source = WorkSource(SourceKind.Routine, "r")),
+            WorkItem("run2", "Nightly", WorkStatus.Failed, createdAt = 6, source = WorkSource(SourceKind.Routine, "r")),
+            WorkItem("new", "New", WorkStatus.Waiting, createdAt = 7),
+        ))
+        val folders = threadSections(listOf(home), { it }, { it.id }, { "Mac" }, ThreadGrouping.Folder)
+        assertEquals(listOf("asks"), folders.needsYou.map { it.item.id })
+        assertEquals(listOf("routine:b:r" to listOf("run2", "run1"), "folder:/home/me/docs" to listOf("docs")),
+            folders.groups.map { group -> group.key to group.rows.map { it.item.id } })
+        assertEquals("docs", folders.groups[1].title)
+        assertEquals(listOf("new", "own", "old"), folders.recent.map { it.item.id })
+        // By status: working, then waiting, then the rest; no grouping lists everything under Recent.
+        val flat = threadSections(listOf(home), { it }, { it.id }, { "Mac" }, ThreadGrouping.None, byStatus = true)
+        assertTrue(flat.groups.isEmpty())
+        assertEquals(listOf("own", "new", "run2", "run1", "docs", "old"), flat.recent.map { it.item.id })
+        // By last active: one added earlier but ended later comes first (iOS's same case).
+        val moved = bot(""","cwd":"/c"""").copy(work = listOf(WorkItem("late", "late", WorkStatus.Done, createdAt = 5),
+            WorkItem("early", "early", WorkStatus.Done, createdAt = 1, endedAt = 9)))
+        assertEquals(listOf("early", "late"), threadSections(listOf(moved), { it }, { it.id }, { "Mac" }, ThreadGrouping.None, byActivity = true).recent.map { it.item.id })
+        // An empty folder names no place.
+        assertEquals(null, WorkItem("x", "x", WorkStatus.Done, folder = "").wherePath)
+    }
+
+    @Test fun `the threads search finds items by title or bot name, newest first, and never a plain box by its name`() {
+        val fixer = bot().copy(name = "Fixer", work = listOf(WorkItem("old", "Login bug", WorkStatus.Done, task = "t1", createdAt = 1),
+            WorkItem("new", "Docs", WorkStatus.Working, task = "t2", createdAt = 3), WorkItem("queued", "Login page", WorkStatus.Waiting, createdAt = 4)))
+        val plain = bot(""","plain":true""").copy(name = "Fixer box", work = listOf(WorkItem("loose", "Notes", WorkStatus.Done, task = "t3", createdAt = 2)))
+        val roster = listOf(fixer, plain)
+        assertEquals(listOf("new", "loose", "old"), threadMatches(roster, { it }, " ").map { it.item.id })
+        assertEquals(listOf("old"), threadMatches(roster, { it }, "login").map { it.item.id })
+        assertEquals(listOf("new", "old"), threadMatches(roster, { it }, "FIXER").map { it.item.id })
     }
 
     @Test fun `an item says where it came from, and a source this app doesn't know reads as the bot's own`() {

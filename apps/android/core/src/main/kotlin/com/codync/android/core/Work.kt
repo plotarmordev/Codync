@@ -152,13 +152,75 @@ internal object MaxAgentsSerializer : KSerializer<Int?> {
     }
 }
 
-/** All bots' work in one view: the roster's bots that have a live or waiting item, in roster order ([bots]), and how
- *  many items are worked on in all ([working]: the count on the view's button). */
-data class AllWork<T>(val bots: List<T>, val working: Int)
+/** How the Threads list groups the items whose tasks don't need the user (desktop `threadsGroup`); [None] lists them all under Recent. */
+enum class ThreadGrouping { None, Folder, Bot, Computer }
 
-fun <T> allWork(roster: List<T>, work: (T) -> List<WorkItem>): AllWork<T> {
-    val bots = roster.filter { bot -> work(bot).any { it.status.open } }
-    return AllWork(bots, bots.sumOf { bot -> work(bot).count { it.status == WorkStatus.Working } })
+/** What a Threads group gathers: a folder an item's task works in outside its bot's own, a routine's runs, a bot, or a computer. */
+enum class ThreadGroupKind { Folder, Routine, Bot, Computer }
+
+data class ThreadRow<T>(val of: T, val item: WorkItem)
+
+/** One group of the Threads list; [title] is the folder's last name, the routine's, the bot's or the computer's. */
+data class ThreadGroup<T>(val key: String, val kind: ThreadGroupKind, val title: String, val rows: List<ThreadRow<T>>)
+
+data class ThreadSections<T>(val needsYou: List<ThreadRow<T>>, val groups: List<ThreadGroup<T>>, val recent: List<ThreadRow<T>>)
+
+/** Where an item's task works: its folder, else its worktree's. */
+val WorkItem.wherePath: String? get() = listOfNotNull(folder, worktree?.path).firstOrNull { it.isNotEmpty() }
+
+/** When an item last moved: it ended, else it started, else it was added. */
+private val WorkItem.lastActive: Long get() = endedAt ?: startedAt ?: createdAt
+
+/** Where an item stands in a list sorted by status: working, waiting, the rest. */
+private fun itemRank(status: WorkStatus) = when (status) { WorkStatus.Working -> 0; WorkStatus.Waiting -> 1; else -> 2 }
+
+/**
+ * Every item of [roster]'s bots as the Threads list shows it (desktop `threadSections`), newest first (by last activity with
+ * [byActivity], else by when it was added; by status first with [byStatus]): what needs the user, then the groups [grouping]
+ * makes (folder grouping also gathers routines' runs; a bot's and a computer's groups keep the roster's order, the others
+ * come newest first), then the rest. [keyOf] tells bots apart across computers; [computerOf] names a bot's computer.
+ */
+fun <T> threadSections(roster: List<T>, bot: (T) -> Bot, keyOf: (T) -> String, computerOf: (T) -> String, grouping: ThreadGrouping,
+    byStatus: Boolean = false, byActivity: Boolean = false): ThreadSections<T> {
+    val time: (WorkItem) -> Long = if (byActivity) { item -> item.lastActive } else { item -> item.createdAt }
+    val order = compareBy<ThreadRow<T>> { if (byStatus) itemRank(it.item.status) else 0 }.thenByDescending { time(it.item) }
+    val rows = roster.flatMap { of -> bot(of).work.map { ThreadRow(of, it) } }
+    val (needsYou, rest) = rows.partition { it.item.status == WorkStatus.NeedsYou }
+    val groups = linkedMapOf<String, ThreadGroup<T>>()
+    val recent = mutableListOf<ThreadRow<T>>()
+    for (row in rest.sortedWith(order)) {
+        val (of, item) = row
+        val path = item.wherePath
+        val source = item.source
+        val group: ThreadGroup<T>? = when {
+            grouping == ThreadGrouping.Bot -> ThreadGroup("bot:${keyOf(of)}", ThreadGroupKind.Bot, bot(of).name, emptyList())
+            grouping == ThreadGrouping.Computer -> ThreadGroup("computer:${computerOf(of)}", ThreadGroupKind.Computer, computerOf(of), emptyList())
+            grouping == ThreadGrouping.None -> null
+            source?.kind == SourceKind.Routine -> ThreadGroup("routine:${keyOf(of)}:${source.id ?: item.title}", ThreadGroupKind.Routine, item.title, emptyList())
+            path != null && item.worktree == null && path != bot(of).cwd ->
+                ThreadGroup("folder:$path", ThreadGroupKind.Folder, path.split('/', '\\').lastOrNull { it.isNotEmpty() } ?: path, emptyList())
+            else -> null
+        }
+        if (group == null) recent += row
+        else groups[group.key] = (groups[group.key] ?: group).let { it.copy(rows = it.rows + row) }
+    }
+    val ordered = when (grouping) {
+        ThreadGrouping.Bot -> roster.map { "bot:${keyOf(it)}" }.distinct().mapNotNull(groups::get)
+        ThreadGrouping.Computer -> roster.map { "computer:${computerOf(it)}" }.distinct().mapNotNull(groups::get)
+        else -> groups.values.toList()
+    }
+    return ThreadSections(needsYou.sortedWith(order), ordered, recent)
+}
+
+/**
+ * What the Threads list's search finds (desktop `threadItems`): [roster]'s items that have a task whose title or bot's
+ * name holds [query] (the box without a bot has no name to match), newest first; all of them for an empty [query].
+ */
+fun <T> threadMatches(roster: List<T>, bot: (T) -> Bot, query: String): List<ThreadRow<T>> {
+    val words = query.trim()
+    return roster.flatMap { of -> bot(of).work.filter { it.task != null }.map { ThreadRow(of, it) } }
+        .filter { (of, item) -> item.title.contains(words, ignoreCase = true) || !bot(of).plain && bot(of).name.contains(words, ignoreCase = true) }
+        .sortedByDescending { it.item.createdAt }
 }
 
 /** The Details timeline's sections of items, each in the order its rows show. */

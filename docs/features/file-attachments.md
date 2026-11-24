@@ -12,14 +12,15 @@ Files travel in both directions: users attach inputs, and bots explicitly share 
   HEIC/TIFF/BMP become JPEG (`OutgoingFile.prepared`, CodyncKit). Picked files show as chips above
   the text and can be removed; a message can be files only. Group chats take files too: they're
   kept in the group's uploads folder and listed to each member under the message. Up to 100 MB per file.
-- Upload: `upload {botId, taskId?, uploadId, name, offset, data (base64), done}`, 384 KiB per call so each
+- Upload: `upload {botId?, itemId?, uploadId, name, offset, data (base64), done}`, 384 KiB per call so each
   stays under the channel's 1 MiB message limit. A repeated chunk is accepted (retry); anything out
-  of order is refused. Then `send {…, attachments: [uploadId]}`; the text may be empty. With `taskId` both go to
-  the thread of that task of the bot's.
+  of order is refused. Then `send {…, attachments: [uploadId]}`; the text may be empty. With `itemId` both go to
+  the thread of that item of the bot's. A new thread's files go with `startThread {…, attachments}` instead; without
+  `botId` they go to the computer's box of threads without a bot ([its files](background-tasks.md#other-sources)).
 - Storage (`host/src/chat/uploads.rs`): `<workspace>/uploads/<uploadId>/<name>` for a personal
   workspace (so reading needs no extra approval), otherwise
-  `~/.codync/bots/<bot>/uploads/<uploadId>/<name>`; a thread's files are there under the thread's id, and go
-  when the thread bot is deleted. Only UUID ids and plain file names are accepted.
+  `~/.codync/bots/<bot>/uploads/<uploadId>/<name>`; a task's files are there under the task's id, and go
+  when the task bot is deleted. Only UUID ids and plain file names are accepted.
 - The agent gets the message text plus an "Attached files" list of absolute paths and reads them with
   its own tools (Claude and Codex read images too). The entry keeps `attachments: [{id, name, size}]`
   for display.

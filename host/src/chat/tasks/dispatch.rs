@@ -8,7 +8,7 @@ use crate::LockExt;
 use crate::analytics::errors::host_error;
 use crate::hub::{BotStatus, Hub};
 use crate::store::{BotConfig, TASK_PREFIX, now_ms};
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -22,8 +22,8 @@ pub(super) struct Places {
     pub running: usize,
     /// The bot's agent is near its usage limit: one task at a time.
     pub near_limit: bool,
-    /// The bot's own turn is over: a new task forks the chat's session, which a running turn would leave with an
-    /// unanswered tool call.
+    /// The bot's own turn is over. An item the turn adds starts once it ends, since stopping that turn drops the
+    /// item; a routine's run or a room's turn shares the bot's actor and ends first too.
     pub coordinator_free: bool,
 }
 
@@ -262,10 +262,10 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
         if matches!(standing, Standing::Wait(_)) {
             continue;
         }
-        // What it follows began its task's session.
+        // What it follows began its task's session, which it goes on in.
         let before = items.iter().find(|i| i.id == id).and_then(|i| i.after.clone());
         let before = before.and_then(|id| items.iter().position(|i| i.id == id));
-        let began = before.and_then(|at| items[at].start);
+        let began = before.is_some_and(|at| items[at].began);
         // Another task of the bot works in its folder now: a new one beside it gets a worktree, in a repository.
         let side_by_side = items::working(items) > 0;
         let Some(at) = items.iter().position(|i| i.id == id) else { continue };
@@ -290,14 +290,13 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
         item.status = Status::Working;
         item.started_at = Some(now_ms());
         if let Standing::Join(task) = standing {
-            item.start = began;
+            item.began = began;
             item.task = Some(task.clone());
             item.worktree = inherited.or(item.worktree.take());
             plan.join.push((task, item.clone()));
         } else {
             let task = task_bot(cfg, &item.setup);
-            item.start = None;
-            item.fork_failed = false;
+            item.began = false;
             // One it has from before (it gave way, or is tried again) is where its work is.
             item.worktree.take_if(|w| !worktree::usable(w));
             // A bot's own folder keeps all its work in one place, with its versions (`agent::versions`).
@@ -309,15 +308,6 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
                 && side_by_side
                 && worktree::in_repo(&task.cwd);
             item.place = if item.worktree.is_some() || beside { Place::Worktree } else { Place::Folder };
-            // A routine's run starts as it did in the chat: a new session that knows only its own prompt.
-            // ponytail: a task in a worktree starts from a brief, not a fork: a fork is taken in another folder
-            // than its session's, which no agent is checked to honor. Fork there once one is (stage 10's spikes).
-            // A task its setup puts on another agent or login can't take the chat's session either.
-            let forks = sources::from_chat(&item.source)
-                && item.place == Place::Folder
-                && tasks_fork(cfg)
-                && crate::agent::fallback::login::of(&task) == crate::agent::fallback::login::of(cfg);
-            item.fork_from = forks.then(|| fork_source(hub, &cfg.id)).flatten();
             item.task = Some(task.id.clone());
             {
                 let _g = hub.emit_lock.locked();
@@ -343,7 +333,10 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
 /// Hands `item` of `bot` to `task` as its next turn. `first`: the task is new, and starts here. A routine run's
 /// prompt and another bot's request go as they are: they say themselves what the turn is and where its reply goes.
 /// Under the box's lock, and only while the item is still on that task: a Stop since the plan found no turn to stop.
+/// The files a user's item starts with are copied before it.
 fn begin(hub: &Arc<Hub>, bot: &str, task: &BotConfig, item: &Item, first: bool) {
+    // Copied before the lock, which every bot's box shares: a copy again is harmless.
+    let files = if item.source == Source::User { handed(hub, bot, task, &item.files) } else { Ok(Vec::new()) };
     let posted = {
         let _g = hub.tasks.boxes.locked();
         if items::of_task(&items::load(&hub.store, bot), &task.id).is_none_or(|on| on.id != item.id) {
@@ -354,12 +347,13 @@ fn begin(hub: &Arc<Hub>, bot: &str, task: &BotConfig, item: &Item, first: bool) 
             sources::watch(hub, bot, &task.id, item);
         }
         let message = match item.source {
-            Source::Bot => json!({"text": prompts::item_prompt(item, first), "from": "host"}),
-            // The user's own words, as the message that opens their thread (`thread`'s turn says who speaks).
-            Source::User => json!({"text": item.brief, "attachments": []}),
-            Source::Routine { .. } | Source::Request { .. } => json!({"text": item.brief, "from": "host"}),
+            Source::Bot => Ok(json!({"text": prompts::item_prompt(item, first), "from": "host"})),
+            // The user's own words, as the message that opens their thread (`thread`'s turn says who speaks), with
+            // the files they started it with.
+            Source::User => files.map(|files| json!({"text": item.brief, "attachments": files})),
+            Source::Routine { .. } | Source::Request { .. } => Ok(json!({"text": item.brief, "from": "host"})),
         };
-        crate::chat::messages::post(hub, task, message)
+        message.and_then(|message| crate::chat::messages::post(hub, task, message))
     };
     if let Err(error) = posted {
         host_error!(hub, "couldn't hand work to a task", task = %task.id, error = format!("{error:#}"));
@@ -396,21 +390,20 @@ fn task_bot(cfg: &BotConfig, setup: &items::Setup) -> BotConfig {
     }
 }
 
-/// Whether `cfg`'s tasks run on the chat's own agent and login, so a task may start as a fork of the chat's
-/// session (its model may differ: a forked session takes the task's model like a new one).
-fn tasks_fork(cfg: &BotConfig) -> bool {
-    crate::agent::fallback::login::of(&crate::agent::fallback::tasks(cfg)) == crate::agent::fallback::login::of(cfg)
-}
-
-/// `bot`'s main session, when a task may start as a fork of it: the bot is on its own agent, and the session has
-/// used under half its window (a fork carries all of it). Whether the agent can fork is its actor's to find out.
-fn fork_source(hub: &Hub, bot: &str) -> Option<String> {
-    let session = hub.store.bot(bot).ok().flatten()?.session_id.filter(|s| !s.is_empty())?;
-    if hub.runtime(bot).agent_step.is_some() {
-        return None;
+/// The files the user started an item of `bot`'s with, copied from the bot's uploads to `task`'s, where the task
+/// reads them; their chat metadata.
+/// ponytail: the bot's copies stay until its uploads are cleared, as a chat's do; delete them with the item if they
+/// pile up.
+fn handed(hub: &Arc<Hub>, bot: &str, task: &BotConfig, files: &[serde_json::Value]) -> Result<Vec<serde_json::Value>> {
+    if files.is_empty() {
+        return Ok(Vec::new());
     }
-    let chat = crate::agent::bot::conversation(&hub.store, bot, &session);
-    (chat.size == 0 || chat.used * 2 < chat.size).then_some(session)
+    let owner = hub.store.bot(bot)?.filter(|row| !row.deleted).context("unknown bot")?.config;
+    let (from, to) = (crate::chat::uploads::root(&owner), crate::chat::uploads::root(task));
+    for meta in files {
+        crate::chat::uploads::copy(&from, &to, meta)?;
+    }
+    Ok(files.to_vec())
 }
 
 #[cfg(test)]
@@ -477,21 +470,6 @@ mod tests {
         assert_eq!(free_seats(3, 4, 2), 0, "never two past it, however many wait");
         assert_eq!(free_seats(1, 1, 1), 1);
         assert_eq!(free_seats(2, 4, 0), 0, "the ceiling was lowered: nothing new starts");
-    }
-
-    #[test]
-    fn a_task_forks_the_chats_session_only_on_the_chats_own_agent_and_login() {
-        use crate::store::Fallback;
-        let base: BotConfig =
-            serde_json::from_value(json!({"id": "b", "name": "B", "backend": "claude", "model": "opus"}))
-                .expect("a bot");
-        assert!(tasks_fork(&base), "off: the chat's own agent");
-        let on = |backend: &str| BotConfig {
-            task_agent: Some(Fallback { backend: backend.into(), model: Some("m".into()), ..Fallback::default() }),
-            ..base.clone()
-        };
-        assert!(!tasks_fork(&on("codex")), "another agent can't take the chat's session");
-        assert!(tasks_fork(&on("claude")), "only the model differs: a fork takes the task's model");
     }
 
     #[test]

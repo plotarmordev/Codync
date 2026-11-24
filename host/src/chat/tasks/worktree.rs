@@ -108,6 +108,11 @@ fn root() -> PathBuf {
     crate::service::data_dir().join("worktrees")
 }
 
+/// Whether `cwd` is in a worktree Codync made.
+pub fn is_worktree(cwd: &str) -> bool {
+    Path::new(cwd).starts_with(root())
+}
+
 /// Whether `cwd` is inside a git repository, as far as its folders say (no git is run).
 pub fn in_repo(cwd: &str) -> bool {
     !cwd.is_empty() && Path::new(cwd).ancestors().any(|dir| dir.join(".git").exists())
@@ -384,7 +389,7 @@ pub(super) fn leave(items: &[Item]) {
 /// from before). None: it works in the bot's folder; so it does when git fails.
 pub async fn enter(hub: &Arc<Hub>, cfg: &BotConfig) -> Option<Worktree> {
     let bot = cfg.task_of.as_deref()?;
-    let item = super::item_of(&hub.store, cfg).filter(|i| i.place == Place::Worktree && i.start.is_none())?;
+    let item = super::item_of(&hub.store, cfg).filter(|i| i.place == Place::Worktree && !i.began)?;
     let worktree = match item.worktree.filter(usable) {
         Some(worktree) => worktree,
         None => match create(&cfg.cwd, bot, &item.id, &item.title).await {

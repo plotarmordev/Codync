@@ -2,7 +2,7 @@
 
 use super::dispatch::{self, Standing, Wait};
 use super::worktree::{Left, Place, Worktree};
-use super::{Failure, Report, Start};
+use super::{Failure, Report};
 use crate::LockExt;
 use crate::hub::{BotStatus, Hub};
 use crate::store::{BotConfig, Permission, Store, now_ms};
@@ -235,15 +235,9 @@ pub(super) struct Item {
     /// the item as it ends, never saved.
     #[serde(skip)]
     pub undispatched: bool,
-    /// How its task's session began, once known.
+    /// Its task's session began on it (or on the item it follows, in the same session).
     #[serde(default)]
-    pub start: Option<Start>,
-    /// Its bot's main session, for its new task to fork; none when it starts from a brief.
-    #[serde(default)]
-    pub fork_from: Option<String>,
-    /// The agent refused or didn't answer the fork, so its task started from a brief.
-    #[serde(default)]
-    pub fork_failed: bool,
+    pub began: bool,
     /// Where its new task works: in a git worktree of its own when another task of the bot worked in the
     /// repository as it began, or when it has one from before.
     #[serde(default)]
@@ -258,6 +252,10 @@ pub(super) struct Item {
     /// What it reported before the user wrote to it again: a new session that picks the work up is told.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub said: Option<String>,
+    /// The files the user started it with (`startThread`), as uploaded to its bot (`{id, name, size}`): its thread
+    /// gets a copy of each as it starts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<Value>,
 }
 
 impl Item {
@@ -286,13 +284,12 @@ impl Item {
             report: None,
             failure: None,
             undispatched: false,
-            start: None,
-            fork_from: None,
-            fork_failed: false,
+            began: false,
             place: Place::Folder,
             worktree: None,
             told: Vec::new(),
             said: None,
+            files: Vec::new(),
         }
     }
 
@@ -302,8 +299,7 @@ impl Item {
         self.order = front;
         self.task = None;
         self.started_at = None;
-        self.start = None;
-        self.fork_from = None;
+        self.began = false;
     }
 }
 

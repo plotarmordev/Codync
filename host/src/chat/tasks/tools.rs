@@ -20,6 +20,8 @@ pub const TOOLS: [&str; 5] = ["add_work", "steer_work", "tell_work", "work_statu
 /// A task can't do what only makes sense from the chat. `what`: the tool, as the refusal names it.
 pub fn refuse_in_task(hub: &Hub, bot: &str, what: &str) -> Result<()> {
     if hub.store.bot(bot)?.is_some_and(|row| row.config.is_task()) {
+        let properties = json!({"tool": what});
+        analytics::capture(hub, Event::TaskToolRefused, properties.as_object().cloned().unwrap_or_default());
         bail!("{what} isn't available in a task: say in your report what you need, and you will handle it in the chat");
     }
     Ok(())
@@ -38,22 +40,30 @@ pub fn acting_as(hub: &Hub, bot: &str, what: &str) -> Result<String> {
     Ok(cfg.owner().to_owned())
 }
 
-/// Refuses a task the `chat` server's tools that change the bot or its box (`prompts::item_prompt` tells it so).
-/// What asks the user or shares with them goes to the task's actor, which posts it in the bot's chat.
+/// The `chat` server's tools a task neither lists (`mcp::chat_tools`) nor may call: `send_message` (its last message
+/// is its report), `react` (it answers no chat message), and what changes the bot, its skills or its box. What asks
+/// the user or shares with them goes to the task's actor, which posts it in the bot's chat.
+pub fn chat_only(name: &str) -> bool {
+    use crate::chat::{fallbacks, profile, reactions, skills};
+    ["send_message", reactions::TOOL, skills::TOOL].contains(&name)
+        || TOOLS.contains(&name)
+        || profile::TOOLS.contains(&name)
+        || fallbacks::TOOLS.contains(&name)
+}
+
+/// Refuses a task a call to a [`chat_only`] tool.
 pub fn refuse_chat_only(hub: &Hub, bot: &str, name: &str) -> Result<()> {
-    use crate::chat::{fallbacks, profile};
-    let chat_only = TOOLS.contains(&name) || profile::TOOLS.contains(&name) || fallbacks::TOOLS.contains(&name);
-    if chat_only { refuse_in_task(hub, bot, name) } else { Ok(()) }
+    if chat_only(name) { refuse_in_task(hub, bot, name) } else { Ok(()) }
 }
 
 pub fn tools() -> Vec<Value> {
     vec![
         json!({
             "name": "add_work",
-            "description": "Put long work in your box: one of your tasks (you again, in a session of its own) does it away from this chat, and you stay free to answer the user. It starts when this turn ends and a place is free; until then it waits its turn. Its report comes back to you later as a message. One item per piece of work.",
+            "description": "Put long work in your box: one of your tasks does it away from this chat, in a session of its own that sees nothing of this chat, and you stay free to answer the user. It starts when this turn ends and a place is free; until then it waits its turn. Its report comes back to you later as a message. One item per piece of work.",
             "inputSchema": {"type": "object", "properties": {
                 "title": {"type": "string", "description": "A few words the user sees while it works, e.g. \"Fix the login redirect\"."},
-                "brief": {"type": "string", "description": "Everything needed to do the work: the goal, what you already know, what done looks like."},
+                "brief": {"type": "string", "description": "Everything needed to do the work, standing alone (the task sees nothing of this chat): the goal, what you already know, the user's words that matter, what done looks like."},
                 "after": {"type": "string", "description": "The id of an item that is working or waiting: this one is done after it, in the same session, knowing what that one did. For more of the same work."},
             }, "required": ["title", "brief"]},
             "annotations": {"readOnlyHint": false, "idempotentHint": false},

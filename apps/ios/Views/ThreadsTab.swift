@@ -2,8 +2,8 @@ import CodyncKit
 import CodyncUI
 import SwiftUI
 
-/// The Threads tab: every bot with live or waiting tasks, on the computers the Bots tab shows, in its order. A tap
-/// opens the bot's chat (on the Bots tab) at its card, its details, or its details on the task's thread.
+/// The Threads tab: every bot with live or waiting items, on the computers the Bots tab shows, in its order. A tap
+/// opens the bot's chat (on the Bots tab) at its card, its details, or its details on the item's thread.
 struct ThreadsTab: View {
     let work: AllWork<RosterItem>
     @Environment(AccountStore.self) private var accounts

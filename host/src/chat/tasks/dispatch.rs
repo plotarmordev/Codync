@@ -117,9 +117,13 @@ pub(super) fn standings(
         })
         .collect();
     let mut ahead = 0;
-    for standing in found.iter_mut().filter(|s| s.is_none()) {
+    for (item, standing) in waiting.iter().zip(found.iter_mut()).filter(|(_, s)| s.is_none()) {
         *standing = Some(if places.near_limit && running > 0 {
             Standing::Wait(Wait::Usage)
+        } else if item.source.is_user() {
+            // The user started it by hand: it starts now, past the bot's ceiling and its own turn.
+            running += 1;
+            Standing::Start
         } else if free > 0 && places.coordinator_free {
             free -= 1;
             running += 1;
@@ -169,9 +173,11 @@ pub(super) fn places(hub: &Hub, cfg: &BotConfig, items: &[Item], over: Option<&s
         .iter()
         .filter(|task| items::of_task(items, &task.id).is_none() && turn_runs(hub, &task.id, over))
         .count();
-    let asking = items.iter().filter(|i| items::asks_user(hub, i)).count();
+    let seated = |i: &&Item| i.source.seated();
+    let asking = items.iter().filter(seated).filter(|i| items::asks_user(hub, i)).count();
     let running = items::working(items) + stopping;
-    let free = free_seats(cfg.max_agents, running, asking);
+    let in_seats = items.iter().filter(seated).filter(|i| i.status == Status::Working).count() + stopping;
+    let free = free_seats(cfg.max_agents, in_seats, asking);
     // A turn the last host process left cut off is resumed by the bot's actor: it runs, though nothing says so yet.
     let coordinator_free = over == Some(cfg.id.as_str())
         || !(turn_runs(hub, &cfg.id, None) || crate::agent::bot::resumable(&hub.store, &cfg.id));
@@ -488,6 +494,22 @@ mod tests {
         // A task waiting on the user lends its seat, but still runs.
         let asking = Places { near_limit: true, ..places(1, 1) };
         assert_eq!(stand(&items, asking, TaskState::Gone)[0].1, Standing::Wait(Wait::Usage));
+    }
+
+    #[test]
+    fn a_users_task_starts_past_the_ceiling_and_the_bots_own_turn_but_not_near_the_usage_limit() {
+        let user = |id: &str, order: i64| Item { source: Source::User, ..item(id, Status::Waiting, order) };
+        let items = [item("a", Status::Waiting, 1), user("u", 2), item("b", Status::Waiting, 3)];
+        let full = Places { coordinator_free: false, ..places(0, 1) };
+        let standings = stand(&items, full, TaskState::Gone);
+        let expected = [
+            ("a", &Standing::Wait(Wait::Next)),
+            ("u", &Standing::Start),
+            ("b", &Standing::Wait(Wait::Behind { ahead: 1 })),
+        ];
+        assert_eq!(of(&standings), expected, "it takes no place in the bot's queue");
+        let near = Places { near_limit: true, ..places(0, 1) };
+        assert_eq!(stand(&items, near, TaskState::Gone)[1].1, Standing::Wait(Wait::Usage));
     }
 
     #[test]

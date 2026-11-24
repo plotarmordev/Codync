@@ -68,7 +68,7 @@ item:
    same session. These go first, since that task already has its place. While what it follows waits or works, it
    waits (`wait: after`). When what it follows failed, was stopped or dropped, or its task is gone, it is an ordinary
    item.
-2. **Otherwise a new task starts for it**, lowest `order` first, when the bot is under `maxAgents`, the bot's own turn is over (stopping that turn drops an item it added, and a routine's run or a room's turn shares the actor), and the agent is
+2. **Otherwise a new task starts for it**, lowest `order` first: a task the user started at once, the bot's own work when the bot is under `maxAgents` (counting only its own), the bot's own turn is over (stopping that turn drops an item it added, and a routine's run or a room's turn shares the actor), and the agent is
    not near its usage limit (near it, one task at a time: `wait: usage`).
 3. **Otherwise it waits**: `wait: next` for the first in line, `behind` with how many are `ahead` for the rest.
    Nothing is refused for being over the ceiling.
@@ -140,7 +140,8 @@ bot can say what it is doing and place an `after` without a tool call.
 
 - **First** (`workFirst`, `steer_work first`): a waiting item moves to the front. Order only.
 - **Cut in** (`workCutIn`, `steer_work now`): the item moves to the front. With every place taken a working item
-  gives way (the one named with `insteadOf`, else the one that started last): its task is stopped and deleted, and it
+  gives way (the one named with `insteadOf`, else the one that started last; never a thread the user started, which
+  takes no seat, so naming one is refused): its task is stopped and deleted, and it
   waits at the front, behind the item that cut in, with `cutIn` set. It starts again later in a new task and session,
   told that the work was begun before. With a place free, cutting in is moving first; so it is for an item that
   wouldn't start in the freed place (it follows unfinished work, or waits for usage), and the clients don't offer
@@ -374,10 +375,13 @@ never taken for lost by the hourly look: its turn runs.
 ## Other sources
 
 **A thread the user starts** (`startThread {botId, text, setup?, attachments?}` → `{itemId}`, `sources::add_thread`;
-`Source::User`): the user's first message is an item of the bot's box, named by its first line, that waits for a
-place like any other and may get a worktree like the bot's own work. Its thread opens with that message as the
+`Source::User`): the user's first message is an item of the bot's box, named by its first line, that starts at once and
+may get a worktree like the bot's own work. It is the user's, not the bot's queue: it takes no seat under
+`maxAgents` and doesn't wait for the bot's own turn (only near the usage limit does it wait, one task at a time),
+and the bot doesn't see it (its box summary, `work_status` and `recall_work` leave it out) or steer it (`steer_work`
+and `tell_work` refuse it, `users`). Its thread opens with that message as the
 user's own (no `from: "host"`), in a new session that is told it is a thread the user opened and who the bot is, and
-gets nothing of the chat. It is the bot's own work everywhere else: it takes messages ([talking to a
+gets nothing of the chat. It is the bot's own work for the user everywhere else: it takes messages ([talking to a
 thread](#talking-to-a-thread)), can be steered, stopped and tried again, and on the wire it has no `source`. **Its
 result takes no turn of the bot's**: the user reads it in the thread. Only a bot starts one (not a group, not a
 task), with at most 32,000 bytes. `hello` says `startThread: true` on a host that has the method.
@@ -538,7 +542,7 @@ An item's end sends no alert of its own: its report is a turn of the bot's, whos
 
 - Bot: `work: [item]`: every working item (oldest first), then the waiting in dispatch order, then the items ended
   in the last 24 hours (newest first, at most 20). Item: `{id, title, status, activity, task, wait, cutIn,
-  createdAt, startedAt, endedAt, result, talk, seat, folder?, source?, worktree?}`; `seat` whether it takes one of the bot's seats (a working item's task; one waiting on the user lends its own, [the dispatcher](#the-dispatcher)), absent on an older host, where every live item takes one; `activity` is its task's, `task` the task bot that has or had it, `talk` whether the user may write to its [thread](#talking-to-a-thread) (the bot's own item whose task bot is there), `folder` where its task works (the worktree's folder for one in a worktree, else the bot's folder as it was when the task began; absent before a task took it, and once its worktree was removed with nothing in it), `wait`
+  createdAt, startedAt, endedAt, result, talk, seat, folder?, source?, worktree?}`; `seat` whether it takes one of the bot's seats (a working item's task; one waiting on the user lends its own, [the dispatcher](#the-dispatcher); never a thread the user started), absent on an older host, where every live item takes one; `activity` is its task's, `task` the task bot that has or had it, `talk` whether the user may write to its [thread](#talking-to-a-thread) (the bot's own item whose task bot is there), `folder` where its task works (the worktree's folder for one in a worktree, else the bot's folder as it was when the task began; absent before a task took it, and once its worktree was removed with nothing in it), `wait`
   is `{kind: next | behind | after | usage, ahead?}` on a waiting item and null otherwise, `result` at most 280
   characters. `source` is `{kind: routine, id: <routine id>}` or `{kind: request, id?: <asking bot id>}`, and absent
   on an item the bot added, so a client that doesn't know it shows the row as before. `worktree` is

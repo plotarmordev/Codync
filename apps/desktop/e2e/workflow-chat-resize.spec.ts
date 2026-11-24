@@ -1,31 +1,16 @@
-import { test, expect, type Locator, type Page } from '@playwright/test'
-import { api, attach, openPage, setPref, taskBot } from './sandbox.ts'
+import { test, expect, type Locator } from '@playwright/test'
+import { api, attach, holdTask, openPage, taskBot, withPrefs } from './sandbox.ts'
 
 // The window's list at its default width, shown, so the page beside it is as wide as in an ordinary window.
 const LAYOUT = { desktopSidebarWidth: 266, listHidden: false, detailsPanelWidth: 360 }
-
-/** Sets `prefs` for the test; the function it returns puts back what the sandbox had. */
-async function withPrefs(page: Page, prefs: Record<string, unknown>) {
-  const keys = Object.keys(prefs)
-  const saved = await page.evaluate((keys) => keys.map((key) => localStorage.getItem(key)), keys)
-  for (const key of keys) await setPref(page, key, prefs[key])
-  return async () => {
-    for (const [i, key] of keys.entries()) {
-      await page.evaluate(([key, value]) => {
-        if (value === null) localStorage.removeItem(key)
-        else localStorage.setItem(key, value)
-        window.dispatchEvent(new StorageEvent('storage', { key, newValue: value }))
-      }, [key, saved[i] ?? null] as const).catch(() => {})
-    }
-  }
-}
 
 /** Drags the side panel's edge both ways: wider, then narrower than it started. */
 async function dragBothWays(panel: Locator) {
   const page = panel.page()
   const shown = async () => (await panel.boundingBox())!.width
-  // Once it has slid in, flush with the window's edge, and stopped moving.
-  const edge = await page.evaluate(() => innerWidth)
+  // Once it has slid in, flush with the frame's right edge (the window's chrome sits past it), and stopped moving.
+  const frame = await page.locator('.page-frame').boundingBox()
+  const edge = Math.round(frame!.x + frame!.width)
   await expect.poll(async () => { const box = (await panel.boundingBox())!; return Math.round(box.x + box.width) }).toBe(edge)
   const settled = async () => { let last = -1; await expect.poll(async () => { const now = await shown(); const same = now === last; last = now; return same }).toBe(true) }
   const drag = async (dx: number) => {
@@ -74,14 +59,12 @@ test("a thread's side panel drags wider and narrower in a window of ordinary wid
   const { browser, page } = await attach()
   const cdp = await page.context().newCDPSession(page)
   const restore = await withPrefs(page, LAYOUT)
-  const title = 'Resize the panel'
+  const title = `Resize the panel ${Date.now()}`
   let botId: string | undefined
   try {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false })
     botId = (await taskBot(page, `Panel resize e2e ${Date.now()}`)).id
-    // A task whose thread works until it is stopped (host/tests/fixtures/task_agent.py).
-    await api(page, 'send', { botId, text: `ADD ${title}|HOLD:e2e` })
-    await expect.poll(async () => (await api<{ bot: { work: { title: string }[] } }>(page, 'updateBot', { id: botId })).bot.work.some((t) => t.title === title)).toBe(true)
+    await holdTask(page, botId, title)
     await openPage(page, 'Threads')
     await page.locator(`[data-thread-row="${title}"]`).click()
     await page.getByRole('button', { name: 'Conversation details', exact: true }).click()

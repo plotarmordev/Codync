@@ -32,7 +32,7 @@ class ConnectionUiTest {
     @Test fun cachedBotsStayListedWhileOfflineAndAnEmptyRosterOffersTheFirstBot() = compose.withPreviewAccounts(computer) { accounts ->
         val state = mutableStateOf(fixture(LinkState.ComputerOffline(null)).copy(bots = listOf(Bot("bot", "Saved bot"))))
         var created = false
-        compose.setContent { Hosted { BotListView(app, listOf(state.value), accounts, false, {}, {}, { created = true }, {}, { _, _ -> }, {}, 0.dp) } }
+        compose.setContent { Hosted { BotListView(app, listOf(state.value), accounts, false, {}, {}, { created = true }, {}, { _, _ -> }, {}, 0.dp, "", {}, mutableMapOf()) } }
         compose.onNodeWithText("Saved bot").assertIsDisplayed()
         compose.onNodeWithText("1 offline").assertIsDisplayed()
         compose.onNodeWithText("No bots yet").assertDoesNotExist()
@@ -56,7 +56,7 @@ class ConnectionUiTest {
             timing.beginCold()
             timing.record(OpenPhase.CatchUp, computer.id, chats = 1, messages = 1)
         }
-        compose.setContent { Hosted { BotListView(app, listOf(state), accounts, false, {}, {}, {}, {}, { _, _ -> }, {}, 0.dp) } }
+        compose.setContent { Hosted { BotListView(app, listOf(state), accounts, false, {}, {}, {}, {}, { _, _ -> }, {}, 0.dp, "", {}, mutableMapOf()) } }
         compose.onNodeWithText("Latest reply").assertIsDisplayed()
         compose.waitForIdle()
         assertEquals(1, events.count { it.phase == OpenPhase.ChatList })

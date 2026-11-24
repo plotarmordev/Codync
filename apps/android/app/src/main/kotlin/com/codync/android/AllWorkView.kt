@@ -39,9 +39,9 @@ internal fun allWork(shown: List<AppState>, sectionOrder: (AppState) -> List<Str
     allWork(shown.flatMap { state -> shownBots(roster(state.bots), sectionOrder(state)).map { WorkingBot(state, it) } }) { it.bot.work }
 
 /**
- * The Threads tab (iOS `ThreadsTab`): every bot that has live or waiting tasks, the bot as a heading, which opens its
+ * The Threads tab (iOS `ThreadsTab`): every bot that has live or waiting items, the bot as a heading, which opens its
  * details, over the rows its details have for them, with the same actions. A row that needs the user opens the bot's
- * chat at its card; any other row of a task a thread has opens the bot's details at its thread. With none, an empty
+ * chat at its card; any other row of an item a task has opens the bot's details at its thread. With none, an empty
  * state. [grouped]: the bots are on several computers, so a heading also names the bot's computer.
  */
 @Composable internal fun ThreadsView(bots: List<WorkingBot>, accounts: AccountStore, bottomInset: Dp) {

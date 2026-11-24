@@ -1,18 +1,18 @@
 import CodyncKit
 import SwiftUI
 
-/// Every bot that has live or waiting tasks, the Threads tab's list: the bot as a heading, which opens its details,
+/// Every bot that has live or waiting items, the Threads tab's list: the bot as a heading, which opens its details,
 /// over the rows its details have for them, with the same actions. A row that needs the user opens the bot's chat,
-/// where its card waits; any other row of a task a thread has opens the bot's details on its thread.
+/// where its card waits; any other row of an item a task has opens the bot's details on its thread.
 public struct AllWorkView: View {
     let bots: [RosterItem]
     /// Several computers: a heading also names the bot's computer.
     let many: Bool
     let store: (RosterItem) -> BotStore?
     let openDetails: (RosterItem) -> Void
-    /// The bot's chat, at the card `task` waits on.
+    /// The bot's chat, at the card `item` waits on.
     let openChat: (RosterItem, WorkItem) -> Void
-    /// The bot's details, on the thread of `task`.
+    /// The bot's details, on the thread of `item`.
     let openThread: (RosterItem, WorkItem) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 

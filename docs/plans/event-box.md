@@ -274,7 +274,7 @@ The same on iPhone, Android, desktop and terminal unless said; where it settles 
   have (another computer, the cloud assistant, a deleted bot) has no mark. **Try again** isn't offered on a
   request's row. **Cut in** shows only when some live item can give way (the bot's own), and the list it asks with
   holds only those.
-- **4.** On the phones the **Threads** tab (its badge the count of working tasks, none at zero; it replaced the
+- **4.** On the phones the **Threads** tab (its badge the count of working items, none at zero; it replaced the
   roster header's Work button and sheet), on the desktop the Threads page, lists the bots in the roster's
   on-screen order, each a heading (avatar, name, with the computer's name
   when there are several computers) that opens that bot's Details, over its Threads rows then its numbered Event

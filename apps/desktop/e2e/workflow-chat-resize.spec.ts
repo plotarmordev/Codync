@@ -8,8 +8,9 @@ const LAYOUT = { desktopSidebarWidth: 266, listHidden: false, detailsPanelWidth:
 async function dragBothWays(panel: Locator) {
   const page = panel.page()
   const shown = async () => (await panel.boundingBox())!.width
-  // Once it has slid in, flush with the window's edge, and stopped moving.
-  const edge = await page.evaluate(() => innerWidth)
+  // Once it has slid in, flush with the frame's right edge (the window's chrome sits past it), and stopped moving.
+  const frame = await page.locator('.page-frame').boundingBox()
+  const edge = Math.round(frame!.x + frame!.width)
   await expect.poll(async () => { const box = (await panel.boundingBox())!; return Math.round(box.x + box.width) }).toBe(edge)
   const settled = async () => { let last = -1; await expect.poll(async () => { const now = await shown(); const same = now === last; last = now; return same }).toBe(true) }
   const drag = async (dx: number) => {
@@ -58,7 +59,7 @@ test("a thread's side panel drags wider and narrower in a window of ordinary wid
   const { browser, page } = await attach()
   const cdp = await page.context().newCDPSession(page)
   const restore = await withPrefs(page, LAYOUT)
-  const title = 'Resize the panel'
+  const title = `Resize the panel ${Date.now()}`
   let botId: string | undefined
   try {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false })

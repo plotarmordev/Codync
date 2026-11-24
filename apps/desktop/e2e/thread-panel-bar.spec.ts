@@ -7,8 +7,9 @@ const barButtons = (page: Page) => page.locator('.window-bar-end button').evalua
 test("a thread's panel puts its buttons in the window's bar as a bot's chat does, its tabs row only tabs and +", async ({}, info) => {
   const { browser, page } = await attach()
   const cdp = await page.context().newCDPSession(page)
-  const name = `Thread bar e2e ${Date.now()}`
-  const title = 'Header like the bot'
+  const stamp = Date.now()
+  const name = `Thread bar e2e ${stamp}`
+  const title = `Header like the bot ${stamp}`
   const restore = await withPrefs(page, { listHidden: false })
   let botId: string | undefined
   try {
@@ -68,8 +69,9 @@ test("a thread's panel puts its buttons in the window's bar as a bot's chat does
 test("a panel's tabs share its width, narrow ones hide their close button, and + stays in sight", async ({}, info) => {
   const { browser, page } = await attach()
   const cdp = await page.context().newCDPSession(page)
-  const name = `Panel tabs e2e ${Date.now()}`
-  const title = 'Many tabs'
+  const stamp = Date.now()
+  const name = `Panel tabs e2e ${stamp}`
+  const title = `Many tabs ${stamp}`
   const tabs = ['details', 'library', 'memory', 'computer', 'browser', 'settings', 'terminal']
   const restore = await withPrefs(page, { listHidden: false, detailsPanelWidth: 400, panelLayout: [{ tabs, shown: 'details' }] })
   let botId: string | undefined

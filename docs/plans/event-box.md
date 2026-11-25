@@ -178,7 +178,8 @@ apply are reused; `{count} tasks running` goes.
   runs, however long and quiet, is left alone. The hour counts from the box's last change; an empty box sets no
   look. Nothing here wakes an agent unless an item was lost.
 - Stopping a working item stops its task; items waiting `after` it become ordinary waiting items.
-- Items ended over seven days ago are deleted, and a task bot with no item left is deleted with its transcript.
+- Items ended over seven days ago leave the box for the archive, their task bots parked; they are deleted only as
+  the user's Delete old threads says ([older tasks](../features/background-tasks.md#older-tasks)).
 - Chains: items added from a report's turn carry its hops; the ninth is refused.
 
 ## Analytics
@@ -397,7 +398,7 @@ thread directly, as to a chat. Demo of the desktop panel: https://claude.ai/arti
 - **Writing to it.** A composer like the chat's (text; files and voice are not in this stage). While the thread's
   turn runs, a message waits in its queue and shows Send now and Remove, exactly as in the chat; Send now steers the
   running turn where the agent can, else stops it for the message. With no turn running the message starts one.
-- **After it ended.** A done, failed or stopped item of the bot's own whose task still exists (kept seven days)
+- **After it ended.** A done, failed or stopped item of the bot's own whose task still exists ([kept](../features/background-tasks.md#older-tasks) until the user's Delete old threads)
   takes messages too: the first one reopens the item (`working` again, back under Threads, counted against Agents at
   once even past the ceiling, since the user asked), in the same session where the agent can resume it, else in a new
   one told what was done.

@@ -55,7 +55,7 @@ entries leave as `taskEntry` events, not `entry`.
 A task works one item per turn. When the turn ends the item is done and reported (unless a message of the user's
 waits in its [thread](#talking-to-a-thread): that message's turn is the item's end); a task with no item left ends (its
 actor and agent process stop; its transcript stays for its items' details, and a message to one of them starts it again). A task bot no item names any more is
-deleted with its transcript.
+deleted with its transcript; one whose items went to the [archive](#older-tasks) is parked there instead.
 
 ## The dispatcher
 
@@ -133,8 +133,7 @@ The decisions are one pure function (`dispatch::standings`), which the wire's `w
 - `work_status {}`: every item that is working or waiting, and those ended in the last day: status, what its task
   does now, why it waits, seconds, result.
 - `recall_work {item?, query?, before?}` (`tasks/recall.rs`): the bot looks back at its items, ended ones too, from
-  its box and its past items (kv `work-past.<bot>`: items that left the box at host start, kept until 30 days after
-  they ended, the newest 200). With `item`: its brief, `usersWords`, `usersNotes`, `chatPassedOn`, whole result,
+  its box and the [archive](#older-tasks) (items that ended in the last 30 days, the newest 200). With `item`: its brief, `usersWords`, `usersNotes`, `chatPassedOn`, whole result,
   `after`, `followedBy`, local times, and a page of 30 of its thread's steps (user, agent, notice, tool and card lines,
   each cut at 600 bytes) with `earlierSteps`, the `before` for the page before; none once the task is gone. With
   `query`: the items whose title, brief or result has it (any case); with neither, the latest; 20 at most, each result
@@ -207,8 +206,8 @@ chat's own queue: nothing here is a second copy of it.
 - **The item isn't over while a message waits.** A turn that ends (done, failed, or stopped for Send now) with a
   message of the user's still queued ends nothing (`tasks::finished`): the item stays `working`, the message's turn
   runs, and that turn's last message is the item's result and its one report.
-- **After it ended.** A done, failed or stopped item whose task bot still exists (it is kept seven days with the
-  item) takes a message too. The first one reopens it: `working` again, under Threads, `startedAt` now, counted
+- **After it ended.** A done, failed or stopped item whose task bot still exists (kept in the [archive](#older-tasks)
+  after a week, until the user's `threadKeepDays`) takes a message too. The first one reopens it: `working` again, under Threads, `startedAt` now, counted
   among the bot's running tasks even past `maxAgents` (the user asked), so the dispatcher starts nothing else while
   the bot is over its ceiling, and neither it nor the hourly look ends the task. The task's actor starts again and
   opens its session as an actor does after a restart: `session/load` or `session/resume` where the agent can, so
@@ -644,6 +643,38 @@ The same status is on the wire as `bot.outside = {status, startedAt}`, beside th
 client keeps up to date itself (the activity while the app runs, the tray, the island).
 An item's end sends no alert of its own: its report is a turn of the bot's, whose reply alerts as any reply does.
 
+## Older tasks
+
+A box is read and written whole on every change, so an item leaves it a week after it ended (`KEEP_MS`, at host
+start and once a day: `tasks::age`) for the **archive** (`tasks/archive.rs`, table `task_archive`: bot, item, task,
+`endedAt`, the item's JSON). Its task bot, once no item left in the box names it, is **parked** (table
+`parked_tasks`): out of `bots`, so the lists of tasks every dispatcher pass and host start read stay short, with
+its transcript, session (`session_id`, `read_rev`, put back as they were with the bot row), uploads and folder left
+as they are. The tables are made beside the others (`Store::open`): nothing stored changes, so the schema stays. A
+host from before kept items for `recall_work` in kv `work-past.<bot>`; they move into the archive once, at host start,
+a task an item in the box still names staying where it is. Most of their tasks were already gone: those items are
+only recalled, never listed.
+
+- **Kept for good by default.** `threadKeepDays` (kv, per computer; `setThreadKeepDays {days}`, 0 or 7 to 3650,
+  `hello.threadKeepDays`, a `threadKeepDays {days}` event to connected apps) deletes a task that many days after it
+  last ended: the archived item, its parked task bot with its transcript (`Hub::delete_bot`), its own folder (a
+  thread without a bot) and an untouched worktree. A task that worked a later item stays with it. It runs at host
+  start, once a day and as the choice changes. Writing to a task reopens it and its clock starts again when it ends.
+- **Listed.** `olderThreads {botId?, before?}` → `{threads, more}`: the ended tasks of `botId`, else of every
+  bot on the computer, that ended before `before` (the `endedAt` of the oldest one the app has paged; none for the
+  newest), newest first, 30 a page, from the boxes and the archive; a page never splits tasks that ended in the same
+  millisecond (it takes them all), so the next one, before that `endedAt`, misses none. Each is a `work` row with `botId`; the newest overlap the bots' `work`, so an
+  app keeps one row per bot and item. Apps list them at the end of Threads (the terminal: under Recent on a bot's
+  Details page, with `botId`), loading the next page as the list scrolls to its end, on a host that sends
+  `hello.threadKeepDays`. An ended task that leaves its bot's `work` while the app is connected stays listed as it
+  last read (desktop, iPhone, Android), without moving the next page's cursor.
+- **Opened and written to** as any task: `taskEntries` and `readUpload` read a parked task, and `send`,
+  `upload` (with `itemId`), `retryWork` and `dropWork` on an archived item first bring it back into its box with its
+  task bot (`archive::bring_back`, under the box's lock: the dispatcher never sees the task without its item).
+- **A deleted bot** takes its archive and parked tasks with it.
+- Analytics: `setting_changed` (`thread_keep_days`, `days`), `threads_deleted` (`count`, `days`),
+  `older_threads_listed` (`count`, `more`, `first`); a failed archive is a host error.
+
 ## Wire
 
 - Bot: `work: [item]`: every working item (oldest first), then the waiting in dispatch order, then the items ended
@@ -694,8 +725,8 @@ absent on an older host, where the feature doesn't show.
 
 ## Restart and cleanup
 
-At host start (`tasks::restore`): items ended over 7 days ago leave the box for the bot's past items (`recall_work`),
-and their tasks go at the next dispatcher pass; a working item whose task's turn was cut
+At host start (`tasks::restore`): items ended over 7 days ago leave the box for the [archive](#older-tasks), their
+task bots parked; a working item whose task's turn was cut
 off and can be resumed (`agent::bot::resumable`: a restart mark under an hour old) stays working, and its task's
 actor resumes the turn; one whose task can't goes back to waiting once, as an item that was cut in on, and fails with
 a report the second time. An ended item's undelivered report is sent again: to the bot, or, for a routine's run,

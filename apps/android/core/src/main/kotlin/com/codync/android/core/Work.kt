@@ -89,6 +89,68 @@ data class WorkItem(
     val takesSeat: Boolean get() = seat ?: status.live
 }
 
+/** An ended task from `olderThreads`: its bot ([botId], which may be the box of threads without a bot) and its item. */
+data class OlderThread(val botId: String, val task: WorkItem)
+
+/**
+ * A computer's older tasks (`olderThreads`, the ones past the day a bot's `work` keeps), newest first, page by page;
+ * [more] while it holds older ones still.
+ */
+data class OlderThreads(
+    val threads: List<OlderThread> = emptyList(),
+    val more: Boolean = true,
+    /** Ended tasks that left their bot's `work` (past its last day) while connected, as they last read. */
+    val kept: List<OlderThread> = emptyList(),
+    /** Tasks dropped here: their bot's next `work` without them doesn't keep them. */
+    val dropped: Set<Pair<String, String>> = emptySet(),
+) {
+    /** Where the next page starts: the end of the oldest paged; null before the first. */
+    val before: Long? get() = threads.mapNotNull { it.task.endedAt }.minOrNull()
+
+    /** [botId]'s items among them: a kept one over its paged row. */
+    fun of(botId: String): List<WorkItem> = (kept + threads).filter { it.botId == botId }.map { it.task }.distinctBy { it.id }
+
+    /** [page] after these, without a task already held, and whether the computer has more. */
+    operator fun plus(page: OlderThreads): OlderThreads {
+        val held = threads.mapTo(HashSet()) { it.botId to it.task.id }
+        return copy(threads = threads + page.threads.filter { (it.botId to it.task.id) !in held }, more = page.more)
+    }
+
+    /** [botId]'s `work` went from [was] to [now]: an ended task it no longer carries stays listed, as it last read. */
+    fun keep(botId: String, was: List<WorkItem>, now: List<WorkItem>): OlderThreads {
+        val carried = now.mapTo(HashSet()) { it.id }
+        val left = was.filter { it.endedAt != null && it.id !in carried && (botId to it.id) !in dropped }
+        if (left.isEmpty()) return this
+        val ids = left.mapTo(HashSet()) { it.id }
+        return copy(kept = kept.filterNot { it.botId == botId && it.task.id in ids } + left.map { OlderThread(botId, it) })
+    }
+
+    /** [taskId] of [botId] dropped (`dropWork`): out of the list, and not kept once it leaves its bot's `work`. */
+    fun drop(botId: String, taskId: String): OlderThreads = copy(
+        threads = threads.filterNot { it.botId == botId && it.task.id == taskId },
+        kept = kept.filterNot { it.botId == botId && it.task.id == taskId },
+        dropped = dropped + (botId to taskId),
+    )
+
+    companion object {
+        /** A page as the computer answers it; each row is read on its own, so one this app can't read is left out alone. */
+        fun decode(value: JsonObject): OlderThreads = OlderThreads(
+            (value["threads"] as? JsonArray).orEmpty().mapNotNull { row ->
+                val botId = ((row as? JsonObject)?.get("botId") as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+                WireJson.decodeFromJsonElement(WorkSerializer, JsonArray(listOf(row))).firstOrNull()?.let { OlderThread(botId, it) }
+            },
+            (value["more"] as? JsonPrimitive)?.booleanOrNull == true,
+        )
+    }
+}
+
+/** A bot's [work] with the [older] items it doesn't hold after it: the bot's own row of an item wins. */
+fun mergedWork(work: List<WorkItem>, older: List<WorkItem>): List<WorkItem> {
+    if (older.isEmpty()) return work
+    val held = work.mapTo(HashSet()) { it.id }
+    return work + older.filter { it.id !in held }
+}
+
 /** The most agents a bot may run at once. */
 const val MAX_AGENTS = 6
 

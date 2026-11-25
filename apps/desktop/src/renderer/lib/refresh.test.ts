@@ -179,15 +179,36 @@ test("another device's auto order switch shows here", async () => {
   store.retire()
 })
 
-/** A store over a cache in another mirror format: "gone" and "kept" from the computer and a message that didn't send, with each events stream it opens. */
-function syncOverStaleCache() {
+test("another device's choice of when old threads are deleted shows here", async () => {
+  let send!: (event: object) => void
+  const ready = deferred()
+  const store = sync({
+    call: async () => ({ version: '2.55.0', name: 'Test', backends: [], threadKeepDays: 0 }),
+    stream: (_path, onData) => { send = (event) => onData(JSON.stringify(event)); ready.resolve(); return () => {} },
+  })
+  store.start()
+  await ready.promise
+  assert.equal(store.hello?.threadKeepDays, 0)
+  store.olderThreads.rows = [{ id: 'a', botId: 'b1' } as (typeof store.olderThreads.rows)[number]]
+  send({ type: 'threadKeepDays', days: 30 })
+  assert.equal(store.hello?.threadKeepDays, 30)
+  // What the new choice no longer keeps is gone on the computer: the older list loads again.
+  assert.deepEqual(store.olderThreads.rows, [])
+  store.retire()
+})
+
+/**
+ * A store over a cache synced under `stamp` (by default, one an older app left): "gone" and "kept" from the
+ * computer and a message that didn't send, with each events stream it opens.
+ */
+function syncOverStaleCache(stamp = 'older/2.0.0', hello: object = {}) {
   const entry = (id: string, seq: number, rev: number, data = {}) => ({ id, seq, botId: 'b1', rev, kind: 'agent', turn: 1, data, createdAt: 1, updatedAt: 1 })
-  storage.set('codync-mirror-local-test', JSON.stringify({ format: 0, hostId: 'h1', rev: 77, bots: [],
+  storage.set('codync-mirror-local-test', JSON.stringify({ format: 0, stamp, hostId: 'h1', rev: 77, bots: [],
     entries: [entry('gone', 1, 70), entry('kept', 2, 77), entry('local-x', 3, 0, { status: 'failed' })] }))
   const streams: { path: string; send: (event: object) => void }[] = []
   let opened = deferred()
   const store = sync({
-    call: async () => ({ hostId: 'h1', version: '2.29.0', name: 'Test', backends: [] }),
+    call: async () => ({ hostId: 'h1', version: '2.29.0', name: 'Test', backends: [], ...hello }),
     stream: (path, onData) => { streams.push({ path, send: (event) => onData(JSON.stringify(event)) }); opened.resolve(); return () => {} },
   })
   const nextStream = async () => { await opened.promise; opened = deferred(); return streams[streams.length - 1] }

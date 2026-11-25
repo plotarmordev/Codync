@@ -86,6 +86,11 @@ public final class BotStore {
     public internal(set) var entries: [String: [Entry]] = [:]
     /// Background tasks' transcripts as they come in, by task id: never part of a chat, and gone with the task.
     public internal(set) var taskEntries: [String: [Entry]] = [:]
+    /// Ended tasks older than the bots' `work` carries, as far as the Threads list paged them (`BotStore+OlderThreads`).
+    public internal(set) var olderThreads = OlderThreadList()
+    /// Moved on when the older tasks start over (a new `hello`, another keep choice): a page asked before is dropped.
+    public internal(set) var olderThreadsGeneration = 0
+    var loadingOlderThreads = false
     public internal(set) var usage: Usage
     /// The newest order still to send, and the task sending them (`setUsageOrder`).
     @ObservationIgnored var usageOrderWaiting: [String]?

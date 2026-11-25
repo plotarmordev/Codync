@@ -21,8 +21,12 @@ fn uploads_root(hub: &Hub, bot: &str, item: Option<&str>) -> Result<std::path::P
         Some(item) => tasks::thread_task(hub, bot, item)?,
         None => bot.to_owned(),
     };
-    let row = hub.store.bot(&id)?.filter(|r| !r.deleted).ok_or_else(|| anyhow!("unknown bot"))?;
-    Ok(crate::chat::uploads::root(&row.config))
+    // A task that ended over a week ago is parked: its files are still read back.
+    let cfg = match hub.store.bot(&id)?.filter(|r| !r.deleted) {
+        Some(row) => row.config,
+        None => hub.store.parked_task(&id)?.ok_or_else(|| anyhow!("unknown bot"))?,
+    };
+    Ok(crate::chat::uploads::root(&cfg))
 }
 
 /// A message's `attachments`: upload ids.
@@ -192,6 +196,13 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
                 hub.store.bots()?.iter().filter(|row| !row.deleted).map(|row| hub.bot_json(row)).collect();
             json!({"bots": bots})
         }
+        // Ended tasks older than the bots' `work` carries (of `botId`, else of every bot), newest first, a page at a
+        // time: `before` the `endedAt` of the oldest the app has.
+        "olderThreads" => {
+            let (before, only) = (b["before"].as_i64(), b["botId"].as_str().map(str::to_owned));
+            let hub = hub.clone();
+            tokio::task::spawn_blocking(move || tasks::archive::older(&hub, only.as_deref(), before)).await??
+        }
         "history" => {
             let bot = str_arg(&b, "botId")?;
             let before = b["beforeSeq"].as_i64().unwrap_or(i64::MAX);
@@ -292,6 +303,10 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
                 Some(bot) => bot.to_owned(),
                 None => tasks::plain::owner(hub).await?,
             };
+            // A file for an archived item's message: its task comes back first, as the message brings it.
+            if let Some(item) = b["itemId"].as_str() {
+                tasks::archive::bring_back(hub, &bot, item)?;
+            }
             let root = uploads_root(hub, &bot, b["itemId"].as_str())?;
             let (id, name) = (str_arg(&b, "uploadId")?.to_owned(), str_arg(&b, "name")?.to_owned());
             let data =

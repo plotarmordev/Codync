@@ -126,6 +126,8 @@ data class AppState(
     val taskEntries: Map<String, List<Entry>> = emptyMap(),
     /** The user's messages to a thread on their way or refused, by item id, until the thread's transcript has them; in memory only, like the transcript. */
     val threadSends: Map<String, List<PendingSend>> = emptyMap(),
+    /** The computer's ended threads past the day its bots' `work` keeps, as far as the Threads list has read them; null until it does. */
+    val olderThreads: OlderThreads? = null,
     val plugins: PluginListing? = null,
     val voice: VoiceCallViewState? = null,
     /** The computer's remote screen (`null`: the host predates it). */

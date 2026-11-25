@@ -74,8 +74,11 @@ impl DetailsPage {
             out.push(section("Later", String::new(), self.follow_ups.iter().map(DetailRow::FollowUp).collect()));
         }
         out.push(section("Routines", String::new(), self.items.iter().flatten().map(DetailRow::Routine).collect()));
-        if !recent.is_empty() {
-            out.push(section("Recent", String::new(), recent.into_iter().map(DetailRow::Recent).collect()));
+        // The tasks that ended before the bot's `work` carries them follow its last day's, once each.
+        let older = self.older.rows.iter().filter(|o| !work.iter().any(|w| w.id == o.id));
+        let ended: Vec<DetailRow<'a>> = recent.into_iter().chain(older).map(DetailRow::Recent).collect();
+        if !ended.is_empty() {
+            out.push(section("Recent", String::new(), ended));
         }
         out
     }

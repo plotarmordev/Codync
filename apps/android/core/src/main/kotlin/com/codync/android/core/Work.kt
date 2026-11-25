@@ -198,7 +198,7 @@ fun <T> threadSections(roster: List<T>, bot: (T) -> Bot, keyOf: (T) -> String, c
             grouping == ThreadGrouping.None -> null
             source?.kind == SourceKind.Routine -> ThreadGroup("routine:${keyOf(of)}:${source.id ?: item.title}", ThreadGroupKind.Routine, item.title, emptyList())
             path != null && item.worktree == null && path != bot(of).cwd ->
-                ThreadGroup("folder:$path", ThreadGroupKind.Folder, path.split('/', '\\').lastOrNull { it.isNotEmpty() } ?: path, emptyList())
+                ThreadGroup("folder:$path", ThreadGroupKind.Folder, folderName(path), emptyList())
             else -> null
         }
         if (group == null) recent += row
@@ -405,3 +405,6 @@ fun sharing(entries: List<Entry>, chat: List<Entry>, task: String): List<Entry> 
     }
     return out + shared
 }
+
+/** A folder's name: its path's last part (`/` or `\` separated), or the path itself. */
+fun folderName(path: String): String = path.split('/', '\\').lastOrNull { it.isNotEmpty() } ?: path

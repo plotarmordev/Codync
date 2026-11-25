@@ -146,7 +146,7 @@ ORDER BY properties.open, properties.phase
 | `permission_answered` | host | `respondPermission` | `choice` (`allow_once`/`allow_always`/`reject_once`/`reject_always`/`other`) |
 | `reaction_added` | host | `react` | — |
 | `handoff_answered` | host | `editHandoff`, `keepConversation` | `action` (`edit`/`keep`) |
-| `routine_saved` | host | `saveRoutine` | — |
+| `routine_saved` | host | `saveRoutine` | `folder` (it names a folder of its own) |
 | `routine_toggled` | host | `setRoutineEnabled` | `enabled` |
 | `routine_deleted` | host | `deleteRoutine` | — |
 | `routine_run` | host | `runRoutine` | — |

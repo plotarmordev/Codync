@@ -100,6 +100,7 @@ extension BotStore {
         iconsRevision = -1
         hello = h
         openTiming.record(.hello, computer: computer.id)
+        resetOlderThreads()
         applyIcons(h.icons ?? [:], revision: h.iconsRevision ?? 0)
         noteHostVersion(HostVersion(version: h.version, minApp: h.minApp), schema: h.schema)
         // A reconnect, including the one a lagged stream asks for, fills the pin rows in again.
@@ -195,6 +196,9 @@ extension BotStore {
             hello?.name = name
         case let .autoOrder(on):
             hello?.autoOrder = on
+        case let .threadKeepDays(days):
+            hello?.threadKeepDays = days
+            resetOlderThreads()
         case let .artifact(artifact):
             artifacts.upsert(artifact)
         case .resync:

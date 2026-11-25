@@ -249,6 +249,7 @@ export class BotSync extends BotMirror {
     this.hostId = h.hostId
     this.iconsRevision = -1
     this.hello = h
+    this.olderThreads.reset()
     if (h.workflows === true) void this.reloadWorkflowMirror()
     else this.workflows = []
     this.applyIcons(h.icons ?? {}, h.iconsRevision)
@@ -342,6 +343,9 @@ export class BotSync extends BotMirror {
         break
       case 'autoOrder':
         this.showAutoOrder(event.enabled)
+        break
+      case 'threadKeepDays':
+        this.showThreadKeepDays(event.days)
         break
       case 'network':
         this.network = event.network

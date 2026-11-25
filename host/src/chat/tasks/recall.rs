@@ -1,5 +1,5 @@
 //! `recall_work`: the bot looks back at its work, ended items too, up to 30 days: those in its box and its past ones
-//! (`items::past`).
+//! (`archive::recent`).
 
 use super::items::{self, Item};
 use crate::analytics::{self, Event};
@@ -23,7 +23,7 @@ pub(super) fn call(hub: &Hub, bot: &str, args: &Value) -> Result<Value> {
     let mut all = items::load(&hub.store, bot);
     let now = now_ms();
     all.retain(|i| i.ended_at.is_none_or(|at| items::within_past(at, now)));
-    all.extend(items::past(&hub.store, bot, now));
+    all.extend(super::archive::recent(&hub.store, bot, now - items::PAST_MS, items::PAST_MOST));
     // The user's own tasks are theirs: the bot doesn't look back at them (`items::seen_by_bot`).
     all.retain(|i| !i.source.is_user());
     let (by, recalled) = if let Some(id) = text("item") {
@@ -123,7 +123,8 @@ mod tests {
             )
             .expect("an item")
         };
-        items::put_past(&hub.store, "b1", vec![ended("i1", 20), ended("i0", 40)], now).expect("kept");
+        let old = [ended("i1", 20), ended("i0", 40)];
+        super::super::archive::put(&hub, "b1", &old, &[]).expect("kept");
         let task = crate::store::Lane::main("task-2");
         for n in 0..35 {
             let step = json!({"text": format!("step {n}")});

@@ -22,7 +22,8 @@ fn folders() -> PathBuf {
 
 /// The folder of its own a thread without a bot works in when the user picks none, for its item `item`: made as the
 /// item is added, versioned as a bot's own folder is (`agent::versions`), never given a worktree
-/// (`workspace::own_folder`), and removed when its item leaves the box (a week after it ended, as its transcript).
+/// (`workspace::own_folder`), and removed with its task: when the user drops it, or `threadKeepDays` deletes it with
+/// its transcript (`archive::prune`).
 pub(super) fn own_folder(item: &str) -> Result<PathBuf> {
     // Only ids the host issued become folder names.
     uuid::Uuid::parse_str(item).context("not an id Codync issued")?;

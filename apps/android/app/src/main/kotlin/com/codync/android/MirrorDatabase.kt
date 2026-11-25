@@ -184,7 +184,7 @@ class MirrorDatabase(context: Context, directory: File, computerId: String) :
             // Artifacts, the network, the name and a task's transcript live in memory (`AppStore.receiveArtifacts`, `receiveNetwork`,
             // `setHostName`, `receiveTasks`).
             MirrorEvent.Resync, MirrorEvent.Ignored, is MirrorEvent.ArtifactChanged, is MirrorEvent.Call, is MirrorEvent.Network,
-            is MirrorEvent.Name, is MirrorEvent.AutoOrder, is MirrorEvent.TaskEntryChanged -> Unit
+            is MirrorEvent.Name, is MirrorEvent.AutoOrder, is MirrorEvent.ThreadKeepDays, is MirrorEvent.TaskEntryChanged -> Unit
             // Workflow events carry no rev. Applying one here would not move the cursor, and must not.
             is MirrorEvent.Workflow -> Unit
         }

@@ -152,6 +152,8 @@ fn reopen(hub: &Hub, owner: &BotConfig, item: &mut Item, task: &mut BotConfig) -
 /// reopened the item, and whether it waits behind a running turn (both null for a message sent before).
 pub fn message(hub: &Arc<Hub>, bot: &str, id: &str, text: &str, uploads: &[String], nonce: &str) -> Result<Value> {
     let owner = hub.store.bot(bot)?.filter(|row| !row.deleted).ok_or_else(|| anyhow!("unknown bot"))?.config;
+    // A task that ended over a week ago is in the archive: it comes back to be written to.
+    super::archive::bring_back(hub, bot, id)?;
     // Under the box's lock to the end: the item's end and the dispatcher's look at its task come before all of
     // this or after it, so neither ends a task a message is on its way to.
     let (entry, reopened, queued) = items::change(hub, bot, |items| {

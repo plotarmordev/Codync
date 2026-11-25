@@ -119,6 +119,10 @@ pub enum Event {
     WorktreeFillFailed,
     /// A bot's `recall_work` finished (`outcome`), looking up one item, a query or the latest (`by`).
     WorkRecalled,
+    /// Tasks that last ended longer ago than the user keeps them were deleted (`count`, `days`) (`tasks::archive`).
+    ThreadsDeleted,
+    /// An app listed a page of older tasks (`count`, `more`, `first`: the first page) (`olderThreads`).
+    OlderThreadsListed,
     /// The user wrote to an item's task (`chat::tasks::thread`): whether it reopened the item, and whether it waits.
     WorkMessaged,
     /// The watchdog found one of a bot's own items looking stuck (`signal`) and woke the bot, reminded the user of a
@@ -309,6 +313,8 @@ impl Event {
             Self::WorkAsked => "work_asked",
             Self::WorktreeFillFailed => "worktree_fill_failed",
             Self::WorkRecalled => "work_recalled",
+            Self::ThreadsDeleted => "threads_deleted",
+            Self::OlderThreadsListed => "older_threads_listed",
             Self::WorkMessaged => "work_messaged",
             Self::WatchdogFlagged => "watchdog_flagged",
             Self::DevServerStarted => "dev_server_started",

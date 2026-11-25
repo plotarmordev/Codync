@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { fixtureCommand } from './fixture-command.ts'
-import { api, attach, openPage, setPref, workAgent } from './sandbox.ts'
+import { api, attach, openPage, setPref, taskAgent } from './sandbox.ts'
 
 type Saved = { routines: { id: string; name: string; folder?: string | null }[] }
 
@@ -24,7 +24,7 @@ test("a routine's folder is picked in its editor, its run works there, and clear
     await setPref(page, 'appLanguage', 'en')
     await page.reload()
     const { bot } = await api<{ bot: { id: string } }>(page, 'createBot', {
-      name, backend: 'custom', command: fixtureCommand(workAgent), connectors: [], skills: [], notify: false,
+      name, backend: 'custom', command: fixtureCommand(taskAgent), connectors: [], skills: [], notify: false,
     })
     botId = bot.id
     const { routine } = await api<{ routine: { id: string } }>(page, 'saveRoutine', {

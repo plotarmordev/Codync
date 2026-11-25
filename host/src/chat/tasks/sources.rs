@@ -205,7 +205,7 @@ pub(super) fn begin(hub: &Hub, bot: &str, item: &mut Item) -> Result<Begin> {
             // Its folder went since it was saved: the run fails and says so, rather than work somewhere else.
             if let Some(folder) = prepared.folder.as_deref().filter(|f| !std::path::Path::new(f).is_dir()) {
                 let detail = routines::could_not_start(format!("its folder {folder} is gone"));
-                let ran = routines::Ran { timed_out: false, thread: None };
+                let ran = routines::Ran { timed_out: false, task: None };
                 hub.routines.complete(hub, run, routines::Status::Failed, Some(detail), None, &ran)?;
                 return Ok(Begin::Gone);
             }

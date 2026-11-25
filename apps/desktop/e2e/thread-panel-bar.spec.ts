@@ -72,7 +72,7 @@ test("a panel's tabs share its width, narrow ones hide their close button, and +
   const stamp = Date.now()
   const name = `Panel tabs e2e ${stamp}`
   const title = `Many tabs ${stamp}`
-  const tabs = ['details', 'library', 'memory', 'computer', 'browser', 'settings', 'terminal']
+  const tabs = ['details', 'library', 'memory', 'computer', 'browser:e2e1', 'settings', 'terminal:e2e1']
   const restore = await withPrefs(page, { listHidden: false, detailsPanelWidth: 400, panelLayout: [{ tabs, shown: 'details' }] })
   let botId: string | undefined
   try {

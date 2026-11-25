@@ -82,7 +82,7 @@ a choice, a sign-in) it doesn't count toward `maxAgents`, so the next item can s
 lets it go on even past the ceiling. Every live task still counts toward `maxAgents + 1`, so only one seat is ever
 lent. A task that begins to wait on the user looks its bot's box over again (`Tasks::seat_freed`). Near the usage
 limit it still counts as running, so nothing else starts. Where the next task gets no worktree of its own (a folder
-that isn't a Git repository, **Worktree per thread** off, the bot's own folder) it works in the same folder as the
+that isn't a Git repository, **Worktree mode** off, the bot's own folder) it works in the same folder as the
 one that waits, even at `maxAgents` 1.
 
 
@@ -689,7 +689,7 @@ An item's end sends no alert of its own: its report is a turn of the bot's, whos
 ## In the apps
 
 The capsule, the bot's Details (Threads, Event box, Later, Routines, Dev servers, Recent), `Threads at once` in its
-Settings and cutting in are specified in [the event box](../plans/event-box.md#in-the-apps) (stage 2). The sheet of every bot's work, the rows' source marks, the `In the background · <title>` line on what a task posts, the **Worktree per thread** switch and what follows `bot.outside` are in [as built, clients](../plans/event-box.md#as-built-clients-stages-3-to-8). An item's thread view, the where line on a row and in the thread's header, and the git state in Settings are in [stage 11, as built on the terminal](../plans/event-box.md#as-built-host-and-terminal-stage-11) and [on iPhone, Android and desktop](../plans/event-box.md#as-built-iphone-android-and-desktop-stage-11). A client reads `bot.work` and `bot.maxAgents`; both are
+Settings and cutting in are specified in [the event box](../plans/event-box.md#in-the-apps) (stage 2). The sheet of every bot's work, the rows' source marks, the `In the background · <title>` line on what a task posts, the **Worktree mode** menu and what follows `bot.outside` are in [as built, clients](../plans/event-box.md#as-built-clients-stages-3-to-8). An item's thread view, the where line on a row and in the thread's header, and the git state in Settings are in [stage 11, as built on the terminal](../plans/event-box.md#as-built-host-and-terminal-stage-11) and [on iPhone, Android and desktop](../plans/event-box.md#as-built-iphone-android-and-desktop-stage-11). A client reads `bot.work` and `bot.maxAgents`; both are
 absent on an older host, where the feature doesn't show.
 
 ## Restart and cleanup

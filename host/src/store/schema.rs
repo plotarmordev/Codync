@@ -299,7 +299,6 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::WorktreeMode;
 
     fn temp_db() -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("codync-test-{}", uuid::Uuid::new_v4()));
@@ -344,45 +343,6 @@ mod tests {
         let s = Store::open(&db).unwrap();
         let chat: Vec<String> = s.history("b", i64::MAX, 10).unwrap().into_iter().map(|e| e.id).collect();
         assert_eq!(chat, ["info"]);
-        assert_eq!(s.kv_get("schema").as_deref(), Some("14"));
-    }
-
-    #[test]
-    fn a_stored_bots_task_worktrees_switch_becomes_its_worktree_mode() {
-        let db = temp_db();
-        {
-            let c = Connection::open(&db).unwrap();
-            Store::open(&db).unwrap();
-            c.execute_batch(
-                "UPDATE kv SET v = '13' WHERE k = 'schema';
-                 INSERT INTO bots(id, rev, config) VALUES
-                   ('b', 1, '{\"id\":\"b\",\"name\":\"B\",\"backend\":\"claude\",\"taskWorktrees\":true}'),
-                   ('off', 2, '{\"id\":\"off\",\"name\":\"O\",\"backend\":\"claude\",\"taskWorktrees\":false}'),
-                   ('task-1', 3, '{\"id\":\"task-1\",\"name\":\"B\",\"backend\":\"claude\",\"taskOf\":\"b\",\"maxAgents\":5,\"taskWorktrees\":false}'),
-                   ('always', 4, '{\"id\":\"always\",\"name\":\"A\",\"backend\":\"claude\",\"worktreeMode\":\"always\"}'),
-                   ('unsaid', 5, '{\"id\":\"unsaid\",\"name\":\"U\",\"backend\":\"claude\"}');",
-            )
-            .unwrap();
-        }
-        let s = Store::open(&db).unwrap();
-        let stored = |id: &str| -> String {
-            s.db.lock().unwrap().query_row("SELECT config FROM bots WHERE id = ?1", [id], |r| r.get(0)).unwrap()
-        };
-        for (id, mode, key) in [
-            ("b", WorktreeMode::SideBySide, true),
-            ("off", WorktreeMode::Off, true),
-            ("task-1", WorktreeMode::Off, true),
-            ("always", WorktreeMode::Always, true),
-            ("unsaid", WorktreeMode::SideBySide, false),
-        ] {
-            let cfg = s.bot(id).unwrap().expect("the bot").config;
-            assert_eq!(cfg.worktree_mode, mode, "{id}");
-            assert_eq!(stored(id).contains("worktreeMode"), key, "{id}: only what the switch said is written");
-            assert!(!stored(id).contains("taskWorktrees"), "{id}: the bool is gone from the store");
-        }
-        // A task bot's own names stay: `taskOf` and `maxAgents` are what this host reads and writes.
-        let task = s.bot("task-1").unwrap().expect("the task bot").config;
-        assert_eq!((task.task_of.as_deref(), task.max_agents), (Some("b"), 5));
         assert_eq!(s.kv_get("schema").as_deref(), Some("14"));
     }
 

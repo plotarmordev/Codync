@@ -1,21 +1,21 @@
 # Bots, projects and tasks
 
-Status (2026-11-24): one plan for where a bot lives, where its work happens and what a task is given. It replaces
+Status (2026-11-25): every part below is built on `dev`; only [Open](#open) is left for the owner. One plan for where a bot lives, where its work happens and what a task is given. It replaces
 the separate "bot home and projects" and "task profile" plans. Answers part of stage A in
 [personal agent: daily and project work](personal-agent-experience.md). What is built, decided or only proposed:
 
 | Part | State |
 | --- | --- |
 | Recap when a bot's folder changes | **Built**, in dev (`a5fccdbf7`) |
-| [Bot home and projects](#3-bot-home-and-projects) | **Decided**, not built |
-| [Worktree mode](#worktree-mode) (Off / Side by side / Always) | **Decided**, not built |
-| [Worktrees counted per repository](#count-side-by-side-per-repository) | **Decided**, not built |
+| [Bot home and projects](#3-bot-home-and-projects) | **Built** (stages 5 and 6), host and all four clients |
+| [Worktree mode](#worktree-mode) (Off / Side by side / Always) | **Built** (stage 5), host and all four clients |
+| [Worktrees counted per repository](#count-side-by-side-per-repository) | **Built** (stage 5) |
 | [Task profile, no fork](#7-task-profile-no-fork) | **Built** (stage 2) |
 | [A user's task leaves the bot's queue](#6-a-users-task-leaves-the-bots-queue) | **Built** (stage 3) |
-| [An item names its place](#an-item-names-its-place) (`add_work` `place`) | Proposed |
-| [Filling a new worktree](#filling-a-new-worktree) (`.worktreeinclude`, shared folders) | Proposed |
-| [Tasks without a bot get a folder of their own](#5-tasks-without-a-bot-get-a-folder-of-their-own) | Proposed |
-| [`ask_work`](#8-the-bot-watching-its-tasks): the bot asks a task and gets an answer | Proposed |
+| [An item names its place](#an-item-names-its-place) (`add_work` `place`) | **Built** (stage 7) |
+| [Filling a new worktree](#filling-a-new-worktree) (`.worktreeinclude`, shared folders) | **Built** (stage 7) |
+| [Tasks without a bot get a folder of their own](#5-tasks-without-a-bot-get-a-folder-of-their-own) | **Built** (stage 7) |
+| [`ask_work`](#8-the-bot-watching-its-tasks): the bot asks a task and gets an answer | **Built** (stage 7) |
 
 ## Words
 
@@ -52,15 +52,16 @@ Three ways work starts:
 
 | | The bot hands it out (`add_work`) | The user starts a task with a bot | The user starts a task without a bot |
 | --- | --- | --- | --- |
-| Where it waits | The bot's event box, under `maxAgents` | No wait: starts at once ([§6](#6-a-users-task-leaves-the-bots-queue)) | The computer's box of tasks without a bot (6 at once) |
+| Where it waits | The bot's event box, under `maxAgents` | No wait: starts at once ([§6](#6-a-users-task-leaves-the-bots-queue)) | No wait: starts at once, no ceiling on the computer |
 | What the task is told | The bot's brief ([§7](#7-task-profile-no-fork)) | The bot's profile and memory, then the user's own words ([§7](#a-users-task-is-the-bot)) | The user's own words, as written, nothing of Codync's |
 | What it has of the bot | Skills, memory (to look up), tools for its source | Name, description, skills, memory opening, the same tools | Nothing: the agent's own tools |
 | Its result | A report the bot turns into a message in the chat | Read in the task | Read in the task |
 | The bot sees and steers it | Yes | No | There is no bot |
 
-## 2. Today (dev, 2026-11-24)
+## 2. Before this plan (dev, 2026-11-24)
 
-What the code does, read from it, before any change here.
+What the code did, read from it, before any change here. Kept as the reason for each part; what runs now is §1 and
+[work](../features/work.md).
 
 ### Where a task works
 
@@ -275,9 +276,8 @@ carried: the report says the worktree started from the last commit. Each copy or
 
 ### Cleanup
 
-Kept worktrees are looked at again only at host start (`worktree.rs`, the `ponytail` note). With tasks in several
-projects that can pile up; the hourly look (`sweep.rs`) also checks them. Not urgent; done with the stage that
-brings projects.
+Kept worktrees were looked at again only at host start. With tasks in several
+projects that can pile up, so the hourly look (`sweep.rs`) also checks them. Built with projects (stage 5).
 
 ### How another tool does it
 
@@ -540,10 +540,27 @@ Each stage ships on its own, in this order; host-only stages need no client rele
 4. **Routine `folder`.** Host + clients (the routine editor). Built: any existing folder for now (projects come in 5);
    a run with one always works in a thread, and a folder that went fails the run.
 5. **Projects**: `projects`, `add_work` `folder`, `worktreeMode`, side by side per repository, the Workspace line,
-   the clients' Projects section, cleanup in the hourly look (§3, §4). Minor version, every client.
-6. **Migration** (§3). Needs 4 and 5.
-7. Proposed parts, once decided: an item's place, filling a new worktree, tasks without a bot's own folder,
-   `ask_work`.
+   the clients' Projects section, cleanup in the hourly look (§3, §4). Minor version, every client. Host built: as
+   [background tasks: where a task works](../features/background-tasks.md#where-a-task-works) says. Beyond the plan: the box of tasks
+   without a bot keeps the home folder as its `cwd` (it gets no projects; stage 7 then gave each of its threads a folder of its own, §5); a task in a worktree
+   doesn't count toward side by side (its checkout is its own); the bot hears a change to its projects as a profile
+   update; `projectGitRepos` (bools in `projects`' order) tells the clients which projects are repositories, and
+   `gitRepo` means the default project for older apps; schema 14 stores `worktreeMode` in place of the bool.
+   `market/verify.rs` keeps checking a connector in the bot's own folder, where the chat's agent starts it now.
+   Clients built in the same change (the Projects section and Worktree mode on all four).
+6. **Migration** (§3). Needs 4 and 5. Built with 5 (`hub/projects/migrate.rs`). A routine stamped with the old folder
+   always runs in a thread, so on a bot that uses the computer or manages the team (whose runs were turns in its chat)
+   it loses those tools: that is the price of keeping the folder, kept as the plan says.
+7. **A task's place, filling a new worktree, threads without a bot's own folder, `ask_work`** (§4, §5, §8). Host
+   and clients built, as [background tasks](../features/background-tasks.md) says: the desktop's new-thread place menu (Here / New worktree)
+   and Own folder, and the Shared folders editor under each git project on the desktop, iPhone, Android and TUI. Beyond the plan: the place is kept in the task's `setup`, so a task
+   tried again or replaced keeps it, and `add_work` answers `placeNote` when the place can't apply; the folder of a
+   task without a bot is made as its task is added and goes when the task leaves the box (dropped, or a week after
+   it ended), which is when its thread bot and transcript go; a shared folder is linked only into worktrees of its
+   project's repository, at the project's place inside it, and the links Codync made don't keep an untouched
+   worktree (each link is listed in the repository's `info/exclude`, so a task can't commit it); `ask_work` takes one question at a time a task, and a task that ends before it answers counts as
+   `late`; a late answer is its own host turn (`Cmd::TaskAnswer`). `hello.threadPlace`, `hello.worktreeFill`,
+   `hello.threadFolders` tell the clients.
 
 Docs in the same stages: `docs/features/background-tasks.md`, `docs/architecture/conversation-runtime.md` (Work), the user
 manual's bots and conversations pages, the site's mockups of bot settings.

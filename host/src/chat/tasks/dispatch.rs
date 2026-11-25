@@ -309,7 +309,7 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
             // run and another bot's request work where the bot said.
             let beside = item.source.own()
                 && crate::agent::workspace::own_folder(&task).is_none()
-                && worktree::beside(cfg.worktree_mode, &task.cwd, &others);
+                && worktree::wanted(item.setup.place, cfg.worktree_mode, &task.cwd, &others);
             item.place = if item.worktree.is_some() || beside { Place::Worktree } else { Place::Folder };
             item.task = Some(task.id.clone());
             {
@@ -377,8 +377,9 @@ fn task_bot(cfg: &BotConfig, item: &Item) -> BotConfig {
     BotConfig {
         id: format!("{TASK_PREFIX}{}", uuid::Uuid::new_v4()),
         cwd: item.folder(cfg),
-        // Its folder is its own: the bot's projects are the bot's to send work to.
+        // Its folder is its own: the bot's projects are the bot's to send work to, with their shared folders.
         projects: Vec::new(),
+        shared_folders: std::collections::BTreeMap::new(),
         task_of: Some(cfg.id.clone()),
         created_at: now_ms(),
         // Its alerts are its bot's: the cards it raises in the chat, and the turn its report starts there.

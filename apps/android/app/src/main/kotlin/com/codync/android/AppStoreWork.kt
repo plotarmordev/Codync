@@ -2,7 +2,11 @@ package com.codync.android
 
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import com.codync.android.core.Login
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 
 // The user's hand on a bot's box: order, cutting in, stopping, dropping and trying again. The host decides what runs.
 
@@ -32,20 +36,47 @@ internal fun workKey(botId: String) = "work:$botId"
 private const val THREAD_START_MILLIS = 10_000L
 
 /**
- * Starts a thread with [botId] on [text], on the bot's own settings (`startThread`); [started] closes what it was written
- * in. Its item arrives through sync: once it has a task, its bot's details open at that task; one with none by then (it
- * waits behind others, or never came) opens its bot's details.
+ * Starts a thread on [text] (`startThread`): with [botId] on the bot's own settings, or with none on [setup]; [started]
+ * closes what it was written in. Its item arrives through sync: once it has a task, its bot's details open at that
+ * task (a thread without a bot: over the Threads tab, [openLoose], its box having no details); one with none by then
+ * (it waits behind others, or never came) opens its bot's details, or nothing without a bot.
  */
-internal fun AppStore.startThread(botId: String, text: String, started: () -> Unit) = action(startThreadKey(botId)) {
-    val reply = ready().call("startThread", body("botId" to botId, "text" to text.trim())).jsonObject
-    val owner = reply.text("botId") ?: botId
-    val itemId = reply.text("itemId")
-    started()
-    val threaded = itemId != null && withTimeoutOrNull(THREAD_START_MILLIS) {
-        state.first { now -> now.bots.any { bot -> bot.id == owner && bot.work.any { it.id == itemId && it.task != null } } }
-    } != null
-    openDetails(owner, itemId.takeIf { threaded })
-}
+internal fun AppStore.startThread(botId: String?, text: String, setup: JsonObject?, started: () -> Unit, openLoose: (LooseThread) -> Unit) =
+    action(startThreadKey(botId)) {
+        val request = buildJsonObject {
+            botId?.let { put("botId", it) }
+            put("text", text.trim())
+            setup?.let { put("setup", it) }
+        }
+        val reply = ready().call("startThread", request).jsonObject
+        val owner = reply.text("botId") ?: botId ?: return@action
+        val itemId = reply.text("itemId")
+        started()
+        val threaded = itemId != null && withTimeoutOrNull(THREAD_START_MILLIS) {
+            state.first { now -> now.bots.any { bot -> bot.id == owner && bot.work.any { it.id == itemId && it.task != null } } }
+        } != null
+        // Sent without a bot: the box the reply names, which may not have synced in yet.
+        val plain = botId == null
+        when {
+            plain && threaded && itemId != null -> openLoose(LooseThread(state.value.computer.id, owner, itemId))
+            !plain -> openDetails(owner, itemId.takeIf { threaded })
+        }
+    }
 
-/** Busy while a thread with [botId] is being started. */
-internal fun startThreadKey(botId: String) = "startThread:$botId"
+/** Busy while a thread with [botId] (null: without a bot) is being started. */
+internal fun startThreadKey(botId: String?) = "startThread:${botId ?: ""}"
+
+/**
+ * What a thread without a bot runs on (desktop `ThreadStart`): [login]'s agent, in [home], on [model], asking before
+ * anything it does in the agent's Auto mode, as a new bot does.
+ */
+internal fun plainSetup(login: Login, home: String, model: String?, options: Map<String, String>): JsonObject = buildJsonObject {
+    put("backend", login.backend)
+    put("loginProfile", login.loginProfile.orEmpty())
+    if (home.isNotEmpty()) put("cwd", home)
+    put("model", buildJsonObject {
+        model?.let { put("id", it) }
+        put("options", buildJsonObject { options.forEach { (key, value) -> put(key, value) } })
+    })
+    put("approval", buildJsonObject { put("permission", "ask"); put("mode", "auto") })
+}

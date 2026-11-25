@@ -238,6 +238,10 @@ async fn send(port: u16, token: &str, server: Server, params: &Value, mut body: 
         Server::Chat if params["name"] == crate::chat::decision::TOOL => {
             ("chatCall", crate::chat::decision::WAIT + Duration::from_secs(20))
         }
+        // `ask_work` waits for the task's answer.
+        Server::Chat if params["name"] == crate::chat::tasks::ask::TOOL => {
+            ("chatCall", crate::chat::tasks::ask::WAIT + Duration::from_secs(20))
+        }
         Server::Chat => ("chatCall", Duration::from_secs(if params["name"] == "send_file" { 70 } else { 30 })),
         Server::Team => ("teamCall", Duration::from_secs(30)),
         Server::Manage => ("manageCall", crate::chat::manage::APPROVAL_TIMEOUT + Duration::from_secs(30)),

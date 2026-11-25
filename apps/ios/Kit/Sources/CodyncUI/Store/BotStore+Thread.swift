@@ -59,9 +59,13 @@ extension BotStore {
     /// Whether this computer starts a thread the user asks for; false before hello or on older hosts.
     public var startsThreads: Bool { hello?.startThread == true }
 
-    /// A thread the user starts with `botId`, opened by `text`: its item's id. Not replayed: a retry could start two.
-    public func startThread(botId: String, text: String) async throws -> String {
-        try await withLink { try await $0.startThread(botId: botId, text: text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    /// Whether a thread may start here without a bot; false before hello or on older hosts.
+    public var startsThreadsWithoutBot: Bool { startsThreads && hello?.threadsWithoutBot == true }
+
+    /// A thread the user starts, opened by `text`: with `botId` on its settings, or with none on `setup`. The bot it went
+    /// to and its item's id. Not replayed: a retry could start two.
+    public func startThread(botId: String?, text: String, setup: ThreadSetup? = nil) async throws -> (botId: String, itemId: String) {
+        try await withLink { try await $0.startThread(botId: botId, text: text.trimmingCharacters(in: .whitespacesAndNewlines), setup: setup) }
     }
 
     /// `itemId`'s item once sync brings it with a task, or nil when it has none within `wait` (it waits behind

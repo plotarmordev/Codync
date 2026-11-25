@@ -12,11 +12,13 @@
 //! they see `work` on the bot and fetch a task's transcript by id.
 //!
 //! Here: a task's life from its turn's end to its report. [`steer`] has what the user and the bot do to an item,
-//! [`tools`] the bot's tools ([`recall`] the one that looks back), [`prompts`] the words, [`worktree`] the git
-//! worktree of a task that works beside another in one repository, [`watch`] the watchdog that wakes the bot for a
-//! task that looks stuck.
-
+//! [`tools`] the bot's tools ([`recall`] the one that looks back, [`ask`] the one that asks a task and waits for its
+//! answer), [`prompts`] the words, [`worktree`] the git worktree of a task that works beside another in one
+//! repository ([`fill`] what a new one is given), [`plain`] threads without a bot, [`watch`] the watchdog that wakes
+//! the bot for a task that looks stuck.
+pub mod ask;
 mod dispatch;
+mod fill;
 mod items;
 pub mod plain;
 mod prompts;
@@ -33,7 +35,7 @@ pub use dispatch::{Wait, dispatch};
 #[cfg(test)]
 pub use items::put_working_for_test;
 pub use items::{Setup, Source, Status, doing, lines, outside, waiting_threads, wire, working_tasks};
-pub use prompts::{BRIEF, in_thread, relayed, reminder, report_notice, report_prompt};
+pub use prompts::{BRIEF, asked, in_thread, relayed, reminder, report_notice, report_prompt};
 pub use sources::{access_of, add_request, add_routine, add_thread, boxed, routines_changed, source_of};
 pub use steer::{Steer, cut_in, drop_item, first, retry, stop};
 pub use thread::{Refused as ThreadRefused, heard, message, picked_up, task as thread_task, unhear, written};
@@ -151,6 +153,9 @@ pub struct Tasks {
     seat_freed: tokio::sync::Notify,
     /// What the watchdog remembers of the tasks it looks at (`watch`).
     watch: Mutex<watch::Memory>,
+    /// Task → the question of its bot's it hasn't answered (`ask`). Gone with the host process: an answer that
+    /// comes after a restart is the task's report's.
+    asks: Mutex<HashMap<String, ask::Pending>>,
 }
 
 impl Tasks {
@@ -458,6 +463,9 @@ fn deliver(hub: &Hub, bot: &str, item: &Item) {
 
 /// `item` of `bot` ended: says so (`work_finished`), and its result goes where its source reads it.
 fn ended(hub: &Hub, bot: &str, item: &Item) {
+    if let Some(task) = &item.task {
+        ask::forget(hub, task);
+    }
     let task = item.task.as_deref().and_then(|task| hub.store.bot(task).ok().flatten());
     let agent = task.as_ref().map(|task| task.config.backend.as_str());
     analytics::capture(hub, Event::WorkFinished, finished_properties(item, agent));
@@ -469,6 +477,7 @@ pub fn forget(hub: &Hub, bot: &str) {
     let items = items::load(&hub.store, bot);
     sources::forget_requests(hub, &items);
     worktree::leave(&items);
+    plain::forget_folders(&items);
     items::forget(&hub.store, bot);
 }
 
@@ -521,6 +530,7 @@ fn pick_up(hub: &Arc<Hub>, bot: &str) -> Result<()> {
         let (old, kept) =
             std::mem::take(items).into_iter().partition(|i| i.ended_at.is_some_and(|at| now - at > KEEP_MS));
         *items = kept;
+        plain::forget_folders(&old);
         if let Err(error) = items::put_past(&hub.store, bot, old, now) {
             tracing::warn!(bot, error = format!("{error:#}"), "couldn't keep a bot's past items");
         }

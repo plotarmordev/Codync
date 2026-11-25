@@ -3,7 +3,7 @@
 //! `maxAgents`. Their result takes no turn of the bot's: a run's last message is the routine's message in the chat,
 //! as a run in the chat posted it, and a request's is the reply the asking bot gets.
 
-use super::items::{self, Item, Setup, Source, Status};
+use super::items::{self, FolderKind, Item, Setup, Source, Status};
 use super::{Failure, MAX_BRIEF, MAX_TITLE, NOT_STARTED, dispatch, end, ended};
 use crate::LockExt;
 use crate::agent::bot::Cmd;
@@ -76,20 +76,16 @@ pub fn add_routine(hub: &Arc<Hub>, bot: &str, routine: &str, run: &str, name: &s
 /// an item of its own, named by its first line, and starts when a place is free. `setup`: what its task runs with
 /// in place of the bot's own, checked as a bot's setup is. Answers the item's id.
 pub fn add_thread(hub: &Arc<Hub>, bot: &str, text: &str, uploads: &[String], mut setup: Setup) -> Result<String> {
-    let changes = (
-        setup.cwd.is_some(),
-        setup.model.is_some(),
-        setup.approval.is_some(),
-        setup.workflow.is_some(),
-        setup.login_profile.is_some(),
-    );
+    let changes =
+        (setup.model.is_some(), setup.approval.is_some(), setup.workflow.is_some(), setup.login_profile.is_some());
+    let place = setup.place;
     let cfg = hub.store.bot(bot)?.filter(|row| !row.deleted).map(|row| row.config);
     let plain = cfg.as_ref().is_some_and(|cfg| cfg.plain);
-    let outcome = |outcome: &str| {
+    let outcome = |outcome: &str, folder: Option<FolderKind>| {
         let properties = json!({
             "outcome": outcome, "after": false, "source": Source::User.kind(),
-            "folder": changes.0, "model": changes.1, "approval": changes.2, "workflow": changes.3, "login": changes.4, "bot": !plain,
-            "files": !uploads.is_empty(),
+            "folder": folder, "model": changes.0, "approval": changes.1, "workflow": changes.2, "login": changes.3, "bot": !plain,
+            "files": !uploads.is_empty(), "place": place,
         });
         analytics::capture(hub, Event::WorkAdded, properties.as_object().cloned().unwrap_or_default());
     };
@@ -103,7 +99,7 @@ pub fn add_thread(hub: &Arc<Hub>, bot: &str, text: &str, uploads: &[String], mut
         setup.cwd = Some(dir.to_string_lossy().into_owned());
     }
     let checked = (|| {
-        let Some(cfg) = cfg.filter(|cfg| !cfg.is_task() && !cfg.is_group()) else { bail!("unknown bot") };
+        let Some(cfg) = cfg.as_ref().filter(|cfg| !cfg.is_task() && !cfg.is_group()) else { bail!("unknown bot") };
         ensure!(
             (!text.is_empty() || !uploads.is_empty()) && text.len() <= MAX_BRIEF,
             "a thread starts with a message of at most {MAX_BRIEF} bytes"
@@ -115,27 +111,47 @@ pub fn add_thread(hub: &Arc<Hub>, bot: &str, text: &str, uploads: &[String], mut
             ensure!(crate::workflows::exists(&hub.store, workflow)?, "unknown workflow");
         }
         // As its task will run it (`dispatch`): in Advisor mode on the tasks' agent.
-        let run = setup.over(&crate::agent::fallback::tasks(&cfg));
+        let run = setup.over(&crate::agent::fallback::tasks(cfg));
         let login = crate::agent::login_profiles::of_bot(&hub.store, &run.backend, &run);
         ensure!(run.login_profile.as_deref() == login, "unknown login profile");
         crate::hub::validate(&run)?;
         // Its files, as they were uploaded to the bot (`upload`).
-        crate::chat::uploads::resolve_all(&crate::chat::uploads::root(&cfg), uploads)
+        crate::chat::uploads::resolve_all(&crate::chat::uploads::root(cfg), uploads)
     })();
     let files: Vec<serde_json::Value> = match checked {
         Ok(files) => files,
         Err(error) => {
-            outcome("invalid");
+            outcome("invalid", None);
             return Err(error);
         }
     };
     // Files alone are named by the first of them.
     let named =
         title(if text.is_empty() { files.first().and_then(|f| f["name"].as_str()).unwrap_or_default() } else { text });
-    let item = Item { source: Source::User, setup, files, ..Item::waiting(&named, text, None, None, 0) };
+    let mut item = Item { source: Source::User, setup, files, ..Item::waiting(&named, text, None, None, 0) };
     let id = item.id.clone();
-    put(hub, bot, item)?;
-    outcome("added");
+    // A thread without a bot works in a folder of its own unless the user picked one.
+    if plain && item.setup.cwd.is_none() {
+        let dir = super::plain::own_folder(&id)?;
+        std::fs::create_dir_all(&dir).context("creating the thread's own folder")?;
+        item.setup.cwd = Some(dir.to_string_lossy().into_owned());
+    }
+    let folder = match cfg
+        .as_ref()
+        .map(|cfg| item.existing_folder(cfg).map(|folder| FolderKind::of(cfg, &folder)))
+        .transpose()
+    {
+        Ok(folder) => folder,
+        Err(error) => {
+            outcome("invalid", None);
+            return Err(error);
+        }
+    };
+    if let Err(error) = put(hub, bot, item.clone()) {
+        super::plain::forget_folders(std::slice::from_ref(&item));
+        return Err(error);
+    }
+    outcome("added", folder);
     dispatch(hub, bot);
     Ok(id)
 }

@@ -82,7 +82,7 @@ a choice, a sign-in) it doesn't count toward `maxAgents`, so the next item can s
 lets it go on even past the ceiling. Every live task still counts toward `maxAgents + 1`, so only one seat is ever
 lent. A task that begins to wait on the user looks its bot's box over again (`Tasks::seat_freed`). Near the usage
 limit it still counts as running, so nothing else starts. Where the next task gets no worktree of its own (a folder
-that isn't a Git repository, **Worktree per thread** off, the bot's own folder) it works in the same folder as the
+that isn't a Git repository, **Worktree mode** off, the bot's own folder) it works in the same folder as the
 one that waits, even at `maxAgents` 1.
 
 
@@ -90,7 +90,12 @@ The decisions are one pure function (`dispatch::standings`), which the wire's `w
 
 ## Tools (on the `chat` MCP server)
 
-- `add_work {title, brief, after?}` → `{itemId, status}`: puts an item in the box and answers at once. Refused
+- `add_work {title, brief, after?, folder?, place?}` → `{itemId, status, note, placeNote?}`: puts an item in the box and
+  answers at once. `folder` is where its task works, the full path of any folder that exists (the bot proposes its
+  [projects](#where-a-task-works); `invalid` otherwise); left out, the bot's default project, else its own folder.
+  `place` (`here` | `worktree`) is where in a git repository it works, over the bot's [worktree mode](#worktrees);
+  left out, the mode decides. A worktree asked of the bot's own folder, or of a folder outside a git repository, is
+  left out, and `placeNote` says why; with `after` it says the task works where that one does. Refused
   outside the bot's own chat with the user (a room, another bot's request, a routine run: `add_work works only in
   your own chat with the user`), in a task, past 20 waiting items, when `after` names
   no item that is working or waiting, and for the ninth item added in a row with no message from the user (an item
@@ -109,6 +114,22 @@ The decisions are one pure function (`dispatch::standings`), which the wire's `w
   where the agent can, else the turn stops for it), and keeps the item going until a turn takes it, so the chat
   still gets one report. Refused for an item that ended (add a new one), for a routine's run and another bot's request
   (read only, as [their thread](#talking-to-a-thread) is), and under a ceiling, as `add_work` is.
+- `ask_work {item, question}` → `{itemId, answer}`, or `{itemId, status: "no answer yet", note}` (`tasks/ask.rs`; its
+  name its `TOOL` const): the bot asks one of its working items a question. It goes into the task's running turn as
+  `tell_work`'s `now` does, a message from the host marked `data.ask` (and `data.relay`, so every client quotes it
+  as what the task was told), which the task hears with a line saying the bot asks and to answer in one short
+  message, then go on; the task's instructions say the same. It is never kept in `relayed`. The task's next
+  message after it (the first text the agent writes once the question reached it: joined the running turn, or began
+  a turn of its own where the agent can't take it mid-turn, whose running turn then stops for it) is the call's
+  result, not the report: it stays in the task's own transcript, and only if it is the turn's last message is it the
+  report too. The call waits a minute (`ask::WAIT`; the MCP request 20 seconds more); after that it answers
+  `no answer yet` and the answer, when it comes, starts a turn of its own in the bot's chat (`Cmd::TaskAnswer`,
+  which alerts as a reply does), as a `message_bot` reply does. A question the task never answers goes when its
+  item ends or is set aside; one waiting is lost with the host process. An item the late answer's turn adds
+  carries the item's hops on. Refused (counted in `work_asked`) for an item that waits (`tell_work` it) or ended
+  (its report came), a thread the user started, a routine's run, another bot's request, and while a question to the
+  same task still waits for its answer; refused too in a thread and under a ceiling, as `add_work` is (those not
+  counted there).
 - `work_status {}`: every item that is working or waiting, and those ended in the last day: status, what its task
   does now, why it waits, seconds, result.
 - `recall_work {item?, query?, before?}` (`tasks/recall.rs`): the bot looks back at its items, ended ones too, from
@@ -119,7 +140,7 @@ The decisions are one pure function (`dispatch::standings`), which the wire's `w
   `query`: the items whose title, brief or result has it (any case); with neither, the latest; 20 at most, each result
   cut at 280 bytes. Read only: allowed under a ceiling.
 
-Refused in a task: these five and changes to the bot's profile or fallbacks (`tasks::refuse_chat_only`, the `chat`
+Refused in a task: these six and changes to the bot's profile or fallbacks (`tasks::refuse_chat_only`, the `chat`
 server's), and the `routines`, `team` and `manage` tools (`tasks::acting_as`, `tasks::refuse_in_task`). The refusal
 says to put what it needs in its report. `request_decision`, `send_file` and artifacts work from a task
 ([below](#asking-and-sharing-from-a-task)). A task on a routine's run or another bot's request has that turn's own
@@ -448,8 +469,14 @@ What differs from the bot's own items:
 ### Threads without a bot
 
 `startThread` without `botId` starts a thread that runs an agent on its own (`tasks::plain`): `setup.backend` names
-the agent (refused without one: `a thread without a bot names its agent`), and the app sends the folder (the home
-folder unless the user picked one), the approvals and the model with it. Its item waits in the computer's **box of
+the agent (refused without one: `a thread without a bot names its agent`), and the app sends the folder the user
+picked, the approvals and the model with it. With no folder picked it works in **a folder of its own**,
+`<data dir>/threads/<task id>/` (`plain::own_folder`), made as the task is added and versioned as a bot's own folder is
+(`agent::versions`: a git repository of its own, saved before and after each turn), so threads without a bot no longer
+share the home folder. It counts as the thread's own folder (`workspace::own_folder`), so it never gets a worktree,
+and it goes with the task when the task leaves the box (a week after it ended, at host start, as its transcript does;
+or when the user drops the task). An app sends no `cwd` for it only on a host that says `hello.threadFolders: true`;
+an older host gets the home folder, as before. Its item waits in the computer's **box of
 threads without a bot**, a bot the host makes the first time one starts (`BotConfig::plain`, named `Agents`): always
 hidden (`updateBot` can't show it, `createBot` can't make one), in the home folder, no connectors, skills, shared
 memory or alerts, `maxAgents` 6, the harness's own memory kept. Apps that know it (`hello.threadsWithoutBot: true`)
@@ -482,13 +509,64 @@ credited to its bot and made in the task's session, for the bot's own items, a r
   recorded as the bot's.
 - The task's session knows what it wrote itself; the chat's hears of the change with its next message.
 
+## Where a task works
+
+A bot lives in its **own folder** (`cwd`, always `agent::workspace::path`: `~/.codync/bots/<id>/workspace`): its chat,
+routine runs, group turns and calls start there, and it keeps its own files there, with versions. The user's folders
+it sends work to are its **projects** (`BotConfig::projects`, `hub/projects.rs`): absolute paths of folders, each
+once, the first its **default**. A new project must be a folder that exists; one saved before whose folder went
+stays (an older app can't take it off). Groups, threads and the box of threads without a bot have none.
+
+| Item from | Its task's folder (`Item::folder`) |
+| --- | --- |
+| The bot (`add_work`) | `folder` if named, else the default project, else the bot's own folder |
+| The user (`startThread`) | `setup.cwd` if picked, else the default project, else the bot's own folder |
+| The user, without a bot | `setup.cwd` if picked, else [a folder of its own](#threads-without-a-bot) |
+| A routine's run | The routine's `folder` if it has one, else the bot's own folder |
+| Another bot's request | The bot's own folder |
+| An item that follows another (`after`) | That task's folder or worktree |
+
+The folder is fixed when the task starts (an item that waited picks up the default project as it is then), and a
+task keeps it until its item ends. The bot is told its projects in its instructions (the Workspace paragraph:
+code work in a project goes to a task with that folder, a project's files are read with explicit paths, its own
+folder never changes), and a change to them reaches a running session as a profile update. Readers that mean "the
+project" read the default project (`workspace::work_folder`: a task's own folder for a task): the terminal tab,
+a call's `Folder` line, the team directory's `cwd` and `start_dev_server`'s base.
+
+**Whatever sets `cwd` to another folder** (an older app's folder picker, a managing bot's `folder`, a client's
+`createBot`) puts that folder first among the projects instead, and the bot stays home
+(`projects::settle`, under `Hub::settle_config`): no `minApp` raise. An edit that leaves `cwd` as it was takes
+nothing in.
+
+**Moving bots home, once** (`hub/projects/migrate.rs`, at host start before the routines and actors are read, kv
+`projects.migrated`): a bot whose `cwd` is a project gets `projects = [cwd] + its own` and `cwd` its own folder.
+Before anything changes, every config and routine it rewrites goes to `<data dir>/backups/bot-projects-<ms>.json`
+(logged). Per bot: its uploads move from `bots/<id>/uploads` into its own folder's `uploads` (`uploads::root`
+follows `workspace::is_managed`; one already there stays), each routine without a folder is stamped with the old
+`cwd` (so its runs keep working there, in a task; not on a bot whose routines run in its chat, computer use or
+Manage the team on, which keep their tools and run at home), `sharedMemory` is stamped `false` where unset (it followed
+`is_managed`), the chat owes a recap of the session it leaves (as a folder move does: `owe_move`, read by
+`carry_in`), its sessions are let go, and the config is saved last. A failure is logged and the host starts; the
+next start finishes it. Groups, threads and the box of threads without a bot are left as they are; a working
+task keeps its folder until its item ends. The harness's own memory and the Memory screen's Claude Code section
+now read the bot's own folder, not the project's.
+
 ## Worktrees
 
-Two tasks in one git repository would write over each other's files. With **`taskWorktrees`** on (per bot, on
-unless set; it matters only where the bot's folder is a project folder in a git repository, `gitRepo` on the wire:
-a bot's [own folder](bot-workspaces.md#versions) keeps all its work in one place, with its versions), a task for one
-of the bot's own items that starts **while another task of the bot is working** gets a git worktree of its own
-(`worktree.rs`):
+Two tasks in one checkout, or a task and the user, would write over each other's files. The bot's
+**`worktreeMode`** (`off | sideBySide | always`, `sideBySide` unless set; it matters only where a task's folder is
+in a git repository) says when a task of the bot's own work or the user's gets a git worktree of its own
+(`worktree::beside`, `worktree.rs`): **side by side**, when another task of the bot works now in the same checkout
+(`worktree::top`: the folder with `.git` above the task's folder, as `git rev-parse --show-toplevel` says; a
+task in a worktree is in a checkout of its own, so it doesn't count); **always**, every one, the first included,
+so the user's checkout is never touched; **off**, never. A bot's [own folder](bot-workspaces.md#versions) never gets
+one: it keeps all its work in one place, with its versions; nor does a thread without a bot's own folder.
+
+An item may **name its place** (`add_work`'s `place`, `startThread`'s `setup.place`: `here` | `worktree`, kept in
+the item's `setup`), which wins over the mode (`worktree::wanted`): `worktree` gets one even in Off mode (outside a
+git repository it works in the folder, logged), `here` keeps the folder even in Always mode or beside another
+task. The rest holds whatever the item asks: a routine's run and a request never get one, an item that follows
+another stays in that one's folder, and the bot's own folder never gets one.
 
 - `~/.codync/worktrees/<bot id>/<item id>`, on a new branch `codync/<title in lowercase, dashes>` (`-2`, `-3`… when
   taken), from the commit the bot's folder is on. The task's agent starts there (in the same place of the
@@ -515,6 +593,8 @@ of the bot's own items that starts **while another task of the bot is working** 
   counts, though it is named after the earlier item; it goes once its last item ended more than a week ago, or its
   bot was deleted: `known`, `tidy_orphans`), once its commits are merged; one that isn't merged stays, as the user's work. Between restarts a
   kept worktree stays as it is.
+- **In the hourly look** at a box ([restart and cleanup](#restart-and-cleanup)) every kept worktree is looked over
+  again the same way (`worktree::kept`, from `sweep`): one the user merged since goes, without a restart.
 - An item that gave way, got a new brief or is tried again starts again in the worktree it had. While an ended
   item's worktree is being looked over (`Left::Settling`) the item tried again waits; the look notes kept or removed
   and runs the dispatcher again. A message to the item's thread meanwhile takes the worktree back as in use, which
@@ -523,6 +603,32 @@ of the bot's own items that starts **while another task of the bot is working** 
   worktree it didn't make: what a box says is checked first (the folder is `~/.codync/worktrees/<id>/<id>`, the
   branch `codync/…`). Git runs with an argument list, never through a shell, each command for at most a minute.
 - Dev servers, `send_file` and `publish_artifact` of a task in a worktree start from the worktree.
+
+### Filling a new worktree
+
+A new worktree is a clean checkout: none of the main checkout's ignored files, none of the user's uncommitted
+changes. Right after Codync makes one, before the thread's agent starts (`work/fill.rs`, from `worktree::enter`;
+not for a worktree a task already had):
+
+- **`.worktreeinclude`** at the top of the main checkout lists ignored files or folders to **copy** in (`.env`,
+  `.env.local`, editor settings): one literal path a line, relative to the repository's top, `#` for a comment. A
+  path that is absolute, leaves the repository, is missing, tracked or not ignored (`git check-ignore`, which also
+  passes over tracked paths) is passed over, logged.
+- **Shared folders**: per bot and project, the ignored folders to **link** into each new worktree (`node_modules`,
+  `.cache`), so a thread doesn't fill them again: the bot's `sharedFolders`, `{<project path>: [<folder inside it>]}`,
+  set with `updateBot` and kept to the bot's projects (a project taken off takes its list; a name must be a plain
+  relative path, no `..`, kept without `./` or a trailing slash). Only the projects in the worktree's repository count, each at its place inside it. A link
+  is a symlink on macOS and Linux and a folder link on Windows (it needs Developer Mode there). Each link is listed
+  in the repository's `info/exclude` (`/node_modules`, no trailing slash, which a link wouldn't match), so git never
+  shows it: a thread's `git add -A` can't commit it, and a merged link to the main checkout's own folder would
+  replace that folder. The thread is told not to commit them.
+- Nothing already in the worktree is replaced (a tracked folder of the same name stays as the commit has it). The
+  user's uncommitted changes are never carried: the thread is told it started from the project's last commit, and so
+  is the report. Each file or folder that can't be copied or linked is logged and counted (`worktree_fill_failed`,
+  `stage: include | link`), never fatal.
+- When the task is over, the links Codync made don't count as work: git passes over them in the look at
+  `git status`, and each path `info/exclude` lists that is a link to the same path in the main checkout is removed (the
+  link only) before `git worktree remove`, so an untouched worktree still goes. The copied files are ignored, which git's removal allows.
 
 ## Outside the chat
 
@@ -564,8 +670,13 @@ An item's end sends no alert of its own: its report is a turn of the bot's, whos
   `gitRepo` it gives the line under the folder in Settings: `Git repository`, `Not a git repository`, `Git isn't
   installed on this computer`. The manual's page for it: `/docs/working-folders` (`#without-git`).
 - `taskEntry` events `{rev, task, entry}` for a task's transcript; none in the catch-up.
-- `startThread {botId?, text, attachments?, setup?: {backend?, loginProfile?, cwd?, model?: {id, options}, approval?: {permission, mode}}}` →
+- Bot: `sharedFolders` (`{<project path>: [<folder>]}`, `updateBot`; [filling a new worktree](#filling-a-new-worktree)).
+  `hello.worktreeFill: true` on a host that fills new worktrees.
+- `hello.threadFolders: true`: a thread without a bot that names no `cwd` gets [a folder of its own](#threads-without-a-bot).
+- `startThread {botId?, text, attachments?, setup?: {backend?, loginProfile?, cwd?, place?, model?: {id, options}, approval?: {permission, mode}}}` →
   `{botId, itemId}`: [a thread the user starts](#other-sources), without `botId` [without a bot](#threads-without-a-bot).
+  `setup.place` (`here` | `worktree`, `hello.threadPlace: true`) is where it works in a git repository, over the
+  bot's [worktree mode](#worktrees); an older host ignores it.
 - `taskEntries {botId, taskId}` → `{task: {id, title, status, startedAt, endedAt, start}, entries}` (newest 500):
   `taskId` is an item's `task`; `title`, `status` and the times are of the item it works on, else the last it
   worked on. A user entry there is what the task was told (`data.from: "host"`: an item, as its task read it) or the
@@ -578,7 +689,7 @@ An item's end sends no alert of its own: its report is a turn of the bot's, whos
 ## In the apps
 
 The capsule, the bot's Details (Threads, Event box, Later, Routines, Dev servers, Recent), `Threads at once` in its
-Settings and cutting in are specified in [the event box](../plans/event-box.md#in-the-apps) (stage 2). The sheet of every bot's work, the rows' source marks, the `In the background · <title>` line on what a task posts, the **Worktree per thread** switch and what follows `bot.outside` are in [as built, clients](../plans/event-box.md#as-built-clients-stages-3-to-8). An item's thread view, the where line on a row and in the thread's header, and the git state in Settings are in [stage 11, as built on the terminal](../plans/event-box.md#as-built-host-and-terminal-stage-11) and [on iPhone, Android and desktop](../plans/event-box.md#as-built-iphone-android-and-desktop-stage-11). A client reads `bot.work` and `bot.maxAgents`; both are
+Settings and cutting in are specified in [the event box](../plans/event-box.md#in-the-apps) (stage 2). The sheet of every bot's work, the rows' source marks, the `In the background · <title>` line on what a task posts, the **Worktree mode** menu and what follows `bot.outside` are in [as built, clients](../plans/event-box.md#as-built-clients-stages-3-to-8). An item's thread view, the where line on a row and in the thread's header, and the git state in Settings are in [stage 11, as built on the terminal](../plans/event-box.md#as-built-host-and-terminal-stage-11) and [on iPhone, Android and desktop](../plans/event-box.md#as-built-iphone-android-and-desktop-stage-11). A client reads `bot.work` and `bot.maxAgents`; both are
 absent on an older host, where the feature doesn't show.
 
 ## Restart and cleanup

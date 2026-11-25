@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 /// Current schema version (kv `schema`). `hello` carries it: a migration may rewrite or delete rows in place, so
 /// a client whose copy was synced under another schema fetches the conversation again.
-pub const SCHEMA: i64 = 13;
+pub const SCHEMA: i64 = 14;
 
 /// 3: authorized devices (keys, not push tickets) with their push and Live Activity
 /// tickets. The old ticket-only `devices` table is dropped; phones re-register on connect.
@@ -23,6 +23,7 @@ pub const SCHEMA: i64 = 13;
 /// 11: a workflow is also a script. Runs remember which executor started them.
 /// 12: a workflow a bot creates records that bot. User-created workflows have no owner.
 /// 13: a saved version records whether it was a graph or a script.
+/// 14: a bot's `taskWorktrees` (a bool) becomes `worktreeMode` (see [`worktree_modes`]).
 fn migrate(c: &Connection) -> Result<()> {
     let version: i64 =
         c.query_row("SELECT CAST(v AS INTEGER) FROM kv WHERE k = 'schema'", [], |r| r.get(0)).optional()?.unwrap_or(0);
@@ -58,6 +59,9 @@ fn migrate(c: &Connection) -> Result<()> {
     }
     if version < 13 {
         migrate_13(c)?;
+    }
+    if version < 14 {
+        worktree_modes(c)?;
     }
     c.execute("INSERT INTO kv(k, v) VALUES('schema', ?1) ON CONFLICT(k) DO UPDATE SET v = ?1", [SCHEMA.to_string()])?;
     Ok(())
@@ -179,6 +183,17 @@ fn ensure_no_account(c: &Connection) -> Result<()> {
     if !has {
         c.execute_batch("ALTER TABLE devices ADD COLUMN no_account INTEGER NOT NULL DEFAULT 0;")?;
     }
+    Ok(())
+}
+
+/// A stored bot's `taskWorktrees` becomes `worktreeMode`: off stays off, on is side by side. Older apps still send
+/// and read the bool (`hub::patch`, `hub::sync`), never the store.
+fn worktree_modes(c: &Connection) -> Result<()> {
+    c.execute_batch(
+        "UPDATE bots SET config = json_remove(json_set(config, '$.worktreeMode',
+             CASE json_type(config, '$.taskWorktrees') WHEN 'false' THEN 'off' ELSE 'sideBySide' END), '$.taskWorktrees')
+           WHERE json_valid(config) AND json_type(config, '$.taskWorktrees') IN ('true', 'false');",
+    )?;
     Ok(())
 }
 
@@ -305,7 +320,7 @@ mod tests {
         }
         let s = Store::open(&db).unwrap();
         assert!(s.devices().unwrap().is_empty());
-        assert_eq!(s.kv_get("schema").as_deref(), Some("13"));
+        assert_eq!(s.kv_get("schema").as_deref(), Some("14"));
         drop(s);
         let s = Store::open(&db).unwrap();
         assert!(s.devices().unwrap().is_empty(), "reopening keeps the new table");
@@ -328,7 +343,7 @@ mod tests {
         let s = Store::open(&db).unwrap();
         let chat: Vec<String> = s.history("b", i64::MAX, 10).unwrap().into_iter().map(|e| e.id).collect();
         assert_eq!(chat, ["info"]);
-        assert_eq!(s.kv_get("schema").as_deref(), Some("13"));
+        assert_eq!(s.kv_get("schema").as_deref(), Some("14"));
     }
 
     #[test]

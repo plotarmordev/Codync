@@ -28,8 +28,15 @@ pub fn of_entry(hub: &Hub, bot: &BotConfig, e: &Entry) -> String {
     if bot.plain {
         return asked;
     }
-    // What a bot's chat passed on to its item's task (`tell_work`) says so to the task.
-    let asked = if data["relay"] == true { crate::chat::tasks::relayed(&asked) } else { asked };
+    // What a bot's chat passed on to its item's task (`tell_work`) says so to the task, and so does its question
+    // (`ask_work`), which the task's next message answers.
+    let asked = if data["ask"] == true {
+        crate::chat::tasks::asked(&asked)
+    } else if data["relay"] == true {
+        crate::chat::tasks::relayed(&asked)
+    } else {
+        asked
+    };
     let id = (!asked.starts_with('/') && data["from"] != "host").then(|| format!("[Codync: message {}]", e.id));
     let note = replies::note(hub, &bot.id, &data["replyTo"]);
     [id, note, Some(asked)].into_iter().flatten().collect::<Vec<_>>().join("\n")
@@ -73,5 +80,8 @@ mod tests {
         let data = json!({"text": "Also the API page.", "from": "host", "relay": true});
         let relayed = hub.add_entry(&Lane::main("thread-1"), EntryKind::User, 1, &data).unwrap();
         assert_eq!(of_entry(&hub, &bot, &relayed), crate::chat::tasks::relayed("Also the API page."));
+        let data = json!({"text": "How far?", "from": "host", "relay": true, "ask": true});
+        let asked = hub.add_entry(&Lane::main("thread-1"), EntryKind::User, 2, &data).unwrap();
+        assert_eq!(of_entry(&hub, &bot, &asked), crate::chat::tasks::asked("How far?"));
     }
 }

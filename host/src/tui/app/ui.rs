@@ -205,6 +205,13 @@ pub enum Field {
     TaskAgent,
     /// In Advisor mode, the threads' fallbacks.
     TaskFallbacks,
+    /// The folders its tasks work in, the first its default; only on a host with projects (`hello.projects`).
+    Projects,
+    /// The picked git project's shared folders; only on a host that fills worktrees (`hello.worktreeFill`).
+    SharedFolders,
+    /// When a task gets a worktree; only on a host with projects, for a bot with a project in a git repository.
+    WorktreeMode,
+    /// Its project folder or its own (an older host); on a host with projects, its home, read only.
     Folder,
     /// The most agents it runs at once; only on a host that sends `maxAgents`.
     MaxAgents,
@@ -223,7 +230,7 @@ pub enum Field {
     Skills,
 }
 
-pub const FIELDS: [Field; 26] = [
+pub const FIELDS: [Field; 29] = [
     Field::Name,
     Field::Instructions,
     Field::Agent,
@@ -237,6 +244,9 @@ pub const FIELDS: [Field; 26] = [
     Field::TaskAgent,
     Field::TaskFallbacks,
     Field::Compaction,
+    Field::Projects,
+    Field::SharedFolders,
+    Field::WorktreeMode,
     Field::Folder,
     Field::MaxAgents,
     Field::TaskWorktrees,
@@ -281,8 +291,18 @@ pub struct Form {
     pub cwd: String,
     /// The most agents it runs at once; `None`: the host has no event box.
     pub max_agents: Option<u8>,
-    /// A worktree per agent; `None`: the host has no worktrees, or the bot's folder is in no git repository.
+    /// A worktree per agent; `None`: the host has no worktrees, or the bot's folder is in no git repository, or the
+    /// host has projects (`worktree_mode` then).
     pub task_worktrees: Option<bool>,
+    /// Its projects, the first its default; `None`: the host has no projects.
+    pub projects: Option<Vec<String>>,
+    pub worktree_mode: crate::store::WorktreeMode,
+    /// Per git project, the folders linked into its new worktrees; `None`: the host doesn't fill worktrees.
+    pub shared_folders: Option<BTreeMap<String, Vec<String>>>,
+    /// The project picked on the Projects field, whose shared folders the next field edits.
+    pub project: usize,
+    /// A shared folder's name being typed.
+    pub shared_name: Editor,
     /// Approvals: Codync approves what still asks, and the agent mode (`codync_agent::modes`).
     pub auto: bool,
     pub mode: Option<String>,

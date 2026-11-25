@@ -266,6 +266,8 @@ impl App {
                 self.workflows = v["workflows"].as_bool().unwrap_or(false);
                 self.credentials_reset = v["credentialsReset"].as_bool().unwrap_or(false);
                 self.routine_folder = v["routineFolder"].as_bool().unwrap_or(false);
+                self.projects = v["projects"].as_bool().unwrap_or(false);
+                self.worktree_fill = v["worktreeFill"] == true;
                 self.screen = v["screen"].clone();
             }
             After::Analytics => self.analytics_set(&v),

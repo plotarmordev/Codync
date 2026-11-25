@@ -20,7 +20,7 @@ test("a thread's panel puts its buttons in the window's bar as a bot's chat does
     // The bot's chat, panel open: the row the thread's must match.
     await page.locator('.roster-row', { hasText: name }).click()
     await page.getByRole('button', { name: 'Conversation details', exact: true }).click()
-    await expect(page.locator('.side-panel:not([inert])')).toBeVisible()
+    await expect(page.locator('.side-panel:not([inert])').filter({ visible: true })).toBeVisible()
     const botBar = await barButtons(page)
     await page.screenshot({ path: info.outputPath('bot-panel.png') })
 
@@ -30,7 +30,7 @@ test("a thread's panel puts its buttons in the window's bar as a bot's chat does
     await expect.poll(() => barButtons(page)).toEqual(['Conversation details'])
     await expect(page.locator('.window-bar-title .window-bar-status')).toContainText('Working')
     await page.getByRole('button', { name: 'Conversation details', exact: true }).click()
-    const panel = page.locator('.side-panel:not([inert])')
+    const panel = page.locator('.side-panel:not([inert])').filter({ visible: true })
     await expect(panel).toBeVisible()
     await expect.poll(() => barButtons(page)).toEqual(botBar)
     expect(botBar).toEqual(['Create template', 'Maximize panel', 'Split panel', 'Conversation details'])
@@ -72,7 +72,7 @@ test("a panel's tabs share its width, narrow ones hide their close button, and +
   const stamp = Date.now()
   const name = `Panel tabs e2e ${stamp}`
   const title = `Many tabs ${stamp}`
-  const tabs = ['details', 'library', 'memory', 'computer', 'browser', 'settings', 'terminal']
+  const tabs = ['details', 'library', 'memory', 'computer', 'browser:e2e1', 'settings', 'terminal:e2e1']
   const restore = await withPrefs(page, { listHidden: false, detailsPanelWidth: 400, panelLayout: [{ tabs, shown: 'details' }] })
   let botId: string | undefined
   try {
@@ -80,7 +80,7 @@ test("a panel's tabs share its width, narrow ones hide their close button, and +
     botId = (await taskBot(page, name)).id
     await holdTask(page, botId, title)
     const check = async (where: string) => {
-      const panel = page.locator('.side-panel:not([inert])')
+      const panel = page.locator('.side-panel:not([inert])').filter({ visible: true })
       const row = panel.locator('.panel-tabs-row').first()
       await expect(row.getByRole('tab')).toHaveCount(tabs.length)
       for (const width of [300, 440, 620]) {

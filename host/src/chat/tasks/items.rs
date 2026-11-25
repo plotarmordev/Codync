@@ -6,7 +6,7 @@ use super::{Failure, Report};
 use crate::LockExt;
 use crate::hub::{BotStatus, Hub};
 use crate::store::{BotConfig, Permission, Store, now_ms};
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, ensure};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
@@ -268,7 +268,51 @@ pub(super) struct Item {
     pub files: Vec<Value>,
 }
 
+/// Where an item's task works, as `work_added` says it (`folder`), never the path: the bot's own folder, one of
+/// its projects, or another folder.
+#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub(super) enum FolderKind {
+    Home,
+    Project,
+    Other,
+}
+
+impl FolderKind {
+    /// What `folder` is to bot `cfg`.
+    pub(super) fn of(cfg: &BotConfig, folder: &str) -> Self {
+        if cfg.projects.iter().any(|p| p == folder) {
+            Self::Project
+        } else if folder == cfg.cwd {
+            Self::Home
+        } else {
+            Self::Other
+        }
+    }
+}
+
 impl Item {
+    /// The folder its new task works in (`cfg`: its bot): the one it names, else for the bot's own work and the
+    /// user's the bot's default project, else the bot's own folder (a routine's run and another bot's request work
+    /// where the bot lives).
+    pub(super) fn folder(&self, cfg: &BotConfig) -> String {
+        let project = self.source.own().then(|| crate::agent::workspace::default_project(cfg)).flatten();
+        self.setup.cwd.as_deref().or(project).unwrap_or(&cfg.cwd).to_owned()
+    }
+
+    /// [`Self::folder`], refused once it is gone (a project unmounted or renamed since it was added): its task
+    /// couldn't start there.
+    pub(super) fn existing_folder(&self, cfg: &BotConfig) -> Result<String> {
+        let folder = self.folder(cfg);
+        ensure!(std::path::Path::new(&folder).is_dir(), "project folder does not exist: {folder}");
+        Ok(folder)
+    }
+
+    /// Whether its task works in a git worktree of its own (one to come, or one it has), not in its folder.
+    pub(super) fn in_worktree(&self) -> bool {
+        self.place == Place::Worktree || self.worktree.as_ref().is_some_and(|w| w.left == Left::InUse)
+    }
+
     /// A new item, waiting; its place is its box's to give.
     pub(super) fn waiting(title: &str, brief: &str, words: Option<String>, after: Option<&str>, hops: u8) -> Self {
         Self {
@@ -635,6 +679,35 @@ fn summary(live: &[(Status, &str, &str)], most: u8, whose: &str) -> Option<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_item_works_in_its_folder_else_the_default_project_else_where_the_bot_lives() {
+        let bot: BotConfig = serde_json::from_value(
+            json!({"id": "b", "name": "B", "backend": "claude", "cwd": "/home", "projects": ["/p1", "/p2"]}),
+        )
+        .expect("a bot");
+        let item = |source: Source, cwd: Option<&str>| Item {
+            source,
+            setup: Setup { cwd: cwd.map(str::to_owned), ..Setup::default() },
+            ..Item::waiting("t", "b", None, None, 0)
+        };
+        assert_eq!(item(Source::Bot, None).folder(&bot), "/p1");
+        assert_eq!(item(Source::User, None).folder(&bot), "/p1");
+        assert_eq!(item(Source::Bot, Some("/p2")).folder(&bot), "/p2");
+        assert_eq!(
+            item(Source::Request { id: None }, None).folder(&bot),
+            "/home",
+            "a request works where the bot lives"
+        );
+        let alone = BotConfig { projects: Vec::new(), ..bot.clone() };
+        assert_eq!(item(Source::Bot, None).folder(&alone), "/home");
+
+        let kind = |folder| FolderKind::of(&bot, folder);
+        assert_eq!(
+            (kind("/p2"), kind("/home"), kind("/tmp")),
+            (FolderKind::Project, FolderKind::Home, FolderKind::Other)
+        );
+    }
 
     #[test]
     fn a_threads_setup_changes_only_what_it_names() {

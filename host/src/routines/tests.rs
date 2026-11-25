@@ -144,7 +144,9 @@ async fn a_routine_run_cannot_add_work_to_the_bots_box() {
     let dir = std::env::temp_dir().join(format!("codync-routine-work-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let store = Store::open(&dir.join("t.db")).unwrap();
-    store.save_bot(&serde_json::from_value(json!({"id": "bot", "name": "B", "backend": "claude"})).unwrap()).unwrap();
+    store
+        .save_bot(&serde_json::from_value(json!({"id": "bot", "name": "B", "backend": "claude", "cwd": dir})).unwrap())
+        .unwrap();
     let identity = crate::remote::identity::Identity::load_or_create(&dir).unwrap();
     let hub = Hub::new(store, "test".into(), identity, "test".into(), 0);
     let add = || crate::chat::tasks::call(&hub, "bot", "add_work", &json!({"title": "Dig", "brief": "Look into it"}));

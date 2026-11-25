@@ -359,6 +359,8 @@ public struct Hello: Codable, Sendable {
     public var startThread: Bool?
     /// A routine can name the folder its runs work in (`folder`). Missing on older hosts: it can't.
     public var routineFolder: Bool?
+    /// A bot has projects (`Bot.projects`) and lives in its own folder. Missing on older hosts: its `cwd` is the project.
+    public var projects: Bool?
 }
 
 public struct RecentWorkspace: Codable, Sendable, Identifiable {
@@ -453,6 +455,10 @@ public struct BotDraft: Codable, Hashable, Sendable {
     public var maxAgents: Int?
     /// Nil where the host has no such setting, so it isn't sent.
     public var taskWorktrees: Bool?
+    /// The whole list, the first the default. Nil where the host has no projects (an older one), so it isn't sent.
+    public var projects: [String]?
+    /// Nil where the host has no such setting, so it isn't sent.
+    public var worktreeMode: WorktreeMode?
 
     public init(name: String = "", description: String = "", avatarColor: String = AvatarPalette.colors.randomElement()!.id,
                 avatarShape: String = AvatarPalette.shapes.randomElement()!, backend: String = "claude", cwd: String = "",
@@ -498,6 +504,26 @@ public struct BotDraft: Codable, Hashable, Sendable {
         compaction = bot.compaction
         maxAgents = bot.maxAgents
         taskWorktrees = bot.taskWorktrees
+        projects = bot.projects
+        worktreeMode = bot.worktreeMode
+    }
+
+    /// Adds `path` as the last project (the default when it's the first); one already there stays where it is.
+    public mutating func addProject(_ path: String) {
+        var list = projects ?? []
+        if !list.contains(path) { list.append(path) }
+        projects = list
+    }
+
+    public mutating func removeProject(_ path: String) {
+        projects?.removeAll { $0 == path }
+    }
+
+    /// Moves `path` first: tasks start there.
+    public mutating func makeDefaultProject(_ path: String) {
+        guard var list = projects, let index = list.firstIndex(of: path) else { return }
+        list.insert(list.remove(at: index), at: 0)
+        projects = list
     }
 
     /// This draft with each field it hasn't changed from `base` (the bot as the form loaded it) taken from `fresh`
@@ -513,7 +539,7 @@ public struct BotDraft: Codable, Hashable, Sendable {
         follow(\.fastMode); follow(\.fallbacks); follow(\.selfFallbacks); follow(\.taskAgent); follow(\.taskFallbacks); follow(\.pinned); follow(\.hidden)
         follow(\.notify); follow(\.connectors); follow(\.skills); follow(\.computer); follow(\.manageTeam)
         follow(\.sharedMemory); follow(\.harnessMemory); follow(\.offeredToNetwork); follow(\.reachableByAssistants)
-        follow(\.compaction); follow(\.maxAgents); follow(\.taskWorktrees)
+        follow(\.compaction); follow(\.maxAgents); follow(\.taskWorktrees); follow(\.projects); follow(\.worktreeMode)
         return draft
     }
 }

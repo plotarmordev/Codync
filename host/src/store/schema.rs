@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 /// Current schema version (kv `schema`). `hello` carries it: a migration may rewrite or delete rows in place, so
 /// a client whose copy was synced under another schema fetches the conversation again.
-pub const SCHEMA: i64 = 13;
+pub const SCHEMA: i64 = 14;
 
 /// 3: authorized devices (keys, not push tickets) with their push and Live Activity
 /// tickets. The old ticket-only `devices` table is dropped; phones re-register on connect.
@@ -23,6 +23,7 @@ pub const SCHEMA: i64 = 13;
 /// 11: a workflow is also a script. Runs remember which executor started them.
 /// 12: a workflow a bot creates records that bot. User-created workflows have no owner.
 /// 13: a saved version records whether it was a graph or a script.
+/// 14: a bot's `taskWorktrees` (a bool) becomes `worktreeMode` (see [`worktree_modes`]).
 fn migrate(c: &Connection) -> Result<()> {
     let version: i64 =
         c.query_row("SELECT CAST(v AS INTEGER) FROM kv WHERE k = 'schema'", [], |r| r.get(0)).optional()?.unwrap_or(0);
@@ -58,6 +59,9 @@ fn migrate(c: &Connection) -> Result<()> {
     }
     if version < 13 {
         migrate_13(c)?;
+    }
+    if version < 14 {
+        worktree_modes(c)?;
     }
     c.execute("INSERT INTO kv(k, v) VALUES('schema', ?1) ON CONFLICT(k) DO UPDATE SET v = ?1", [SCHEMA.to_string()])?;
     Ok(())
@@ -182,6 +186,17 @@ fn ensure_no_account(c: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// A stored bot's `taskWorktrees` becomes `worktreeMode`: off stays off, on is side by side. Older apps still send
+/// and read the bool (`hub::patch`, `hub::sync`), never the store.
+fn worktree_modes(c: &Connection) -> Result<()> {
+    c.execute_batch(
+        "UPDATE bots SET config = json_remove(json_set(config, '$.worktreeMode',
+             CASE json_type(config, '$.taskWorktrees') WHEN 'false' THEN 'off' ELSE 'sideBySide' END), '$.taskWorktrees')
+           WHERE json_valid(config) AND json_type(config, '$.taskWorktrees') IN ('true', 'false');",
+    )?;
+    Ok(())
+}
+
 fn migrate_10(c: &Connection) -> Result<()> {
     if table_exists(c, "workflows")? {
         return Ok(());
@@ -284,6 +299,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::WorktreeMode;
 
     fn temp_db() -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("codync-test-{}", uuid::Uuid::new_v4()));
@@ -305,7 +321,7 @@ mod tests {
         }
         let s = Store::open(&db).unwrap();
         assert!(s.devices().unwrap().is_empty());
-        assert_eq!(s.kv_get("schema").as_deref(), Some("13"));
+        assert_eq!(s.kv_get("schema").as_deref(), Some("14"));
         drop(s);
         let s = Store::open(&db).unwrap();
         assert!(s.devices().unwrap().is_empty(), "reopening keeps the new table");
@@ -328,7 +344,46 @@ mod tests {
         let s = Store::open(&db).unwrap();
         let chat: Vec<String> = s.history("b", i64::MAX, 10).unwrap().into_iter().map(|e| e.id).collect();
         assert_eq!(chat, ["info"]);
-        assert_eq!(s.kv_get("schema").as_deref(), Some("13"));
+        assert_eq!(s.kv_get("schema").as_deref(), Some("14"));
+    }
+
+    #[test]
+    fn a_stored_bots_task_worktrees_switch_becomes_its_worktree_mode() {
+        let db = temp_db();
+        {
+            let c = Connection::open(&db).unwrap();
+            Store::open(&db).unwrap();
+            c.execute_batch(
+                "UPDATE kv SET v = '13' WHERE k = 'schema';
+                 INSERT INTO bots(id, rev, config) VALUES
+                   ('b', 1, '{\"id\":\"b\",\"name\":\"B\",\"backend\":\"claude\",\"taskWorktrees\":true}'),
+                   ('off', 2, '{\"id\":\"off\",\"name\":\"O\",\"backend\":\"claude\",\"taskWorktrees\":false}'),
+                   ('task-1', 3, '{\"id\":\"task-1\",\"name\":\"B\",\"backend\":\"claude\",\"taskOf\":\"b\",\"maxAgents\":5,\"taskWorktrees\":false}'),
+                   ('always', 4, '{\"id\":\"always\",\"name\":\"A\",\"backend\":\"claude\",\"worktreeMode\":\"always\"}'),
+                   ('unsaid', 5, '{\"id\":\"unsaid\",\"name\":\"U\",\"backend\":\"claude\"}');",
+            )
+            .unwrap();
+        }
+        let s = Store::open(&db).unwrap();
+        let stored = |id: &str| -> String {
+            s.db.lock().unwrap().query_row("SELECT config FROM bots WHERE id = ?1", [id], |r| r.get(0)).unwrap()
+        };
+        for (id, mode, key) in [
+            ("b", WorktreeMode::SideBySide, true),
+            ("off", WorktreeMode::Off, true),
+            ("task-1", WorktreeMode::Off, true),
+            ("always", WorktreeMode::Always, true),
+            ("unsaid", WorktreeMode::SideBySide, false),
+        ] {
+            let cfg = s.bot(id).unwrap().expect("the bot").config;
+            assert_eq!(cfg.worktree_mode, mode, "{id}");
+            assert_eq!(stored(id).contains("worktreeMode"), key, "{id}: only what the switch said is written");
+            assert!(!stored(id).contains("taskWorktrees"), "{id}: the bool is gone from the store");
+        }
+        // A task bot's own names stay: `taskOf` and `maxAgents` are what this host reads and writes.
+        let task = s.bot("task-1").unwrap().expect("the task bot").config;
+        assert_eq!((task.task_of.as_deref(), task.max_agents), (Some("b"), 5));
+        assert_eq!(s.kv_get("schema").as_deref(), Some("14"));
     }
 
     #[test]

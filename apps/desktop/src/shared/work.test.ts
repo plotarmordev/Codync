@@ -280,6 +280,11 @@ test("try again is not offered on another bot's request, and a routine's run or 
   assert.equal(givesWay(item('a', 'waiting')), false)
   assert.equal(givesWay(item('a', 'working', { source: routine })), false)
   assert.equal(givesWay(item('a', 'needsYou', { source: request })), false)
+  // A host that says which hold a seat: only those give way, never a thread the user started.
+  assert.equal(givesWay(item('a', 'working', { seat: true })), true)
+  assert.equal(givesWay(item('a', 'working', { seat: false })), false, "the user's thread")
+  assert.equal(canCutIn([item('a', 'working', { seat: false }), item('b', 'working', { seat: true }), item('w', 'waiting', { wait: { kind: 'next', ahead: 0 } })], 1), true)
+  assert.equal(canCutIn([item('a', 'working', { seat: false }), item('w', 'waiting', { wait: { kind: 'next', ahead: 0 } })], 1), false, 'only a thread the user started works')
   // Cut in is offered only when some live item may give way.
   const waiting = item('w', 'waiting', { wait: { kind: 'next', ahead: 0 } })
   assert.equal(canCutIn([item('a', 'working', { source: routine }), item('b', 'working', { source: request }), waiting], 2), false)

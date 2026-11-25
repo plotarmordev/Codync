@@ -50,8 +50,10 @@ impl App {
             task_fallbacks: b.task_fallbacks.clone().unwrap_or_default(),
             cwd: if b.managed_workspace { String::new() } else { b.cwd.clone() },
             max_agents: b.max_agents,
-            // A bot's own folder keeps all its work in one place: no switch there.
-            task_worktrees: b.task_worktrees.filter(|_| b.git_repo && !b.managed_workspace),
+            // A bot's own folder keeps all its work in one place: no switch there. With projects, the mode instead.
+            task_worktrees: b.task_worktrees.filter(|_| b.git_repo && !b.managed_workspace && !self.projects),
+            projects: self.projects.then(|| b.projects.clone()),
+            worktree_mode: b.worktree_mode.unwrap_or_default(),
             auto: b.auto,
             mode: b.mode.clone(),
             notify: b.notify,
@@ -101,6 +103,9 @@ impl App {
         if matches!(field, Field::Fallbacks | Field::TaskFallbacks) && self.fallback_key(&mut f, k) {
             return Some(Overlay::Form(f));
         }
+        if field == Field::Projects && f.project_key(k) {
+            return Some(Overlay::Form(f));
+        }
         match k.code {
             KeyCode::Esc => return None,
             KeyCode::Char('s') if ctrl => {
@@ -120,8 +125,21 @@ impl App {
                 f.instructions.insert("\n");
             }
             KeyCode::Char('j') if ctrl && field == Field::Instructions => f.instructions.insert("\n"),
-            KeyCode::Backspace | KeyCode::Delete if field == Field::Folder => f.cwd.clear(),
-            KeyCode::Enter if field == Field::Folder => {
+            // On a host with projects the field is the bot's home: copied, never changed.
+            KeyCode::Char('c') if field == Field::Folder && f.projects.is_some() => {
+                if let Some(b) = self.bots.get(&f.bot_id) {
+                    super::copy(&b.cwd);
+                    self.flash("Copied");
+                }
+            }
+            KeyCode::Backspace | KeyCode::Delete if field == Field::Folder && f.projects.is_none() => f.cwd.clear(),
+            // A project is added with the folder picker (recent, browse, or ^L a path).
+            KeyCode::Enter if field == Field::Projects => {
+                self.overlays.push(Overlay::Form(f));
+                self.open_folder("");
+                return None;
+            }
+            KeyCode::Enter if field == Field::Folder && f.projects.is_none() => {
                 let start = f.cwd.clone();
                 self.overlays.push(Overlay::Form(f));
                 self.open_folder(&start);
@@ -169,6 +187,7 @@ impl App {
                         | Field::TaskAgent
                         | Field::MaxAgents
                         | Field::TaskWorktrees
+                        | Field::WorktreeMode
                         | Field::Approvals
                         | Field::Compaction
                         | Field::Notify
@@ -216,6 +235,7 @@ impl App {
                     }
                     Field::TaskAgent => self.cycle_task_agent(&mut f, d),
                     Field::TaskWorktrees => f.task_worktrees = f.task_worktrees.map(|on| !on),
+                    Field::WorktreeMode if !space => f.cycle_worktree_mode(d),
                     Field::MaxAgents if !space => {
                         let step = |n: u8| if d < 0 { n.saturating_sub(1) } else { n + 1 };
                         f.max_agents = f.max_agents.map(|n| step(n).clamp(1, MAX_AGENTS));
@@ -343,6 +363,14 @@ impl Form {
             "connectors": self.connectors.iter().filter(|t| t.on).map(|t| t.id.clone()).collect::<Vec<_>>(),
             "skills": self.skills.iter().filter(|t| t.on).map(|t| t.id.clone()).collect::<Vec<_>>(),
         });
+        // Only to a host with projects; it never gets a folder or the old switch, which it would read as a project and
+        // as a mode.
+        if let (Some(projects), Some(fields)) = (&self.projects, body.as_object_mut()) {
+            fields.remove("cwd");
+            fields.remove("taskWorktrees");
+            fields.insert("projects".into(), json!(projects));
+            fields.insert("worktreeMode".into(), json!(self.worktree_mode));
+        }
         // Only to a host that has Advisor mode.
         if self.advisor {
             body["taskAgent"] = json!(self.task_agent);

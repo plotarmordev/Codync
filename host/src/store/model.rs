@@ -79,9 +79,14 @@ pub struct BotConfig {
     /// already has.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub login_profile: Option<String>,
-    /// Empty for a group.
+    /// The bot's own folder (`agent::workspace::path`), always; empty for a group. A task's: the folder it works
+    /// in (a project, a worktree of one, or its bot's own folder).
     #[serde(default)]
     pub cwd: String,
+    /// The user's folders the bot sends work to (`hub::projects`): absolute paths, no two alike, the first its
+    /// default. Never a task's or a group's.
+    #[serde(default)]
+    pub projects: Vec<String>,
     #[serde(default)]
     pub permission: Permission,
     /// The agent mode to work in (see `codync_agent::modes`): its own id, or `auto` for its Auto mode under any id (an agent
@@ -181,12 +186,42 @@ pub struct BotConfig {
     /// The most tasks that work on the bot's box at once (see `chat::tasks`): 1 to [`MAX_AGENTS`].
     #[serde(default = "default_max_agents")]
     pub max_agents: u8,
-    /// A task that starts while another of the bot's works in the same git repository gets a worktree of its own
-    /// (see `chat::tasks::worktree`). Only matters where the workspace is in a repository.
-    #[serde(default = "yes")]
-    pub task_worktrees: bool,
+    /// When a task of the bot's own work or the user's gets a git worktree of its own (see
+    /// `chat::tasks::worktree`). Only matters where the task's folder is in a repository.
+    #[serde(default)]
+    pub worktree_mode: WorktreeMode,
     #[serde(default)]
     pub created_at: i64,
+}
+
+/// When a task gets a git worktree (`worktreeMode`; older apps read and send `taskWorktrees`, a bool).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum WorktreeMode {
+    /// Never: every task works in its folder.
+    Off,
+    /// When another task of the bot works in the same checkout.
+    #[default]
+    SideBySide,
+    /// Every task of the bot's own work or the user's, the first included.
+    Always,
+}
+
+impl WorktreeMode {
+    /// `taskWorktrees` on the wire: on unless off.
+    pub fn as_bool(self) -> bool {
+        self != Self::Off
+    }
+
+    /// The mode an older app means by `taskWorktrees` (`on`) over the saved `self`: on keeps Always, off is off.
+    #[must_use]
+    pub fn with_switch(self, on: bool) -> Self {
+        match (on, self) {
+            (false, _) => Self::Off,
+            (true, Self::Off) => Self::SideBySide,
+            (true, mode) => mode,
+        }
+    }
 }
 
 /// The most tasks a bot may be set to run at once.

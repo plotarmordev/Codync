@@ -272,8 +272,8 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
         let before = items.iter().find(|i| i.id == id).and_then(|i| i.after.clone());
         let before = before.and_then(|id| items.iter().position(|i| i.id == id));
         let began = before.is_some_and(|at| items[at].began);
-        // Another task of the bot works in its folder now: a new one beside it gets a worktree, in a repository.
-        let side_by_side = items::working(items) > 0;
+        // The checkouts the bot's other tasks work in now: a new one in the same checkout may get a worktree.
+        let others = if matches!(standing, Standing::Join(_)) { Vec::new() } else { checkouts(hub, items, &id) };
         let Some(at) = items.iter().position(|i| i.id == id) else { continue };
         match sources::begin(hub, &cfg.id, &mut items[at])? {
             Begin::Go => {}
@@ -301,18 +301,15 @@ fn plan(hub: &Hub, cfg: &BotConfig, items: &mut Vec<Item>, over: Option<&str>) -
             item.worktree = inherited.or(item.worktree.take());
             plan.join.push((task, item.clone()));
         } else {
-            let task = task_bot(cfg, &item.setup);
+            let task = task_bot(cfg, item);
             item.began = false;
             // One it has from before (it gave way, or is tried again) is where its work is.
             item.worktree.take_if(|w| !worktree::usable(w));
-            // A bot's own folder keeps all its work in one place, with its versions (`agent::versions`).
-            // ponytail: "beside" counts the bot's tasks wherever they work, so a task in a folder of its own may
-            // get a worktree no other task called for. Count by folder if that ever costs something.
-            let beside = cfg.task_worktrees
+            // A bot's own folder keeps all its work in one place, with its versions (`agent::versions`); a routine's
+            // run and another bot's request work where the bot said.
+            let beside = item.source.own()
                 && crate::agent::workspace::own_folder(&task).is_none()
-                && item.source.own()
-                && side_by_side
-                && worktree::in_repo(&task.cwd);
+                && worktree::beside(cfg.worktree_mode, &task.cwd, &others);
             item.place = if item.worktree.is_some() || beside { Place::Worktree } else { Place::Folder };
             item.task = Some(task.id.clone());
             {
@@ -367,11 +364,21 @@ fn begin(hub: &Arc<Hub>, bot: &str, task: &BotConfig, item: &Item, first: bool) 
     }
 }
 
+/// The checkouts (`worktree::top`) the tasks of `items` other than `except` work in now, outside a worktree.
+fn checkouts(hub: &Hub, items: &[Item], except: &str) -> Vec<std::path::PathBuf> {
+    let tasks = items.iter().filter(|i| i.id != except && i.status.live() && !i.in_worktree());
+    let folders = tasks.filter_map(|i| hub.store.bot(i.task.as_deref()?).ok().flatten()).map(|row| row.config.cwd);
+    folders.filter_map(|cwd| worktree::top(&cwd).map(std::path::Path::to_path_buf)).collect()
+}
+
 /// A task bot for `cfg`: its config (on the tasks' own agent, in Advisor mode) with what its item's `setup`
-/// changes, without what stays with the chat.
-fn task_bot(cfg: &BotConfig, setup: &items::Setup) -> BotConfig {
+/// changes, without what stays with the chat: it works in `item.folder(cfg)` and has no projects.
+fn task_bot(cfg: &BotConfig, item: &Item) -> BotConfig {
     BotConfig {
         id: format!("{TASK_PREFIX}{}", uuid::Uuid::new_v4()),
+        cwd: item.folder(cfg),
+        // Its folder is its own: the bot's projects are the bot's to send work to.
+        projects: Vec::new(),
         task_of: Some(cfg.id.clone()),
         created_at: now_ms(),
         // Its alerts are its bot's: the cards it raises in the chat, and the turn its report starts there.
@@ -392,7 +399,7 @@ fn task_bot(cfg: &BotConfig, setup: &items::Setup) -> BotConfig {
         // A task runs no tasks of its own.
         task_agent: None,
         task_fallbacks: Vec::new(),
-        ..setup.over(&crate::agent::fallback::tasks(cfg))
+        ..item.setup.over(&crate::agent::fallback::tasks(cfg))
     }
 }
 

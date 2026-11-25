@@ -141,10 +141,11 @@ impl WorkItem {
             && !matches!(self.source, Some(Source::Request(_)))
     }
 
-    /// A task has it and it may give way to an item that cuts in: only work the bot added. A routine's run or
-    /// another bot's request is stopped, never set aside.
+    /// A task has it and it may give way to an item that cuts in: only work the bot added that holds a seat. A
+    /// routine's run or another bot's request is stopped, never set aside, and a task the user started holds no
+    /// seat (`seat` false), so it never gives way.
     pub fn gives_way(&self) -> bool {
-        self.status.live() && self.source.is_none()
+        self.takes_seat() && self.source.is_none()
     }
 }
 

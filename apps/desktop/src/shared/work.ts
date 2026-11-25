@@ -367,9 +367,9 @@ export function itemLine(item: WorkItem, tr: Translate): string {
  * answer already. A routine's item runs the routine again. */
 export const canRetry = (item: WorkItem) => (item.status === 'failed' || item.status === 'stopped') && item.source?.kind !== 'request'
 
-/** A task has it and it may give way to an item that cuts in: only work the bot added. A routine's run or another
- * bot's request is stopped, never set aside. */
-export const givesWay = (item: WorkItem) => isLive(item) && item.source === null
+/** A task has it and it may give way to an item that cuts in: only work the bot added that holds a seat. A routine's
+ * run or another bot's request is stopped, never set aside, and a thread the user started (no seat) never gives way. */
+export const givesWay = (item: WorkItem) => isLive(item) && item.source === null && item.seat !== false
 
 /** Every seat is taken, so the item first in line can only start now if a task gives way, and one may. Not one that
  * follows unfinished work or waits for usage: a freed seat wouldn't start it. */

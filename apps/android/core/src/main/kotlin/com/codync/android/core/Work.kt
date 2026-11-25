@@ -249,9 +249,9 @@ fun workSections(work: List<WorkItem>, maxAgents: Int?): WorkSections {
 /** A stopped or failed item can go back to waiting: not another bot's request, which that bot asks again. A routine's runs the routine again. */
 fun canRetry(item: WorkItem): Boolean = (item.status == WorkStatus.Failed || item.status == WorkStatus.Stopped) && item.source?.kind != SourceKind.Request
 
-/** A task has it and it may give way to an item that cuts in: only work the bot added. A routine's run or another
- *  bot's request is stopped, never set aside. */
-fun givesWay(item: WorkItem): Boolean = item.status.live && item.source == null
+/** A task has it and it may give way to an item that cuts in: only work the bot added, in one of its seats. A routine's
+ *  run or another bot's request is stopped, never set aside, and a task the user started holds no seat to free. */
+fun givesWay(item: WorkItem): Boolean = item.status.live && item.source == null && item.seat != false
 
 /**
  * Every place of the bot is taken, so the item first in line can only start now if a task gives way, and one may. Not
@@ -408,3 +408,7 @@ fun sharing(entries: List<Entry>, chat: List<Entry>, task: String): List<Entry> 
 
 /** A folder's name: its path's last part (`/` or `\` separated), or the path itself. */
 fun folderName(path: String): String = path.split('/', '\\').lastOrNull { it.isNotEmpty() } ?: path
+
+/** Where it works, as a list shows it (CodyncKit `Bot.folderName`): its default project's name; null for its own folder,
+ *  which the caller names in its language; or (an older host) its project folder's name. */
+val Bot.folderName: String? get() = projects.firstOrNull()?.let(::folderName) ?: if (managedWorkspace) null else folderName(cwd)

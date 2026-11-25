@@ -23,10 +23,12 @@ mod groups;
 mod lead;
 mod order;
 mod patch;
+pub(crate) mod projects;
 mod reactions;
 mod sections;
 mod sync;
 mod validate;
+pub(crate) use patch::patched;
 pub(crate) use validate::validate;
 
 /// What a bot is doing right now (wire values: `idle` / `working` / `needsInput` / `error`).
@@ -206,6 +208,8 @@ impl Hub {
         }
         crate::chat::memory::import_old_memory(self);
         crate::chat::files::backfill_durations(&self.store)?;
+        // Before the routines and the bots' actors read what it changes.
+        projects::migrate(self);
         self.routines.restore(&self.store)?;
         crate::market::turn_on_installed_once(&self.store)?;
         for row in self.store.bots()? {

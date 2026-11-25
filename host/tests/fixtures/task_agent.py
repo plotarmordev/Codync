@@ -1,6 +1,6 @@
 """Deterministic ACP agent for the tests of a bot's box: a bot that adds and steers work, and the task that does it.
 
-In the chat: `ADD title|brief[|hold][|after=<title>]`, `STEER how|title[|brief, or the title that gives way]`,
+In the chat: `ADD title|brief[|hold][|after=<title>][|folder=<path>]`, `STEER how|title[|brief, or the title that gives way]`,
 `TELL title|words[|now]` (passes words on to an item), `STATUS`, `MESSAGE <bot id>|<request>` (asks another bot),
 `RECALL words` (looks back at the first item `recall_work` finds with them: its status, result and task's steps). In a
 task, the brief says what it does: `HOLD:<name>` works until a `release-<name>` file is in its folder, `PERMISSION`
@@ -256,6 +256,8 @@ def answer(text, session):
         for flag in flags:
             if flag.startswith("after="):
                 arguments["after"] = item_id(flag.removeprefix("after="))
+            if flag.startswith("folder="):
+                arguments["folder"] = flag.removeprefix("folder=")
         added = said(chat_tool("add_work", arguments), "Added: ")
         while "hold" in flags and not cancel.wait(0.01):
             pass

@@ -61,7 +61,7 @@ Three ways work starts:
 ## 2. Before this plan (dev, 2026-11-24)
 
 What the code did, read from it, before any change here. Kept as the reason for each part; what runs now is §1 and
-[work](../features/work.md).
+[background tasks](../features/background-tasks.md).
 
 ### Where a task works
 

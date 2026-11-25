@@ -2,7 +2,7 @@
 
 New agent bots get their own persistent folder automatically (**Own folder** in the apps). Creating a bot does not require choosing a project. An omitted or empty `cwd` in `createBot` allocates `<CODYNC_HOME>/bots/<bot-id>/workspace` (normally `~/.codync/bots/<bot-id>/workspace`). Groups do not allocate folders. An omitted or empty `backend` gets Claude when it runs on the computer, else the first runnable agent Codync knows (the terminal UI relies on this; the apps still pick it themselves for older hosts), and omitted `connectors`/`skills` turn on every installed one.
 
-The host persists the resolved absolute directory in `cwd` and exposes `managedWorkspace` in bot responses. A bot always lives in its own folder: the user's folders it sends work to are its **projects** (`projects`, the first its default), and a `cwd` set to another folder (an older app's **Choose project folder…**, a managing bot's `folder`) becomes its first project instead ([where a thread works](work.md#where-a-thread-works)). At host start, once, a bot that worked in a project moved home the same way, the project kept.
+The host persists the resolved absolute directory in `cwd` and exposes `managedWorkspace` in bot responses. A bot always lives in its own folder: the user's folders it sends work to are its **projects** (`projects`, the first its default), and a `cwd` set to another folder (an older app's **Choose project folder…**, a managing bot's `folder`) becomes its first project instead ([where a task works](background-tasks.md#where-a-task-works)). At host start, once, a bot that worked in a project moved home the same way, the project kept.
 
 ## Task execution
 

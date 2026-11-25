@@ -121,6 +121,9 @@ public struct WorkItem: Codable, Identifiable, Hashable, Sendable {
     /// older host, where every live task takes one (`takesSeat`).
     public var seat: Bool?
 
+    /// Where its task works on the computer: its folder, else its worktree's; nil when the host names neither.
+    public var wherePath: String? { [folder, worktree?.path].compactMap(\.self).first { !$0.isEmpty } }
+
     public init(id: String, title: String, status: Status, activity: String = "", task: String? = nil, wait: Wait? = nil,
                 cutIn: Bool = false, createdAt: Int64 = 0, startedAt: Int64? = nil, endedAt: Int64? = nil, result: String = "",
                 source: Source? = nil, worktree: Worktree? = nil, talk: Bool = false, talkFiles: Bool = false, folder: String? = nil, seat: Bool? = nil) {
@@ -257,6 +260,9 @@ public enum WorkAction: String, Sendable {
         case .retry: "arrow.clockwise"
         }
     }
+
+    /// It ends or takes away what the item did so far: shown in red.
+    public var destructive: Bool { self == .stop || self == .drop }
 }
 
 /// A bot's items as its details list them: Threads (what needs the user, then what is worked on), the event box
@@ -338,18 +344,6 @@ public struct WorkSections: Equatable, Sendable {
     }
 }
 
-/// All bots' work in one view: the roster's rows whose bot has a live or waiting item, in roster order, and how
-/// many items are worked on in all (the count on the view's button).
-public struct AllWork<Row> {
-    public var bots: [Row]
-    public var working: Int
-
-    public init(_ roster: [Row], work: (Row) -> [WorkItem]) {
-        bots = roster.filter { !WorkSections(work($0)).isIdle }
-        working = bots.reduce(0) { $0 + work($1).count { $0.status == .working } }
-    }
-}
-
 public extension Bot {
     /// How many agents work a bot's items at once unless the user changed it.
     static let defaultMaxAgents = 3
@@ -418,6 +412,17 @@ public extension Bot {
         if needsInput || !work.needsYou.isEmpty { return .needsYou }
         if isWorking { return .activity }
         return work.isIdle ? .lastMessage : .work
+    }
+
+    /// Where the bot stands in a list sorted by status (the desktop's `rosterRank`): it needs the user, it works, it
+    /// has work going on, the rest.
+    var statusRank: Int {
+        switch rosterLine {
+        case .needsYou: 0
+        case .activity: 1
+        case .work: 2
+        case .lastMessage: 3
+        }
     }
 }
 

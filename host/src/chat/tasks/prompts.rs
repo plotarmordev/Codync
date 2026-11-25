@@ -8,8 +8,9 @@ use std::fmt::Write as _;
 pub const BRIEF: &str = "You do long work in the background, not in this chat: the user waits on this chat and can't \
 reach you while a turn runs. Before work that needs more than a few tool calls (reading several files, changing code, \
 running builds or tests, research, writing a document), call add_work(title, brief) first, then say in a sentence that \
-it is under way and end your turn. One of your tasks (you again, in a session of its own) does it, away from this chat; its report comes back to you \
-as a message, and you tell the user what it found. Add one item per piece of work: they wait their turn in your box, and how many run at once is \
+it is under way and end your turn. One of your tasks does it away from this chat, in a session of its own that \
+sees nothing of this chat: write the brief so it stands alone (the goal, what you know, the user's words that matter, \
+what done looks like). Its report comes back to you as a message, and you tell the user what it found. Add one item per piece of work: they wait their turn in your box, and how many run at once is \
 the user's setting. For more of the same work, add an item with after: the id of the one it continues. steer_work moves \
 an item first, starts it now, replaces its brief or stops it. tell_work passes words on to an item without starting it \
 again: what the user adds about work under way, a fact it needs. recall_work looks back at your work, ended items too, \
@@ -29,15 +30,10 @@ pub fn reminder(briefed: bool, known: bool) -> Option<&'static str> {
     if briefed { known.then_some(EACH_TURN) } else { Some(BRIEF) }
 }
 
-/// What a task is told to work on `item`: what it is, the work, what the user said, and how its words reach the
-/// user. `first`: the task is new; otherwise it goes on in the session it has. What it says a task can't do is what
-/// `tools::refuse_chat_only` and the other servers' `refuse_in_task` refuse.
+/// What a task is told to work on `item`: what it is, the work, what the user said, and that its last message is
+/// its report. `first`: the task is new; otherwise it goes on in the session it has.
 pub(super) fn item_prompt(item: &Item, first: bool) -> String {
-    let lead = if first {
-        "[Task] You are continuing as the same bot, away from the chat, on"
-    } else {
-        "[Task] Next, in this same session, with what you did before in mind"
-    };
+    let lead = if first { "[Task]" } else { "[Task] Next, in this same session, with what you did before in mind:" };
     let mut said = said(item);
     if item.cut_in {
         said.push_str(
@@ -46,13 +42,10 @@ pub(super) fn item_prompt(item: &Item, first: bool) -> String {
         );
     }
     format!(
-        "{lead}: \"{}\".\n\n{}{said}\n\n\
+        "{lead} \"{}\".\n\n{}{said}\n\n\
          [Codync: work until it's done. Don't end your turn while something you started in the background still \
          runs: wait for it and report its result. Your last message is the report the chat gets, so end with what \
-         you did and found. Messages you send with send_message show in this task, not in the chat. Approvals \
-         reach the user in the chat, and so does what the user must see or decide before you can go on: \
-         request_decision asks them there, send_file and publish_artifact share there. You can't add more work, set \
-         a follow-up or message another bot from here: say in your report what you need.]",
+         you did and found. What you need that you can't do from here, say in your report.]",
         item.title, item.brief
     )
 }
@@ -124,8 +117,8 @@ pub(super) fn picked_up(item: &Item) -> String {
         |text| format!("[Codync: what you reported when it ended:]\n{}", codync_agent::acp::truncate(text, 2_000)),
     );
     format!(
-        "[Task] You are the same bot, away from the chat. You worked on \"{}\" before, in a session that can't be \
-         picked up, so this is a new one. What it was:\n\n{}{said}\n\n{reported}\n\n\
+        "[Task] You worked on \"{}\" before, in a session that can't be picked up, so this is a new one. What it \
+         was:\n\n{}{said}\n\n{reported}\n\n\
          [Codync: the user now writes to you about it. See what is already done before doing anything again.]",
         item.title, item.brief
     )
@@ -245,7 +238,7 @@ mod tests {
         }))
         .expect("an item");
         let prompt = picked_up(&item);
-        assert!(prompt.starts_with("[Task] You are the same bot, away from the chat. You worked on \"Fix login\""));
+        assert!(prompt.starts_with("[Task] You worked on \"Fix login\" before"), "{prompt}");
         assert!(prompt.contains(
             "The redirect drops the path.\n\n[The user's own words: «fix the login thing»]\n\n\
              [The user said since: «keep the query»]\n\n[Codync: what you reported when it ended:]\nAll green."
@@ -261,9 +254,7 @@ mod tests {
         }))
         .expect("an item");
         let prompt = item_prompt(&item, true);
-        assert!(
-            prompt.starts_with("[Task] You are continuing as the same bot, away from the chat, on: \"Fix login\".")
-        );
+        assert!(prompt.starts_with("[Task] \"Fix login\".\n\nThe redirect drops the path."), "{prompt}");
         assert!(prompt.contains(
             "The redirect drops the path.\n\n[The user's own words: «fix the login thing»]\n\n\
              [The user said since: «and keep the query»]\n\n[Your chat passed on: «the API page too»]\n\n\

@@ -1,5 +1,9 @@
 package com.codync.android
 
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.jsonObject
+
 // The user's hand on a bot's box: order, cutting in, stopping, dropping and trying again. The host decides what runs.
 
 /** A waiting item moves to the front. */
@@ -23,3 +27,25 @@ private fun AppStore.changeWork(method: String, botId: String, itemId: String) =
 
 /** Busy while one of [botId]'s work changes is out. */
 internal fun workKey(botId: String) = "work:$botId"
+
+/** How long a started thread may take to arrive through sync with its thread before its bot's details open instead (iOS `threadStarted`). */
+private const val THREAD_START_MILLIS = 10_000L
+
+/**
+ * Starts a thread with [botId] on [text], on the bot's own settings (`startThread`); [started] closes what it was written
+ * in. Its item arrives through sync: once it has a task, its bot's details open at that task; one with none by then (it
+ * waits behind others, or never came) opens its bot's details.
+ */
+internal fun AppStore.startThread(botId: String, text: String, started: () -> Unit) = action(startThreadKey(botId)) {
+    val reply = ready().call("startThread", body("botId" to botId, "text" to text.trim())).jsonObject
+    val owner = reply.text("botId") ?: botId
+    val itemId = reply.text("itemId")
+    started()
+    val threaded = itemId != null && withTimeoutOrNull(THREAD_START_MILLIS) {
+        state.first { now -> now.bots.any { bot -> bot.id == owner && bot.work.any { it.id == itemId && it.task != null } } }
+    } != null
+    openDetails(owner, itemId.takeIf { threaded })
+}
+
+/** Busy while a thread with [botId] is being started. */
+internal fun startThreadKey(botId: String) = "startThread:$botId"

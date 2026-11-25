@@ -92,6 +92,27 @@ fn give_way(hub: &Hub, items: &mut [Item], id: &str, gives_way: Option<&str>) ->
     Ok(released)
 }
 
+/// The working item that gives way to one cutting in: `instead_of`, else the one that started last. Only the bot's
+/// own work in one of its seats gives way: it starts again later, which a routine run or a request never does, and a
+/// task the user started frees no seat.
+fn giver(items: &mut [Item], instead_of: Option<&str>) -> Result<Option<String>> {
+    let Some(named) = instead_of else {
+        let working = items.iter().filter(|i| i.status == Status::Working && i.source.is_bot());
+        return Ok(working.max_by_key(|i| i.started_at).map(|i| i.id.clone()));
+    };
+    let item = find(items, named)?;
+    if item.status != Status::Working {
+        bail!("\"{}\" isn't working: nothing to give way", item.title);
+    }
+    if item.source.is_user() {
+        bail!("\"{}\" is a task the user started: it takes no seat, so it can't give way", item.title);
+    }
+    if !item.source.own() {
+        bail!("\"{}\" is a routine run or another bot's request: it can't give way, stop it instead", item.title);
+    }
+    Ok(Some(named.to_owned()))
+}
+
 /// A waiting item starts now. With every place taken a working item gives way (`instead_of`, else the one that
 /// started last): its task is closed, and it waits at the front to start again in a new session. With a place free,
 /// or when the item couldn't take the place anyway (it follows unfinished work, or waits for usage), this is
@@ -101,24 +122,7 @@ pub fn cut_in(hub: &Arc<Hub>, bot: &str, id: &str, instead_of: Option<&str>) -> 
     let released = items::change(hub, bot, |items| {
         waiting(items, id)?;
         let full = dispatch::places(hub, &cfg, items, None).free == 0;
-        // Only the bot's own work gives way: it starts again later, which a routine run or a request never does.
-        let gives_way = if let Some(named) = instead_of {
-            let item = find(items, named)?;
-            if item.status != Status::Working {
-                bail!("\"{}\" isn't working: nothing to give way", item.title);
-            }
-            if !item.source.own() {
-                bail!(
-                    "\"{}\" is a routine run or another bot's request: it can't give way, stop it instead",
-                    item.title
-                );
-            }
-            Some(named.to_owned())
-        } else {
-            let working = items.iter().filter(|i| i.status == Status::Working && i.source.own());
-            working.max_by_key(|i| i.started_at).map(|i| i.id.clone())
-        };
-        let gives_way = gives_way.filter(|_| full);
+        let gives_way = giver(items, instead_of)?.filter(|_| full);
         // Tried on a copy first: a session is only closed for an item that then starts.
         let mut freed = items.clone();
         let closed = give_way(hub, &mut freed, id, gives_way.as_deref())?;
@@ -235,4 +239,26 @@ pub fn retry(hub: &Arc<Hub>, bot: &str, id: &str) -> Result<()> {
     })?;
     settle(hub, bot, None);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn working(id: &str, started: i64, kind: &str) -> Item {
+        serde_json::from_value(json!({
+            "id": id, "title": id, "brief": "x", "status": "working", "order": 1, "createdAt": 0,
+            "startedAt": started, "source": {"kind": kind},
+        }))
+        .expect("an item")
+    }
+
+    #[test]
+    fn the_users_task_never_gives_way() {
+        let mut items = [working("a", 1, "bot"), working("u", 2, "user")];
+        assert_eq!(giver(&mut items, None).expect("picked").as_deref(), Some("a"), "it holds no seat to free");
+        assert!(giver(&mut items, Some("u")).is_err(), "not when named either");
+        assert_eq!(giver(&mut items, Some("a")).expect("named").as_deref(), Some("a"));
+    }
 }

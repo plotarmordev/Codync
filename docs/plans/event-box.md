@@ -184,7 +184,7 @@ apply are reused; `{count} tasks running` goes.
 ## Analytics
 
 `work_added {outcome: added | elsewhere | invalid | full | hops | failed, after, source}`, `work_finished {outcome,
-agent, start, forkFailed, minutes, error, source, worktree, kept, worktreeFailed}` (`source`: `bot`, `routine`, `request`), `work_steered {how, by: bot |
+agent, minutes, error, source, worktree, kept, worktreeFailed}` (`source`: `bot`, `routine`, `request`), `work_steered {how, by: bot |
 user}`, replacing the `task_*` events. Screen `task`
 stays: it is the item's thread view (a task's transcript before stage 11). A task's `turn_finished` carries `work`
 (its item's source), which is where an item's failure gets its reason (the agent's error, a sign-in, a rate limit);
@@ -345,8 +345,8 @@ routine's id) or `request` (with the asking bot's id). A routine run and another
 become items in the bot's box instead of turns in its chat, so the chat stays free and they count under `maxAgents`.
 Their result does not go through a turn of the coordinator: a routine item's last message is posted in the chat as
 the routine's message exactly as a routine run posts today (title, progress note, follow-ups and alerts unchanged);
-a request item's last message is the reply the asking bot receives. They start like any item (fork where the agent
-can, else a brief that carries the routine's instructions or the request). A bot whose `maxAgents` places are all
+a request item's last message is the reply the asking bot receives. They start like any item (a new session and a
+brief that carries the routine's instructions or the request). A bot whose `maxAgents` places are all
 taken makes them wait in the box like anything else. Rows show the source as the existing symbol of a routine or
 the asking bot's avatar before the title; no new words. `Try again` on a failed routine item runs the routine again.
 Rooms (group chats) keep their own path.

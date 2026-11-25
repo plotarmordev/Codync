@@ -177,6 +177,10 @@ internal sealed class AnalyticsEvent(val name: String) {
     }
     /** A message dragged sideways far enough to start a reply (iOS `replySwiped`). */
     data object ReplySwiped : AnalyticsEvent("reply_swiped")
+    /** A list's grouping or sort was switched (desktop `list_layout_changed`). */
+    data class ListLayoutChanged(val list: LayoutList, val option: LayoutOption, val on: Boolean) : AnalyticsEvent("list_layout_changed") {
+        override val properties get() = mapOf("list" to list.json, "option" to option.json, "on" to JsonPrimitive(on))
+    }
     /** A quote at the top of a message was tapped: whether the quoted message was loaded and came into view (iOS `quoteOpened`). */
     data class QuoteOpened(val found: Boolean) : AnalyticsEvent("quote_opened") {
         override val properties get() = mapOf("found" to JsonPrimitive(found))
@@ -361,6 +365,12 @@ internal enum class OutboundLink(override val wire: String) : CatalogValue {
     InstallLink("install_link"), WhatsNewFilm("whats_new_film"), Docs("docs"),
 }
 
+internal enum class LayoutList(override val wire: String) : CatalogValue { Bots("bots"), Threads("threads") }
+
+internal enum class LayoutOption(override val wire: String) : CatalogValue {
+    Folder("folder"), Bot("bot"), Computer("computer"), Status("status"), Activity("activity")
+}
+
 internal enum class DevServerUse(override val wire: String) : CatalogValue { Open("open"), Copy("copy") }
 internal enum class VoiceNoteFailure(override val wire: String) : CatalogValue { Load("load"), Playback("playback") }
 
@@ -396,7 +406,7 @@ internal enum class AnalyticsScreen(override val wire: String) : CatalogValue {
     Routines("routines"), Marketplace("marketplace"), Settings("settings"), Computers("computers"), Usage("usage"),
     Account("account"), Pairing("pairing"), VoiceSettings("voice_settings"), RemoteScreen("remote_screen"),
     Library("library"), Artifact("artifact"), Network("network"), BotComputer("bot_computer"), Task("task"), AllWork("all_work"),
-    Workflows("workflows"), Workflow("workflow"), WorkflowRun("workflowRun"), WorkflowEditor("workflowEditor"),
+    Workflows("workflows"), Workflow("workflow"), WorkflowRun("workflowRun"),
 }
 
 /** `open_timing`'s milestones, as sent (iOS `OpenPhase`). */

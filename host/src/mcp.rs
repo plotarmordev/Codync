@@ -74,7 +74,10 @@ pub async fn serve(bot: String, port: u16, server: Server) -> Result<()> {
         Server::Workflows => {
             ("codync-workflows", crate::workflows::INSTRUCTIONS.to_owned(), crate::workflows::tool_list())
         }
-        Server::Chat => ("codync-chat", crate::chat::outbox::instructions(), chat_tools()),
+        Server::Chat => {
+            let task = crate::store::is_task_id(&bot);
+            ("codync-chat", crate::chat::outbox::instructions(task), chat_tools(task))
+        }
         Server::Team => ("codync-team", crate::chat::team::INSTRUCTIONS.to_owned(), crate::chat::team::tools()),
         Server::Manage => ("codync-manage", crate::chat::manage::INSTRUCTIONS.to_owned(), crate::chat::manage::tools()),
         Server::Memory => ("codync-memory", crate::chat::memory::INSTRUCTIONS.to_owned(), crate::chat::memory::tools()),
@@ -131,8 +134,9 @@ pub async fn serve(bot: String, port: u16, server: Server) -> Result<()> {
     Ok(())
 }
 
-/// The `chat` server's tools, from each part of the host that answers them.
-pub(crate) fn chat_tools() -> Value {
+/// The `chat` server's tools, from each part of the host that answers them; a task's (`task`) without
+/// `tasks::chat_only`'s.
+pub(crate) fn chat_tools(task: bool) -> Value {
     let mut tools = crate::chat::outbox::tools();
     if let Some(list) = tools.as_array_mut() {
         list.extend(crate::chat::artifacts::tools());
@@ -142,6 +146,9 @@ pub(crate) fn chat_tools() -> Value {
         list.push(crate::chat::skills::tool());
         list.extend(crate::dev_servers::tools());
         list.extend(crate::chat::tasks::tools());
+        if task {
+            list.retain(|tool| !crate::chat::tasks::chat_only(tool["name"].as_str().unwrap_or_default()));
+        }
     }
     tools
 }
@@ -260,4 +267,28 @@ pub async fn serve_local(connector: String, port: u16) -> Result<()> {
         anyhow::bail!("Connector exited unsuccessfully");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tasks_chat_server_lists_only_what_a_task_may_call() {
+        let names = |task: bool| -> Vec<String> {
+            let tools = chat_tools(task);
+            tools.as_array().into_iter().flatten().filter_map(|t| t["name"].as_str().map(str::to_owned)).collect()
+        };
+        let (chat, task) = (names(false), names(true));
+        for kept in ["request_decision", "send_file", "publish_artifact", "list_artifacts", "start_dev_server"] {
+            assert!(task.iter().any(|n| n == kept), "{kept} missing from {task:?}");
+        }
+        let told = crate::chat::outbox::instructions(true);
+        for gone in ["send_message", "react", "save_skill", "add_work", "recall_work", "set_name", "set_fallbacks"] {
+            assert!(chat.iter().any(|n| n == gone), "the chat has {gone}");
+            assert!(!task.iter().any(|n| n == gone), "{gone} offered to a task");
+            assert!(!told.contains(gone), "a task is told of {gone}: {told}");
+        }
+        assert!(!told.contains("(pass)"), "{told}");
+    }
 }

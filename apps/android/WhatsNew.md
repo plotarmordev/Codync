@@ -24,7 +24,8 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - 聊天的輸入框改成上下兩層：上面打字，下面一排是加檔案的 +、Bot 目前的 agent 和模型、麥克風和送出鍵。點模型會打開模型面板，不必進 Bot 設定：上方選 agent，模型列滿整個畫面並附上說明（較舊的收在「更多模型」），下方一張卡片放推理強度、核准方式和快速模式。模型清單一打開就在，不用再等載入；往下拉可以重新讀取。
 - 在中國大陸也能收到推播通知了。
 - 點開 thread 會像電腦版一樣以聊天畫面全螢幕顯示：訊息和回覆是對話泡泡，卡片、檔案和 artifact 直接在 thread 裡處理；右上角「詳情」可打開 Bot 的詳細資訊。返回和詳情是浮在頂端的玻璃按鈕，內容捲動時在頂端柔和地模糊。
-- 電腦的「網路」頁會列出這台電腦上的程式開發代理會話（Claude Code、Codex 等）：標題、位址和是否正在執行。
+- 電腦的「網路」頁會列出這台電腦上的 agent 會話（Claude Code、Codex 等）：標題、位址和是否正在執行。
+- Threads 分頁的每個 thread 開頭會顯示它正在使用的 coding agent 圖示；切換到備援 agent 時，顯示最後換到的那個。
 
 ### en-US
 - Threads are no longer deleted a week after they end: scroll to the end of the Threads tab to load older ones, which open and take messages as before. To clean up on its own, pick 7, 30 or 90 days under Delete old threads for that computer in Computers; the default keeps them forever.
@@ -42,7 +43,8 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - The message box now has two layers: you type on top, and under it are the + for files, the bot's agent and model, the mic and send. Tap the model for the model panel, without opening the bot's settings: the agent at the top, its models full width with what each is for (older ones under More models), and one card with effort, Approvals and Fast mode. The list is there the moment it opens; pull down to read it again.
 - Push notifications now reach phones and computers in mainland China.
 - A thread now opens full screen as a chat, like on the desktop: messages and replies as bubbles, its cards, files and artifacts right there; Details at the top right opens the bot's details. Back and Details float at the top as glass buttons, and the thread fades softly under them as it scrolls.
-- A computer's Network page lists its coding agents' sessions (Claude Code, Codex…) and whether they run.
+- A computer's Network page lists its agents' sessions (Claude Code, Codex…) and whether they run.
+- Each thread on the Threads tab starts with the icon of the coding agent it runs on; after it falls back, the one it switched to.
 
 ## 2.53.0
 ### zh-Hant
@@ -71,9 +73,13 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 ## 2.51.0
 ### zh-Hant
 - 單獨傳送的語音訊息現在和訊息裡的語音共用同一個播放器：播放鍵、進度條和時間，檔名在下方；「下載」移到訊息選單裡。
+- 配對說明改成「配對手機」，和電腦選單上的名稱一致：Mac 選單列原本的「配對 iPhone…」現在叫「配對手機…」。
+- 第一次設定時可以直接建立 Codync Cloud 雲端電腦，不用先在電腦上安裝 Codync。
 
 ### en-US
 - A voice note sent on its own now uses the same player as one inside a message — the file's name underneath — and Download lives in the message's menu.
+- Pairing instructions now say Pair phone, as the computer's menu does.
+- First-time setup can start a Codync Cloud computer instead of installing Codync on yours.
 
 ## 2.50.0
 ### zh-Hant

@@ -130,7 +130,7 @@ struct ThreadChatView: View {
         HStack(spacing: 8) {
             if let bot {
                 if bot.plain {
-                    AgentIcon(registry: model.agentRegistry(item.agent ?? bot.backend), size: 18)
+                    AgentIcon(registry: model.agentRegistry(item.agent(of: bot) ?? bot.backend), size: 18)
                 } else {
                     CharacterAvatar(bot: bot, size: 22, animated: false)
                 }
@@ -286,7 +286,7 @@ struct ThreadComposerChips: View {
     @Environment(BotStore.self) private var model
 
     var body: some View {
-        let agent = item.agent ?? bot.backend
+        let agent = item.agent(of: bot) ?? bot.backend
         HStack(spacing: 8) {
             HStack(spacing: 6) {
                 AgentIcon(registry: model.agentRegistry(agent), size: 14)

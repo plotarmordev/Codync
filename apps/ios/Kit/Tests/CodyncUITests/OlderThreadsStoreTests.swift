@@ -28,7 +28,7 @@ import Testing
     // Dropping an older thread takes it off the list at once.
     store.loadFirstOlderThreads()
     #expect(await until { !store.olderThreads.rows.isEmpty })
-    store.dropWork("b1", task: "t1")
+    store.dropWork("b1", item: "t1")
     #expect(store.olderThreads.rows.isEmpty)
 }
 

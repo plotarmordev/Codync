@@ -51,6 +51,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * from the background, and which item. Nothing for the chat's own.
  */
 @Composable internal fun TaskLine(entry: Entry, modifier: Modifier = Modifier) {
+    if (LocalInThread.current) return
     val title = (entry.data["task"] as? JsonObject)?.let { (it["title"] as? JsonPrimitive)?.contentOrNull }?.takeIf(String::isNotEmpty) ?: return
     // A clock leads it, as the computer leads "Runs on" (iOS `Label(…, systemImage: "clock")`).
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -59,7 +60,10 @@ import kotlinx.serialization.json.jsonPrimitive
     }
 }
 
-/** One of the bot's tasks put [this] in the chat. */
+/** Rows drawn inside a thread's own chat (iOS `workThread` in the environment). */
+internal val LocalInThread = androidx.compose.runtime.compositionLocalOf { false }
+
+/** One of the bot's items put [this] in the chat (iOS `EntryData.isFromThread`): its task marks it, `data.task` an object with id and title. */
 internal val Entry.fromTask: Boolean get() = data["task"] is JsonObject
 
 /** A choice card takes the user's own words (iOS `EntryData.takesOwnWords`): not a task's, nor one only an option

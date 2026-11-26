@@ -144,9 +144,7 @@ public struct ThreadView: View {
             .onChange(of: model.cardRequest?.item.id, initial: true) { _, _ in
                 if let item = model.takeCardRequest(for: botId) { showCard(item) }
             }
-            .onChange(of: model.threadRequest?.item.id, initial: true) { _, _ in
-                if let item = model.takeThreadRequest(for: botId) { details = DetailsRequest(thread: item) }
-            }
+
             .onChange(of: model.voiceCallRequest, initial: true) { _, _ in
                 if model.takeVoiceCallRequest(for: botId) { startShortcutCall() }
             }
@@ -169,8 +167,7 @@ public struct ThreadView: View {
             .codyncSheet(item: $details) { request in
                 // A card is in this chat: another bot's details (a group member's) have none to go to.
                 let own = (request.botId ?? botId) == botId
-                BotDetailsView(botId: request.botId ?? botId, request: request, openCard: own ? { showCard($0) } : nil,
-                               openInChat: own ? { showInChat($0.id) } : nil) { artifact in
+                BotDetailsView(botId: request.botId ?? botId, request: request, openCard: own ? { showCard($0) } : nil) { artifact in
                     details = nil
                     openArtifact = artifact
                 }
@@ -205,12 +202,6 @@ public struct ThreadView: View {
         if let shown { reveal(shown) }
     }
 
-    /// Closes the details over the chat and brings the entry `id` into view: what an item's thread says its task put
-    /// here. Only among the loaded messages, like a quote.
-    private func showInChat(_ id: String) {
-        details = nil
-        if let shown = rowId(of: id) { reveal(shown) }
-    }
 
     /// The chat's row that shows the entry `id`.
     private func rowId(of id: String) -> String? {

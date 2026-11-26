@@ -112,16 +112,3 @@ private let thread = WorkThread(botId: "b1", itemId: "i1", task: "task-1")
     #expect(store.lastError == "This message's files aren't on this device anymore. Delete it and attach them again.")
 }
 
-/// The view of all bots' work asks a bot's conversation to open its details on an item's thread; only that
-/// conversation takes it, once.
-@MainActor @Test func aThreadRequestIsTakenOnceByItsOwnConversation() {
-    let (storage, suite) = context()
-    defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
-    let store = BotStore(computer: randomComputer("Mac"), storage: storage) { _ in FakeRemote(.ready(.direct)) }
-    defer { store.retire() }
-    store.requestThread(of: "b1", item: WorkItem(id: "i1", title: "Fix login", status: .working, task: "task-1"))
-    #expect(store.takeThreadRequest(for: "b2") == nil)
-    #expect(store.takeThreadRequest(for: "b1")?.id == "i1")
-    #expect(store.takeThreadRequest(for: "b1") == nil)
-    #expect(DetailsRequest(thread: WorkItem(id: "i1", title: "Fix login", status: .working)).thread?.id == "i1")
-}

@@ -41,11 +41,11 @@ private const val THREAD_START_MILLIS = 10_000L
 
 /**
  * Starts a thread on [text] (`startThread`): with [botId] on the bot's own settings, or with none on [setup]; [started]
- * closes what it was written in. Its item arrives through sync: once it has a task, its bot's details open at that
- * task (a thread without a bot: over the Threads tab, [openLoose], its box having no details); one with none by then
- * (it waits behind others, or never came) opens its bot's details, or nothing without a bot.
+ * closes what it was written in. Its item arrives through sync: once it has a task, its thread chat opens over the
+ * Threads tab ([openThread]); one with none by then (it waits behind others, or never came) opens its bot's details, or
+ * nothing without a bot.
  */
-internal fun AppStore.startThread(botId: String?, text: String, setup: JsonObject?, started: () -> Unit, openLoose: (LooseThread) -> Unit) =
+internal fun AppStore.startThread(botId: String?, text: String, setup: JsonObject?, started: () -> Unit, openThread: (ThreadRef) -> Unit) =
     action(startThreadKey(botId)) {
         val request = buildJsonObject {
             botId?.let { put("botId", it) }
@@ -60,10 +60,9 @@ internal fun AppStore.startThread(botId: String?, text: String, setup: JsonObjec
             state.first { now -> now.bots.any { bot -> bot.id == owner && bot.work.any { it.id == itemId && it.task != null } } }
         } != null
         // Sent without a bot: the box the reply names, which may not have synced in yet.
-        val plain = botId == null
         when {
-            plain && threaded && itemId != null -> openLoose(LooseThread(state.value.computer.id, owner, itemId))
-            !plain -> openDetails(owner, itemId.takeIf { threaded })
+            threaded && itemId != null -> openThread(ThreadRef(state.value.computer.id, owner, itemId))
+            botId != null -> openDetails(owner)
         }
     }
 

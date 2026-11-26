@@ -227,9 +227,11 @@ struct DiffView: View {
 /// artifact); nothing for the chat's own.
 struct TaskLine: View {
     let data: EntryData
+    /// In a thread's own chat the line says nothing new.
+    @Environment(\.workThread) private var open
 
     var body: some View {
-        if let task = data.task, !task.title.isEmpty {
+        if open == nil, let task = data.task, !task.title.isEmpty {
             Label(L10n.tr("In the background") + " · " + task.title, systemImage: "clock")
                 .font(.caption)
                 .foregroundStyle(Palette.tertiary)

@@ -28,8 +28,14 @@ internal suspend fun AppStore.loadTask(botId: String, taskId: String) {
     }
 }
 
-/** The task's transcript closed: it is let go. */
-internal fun AppStore.closeTask(taskId: String) = mutableState.update { it.copy(taskEntries = it.taskEntries - taskId) }
+/** One more thread chat shows [taskId] (the same thread can show under its bot's details over it). */
+internal fun AppStore.watchTask(taskId: String) { threadViews.merge(taskId, 1, Int::plus) }
+
+/** A thread chat of [taskId] closed: its transcript is let go once none shows it. */
+internal fun AppStore.closeTask(taskId: String) {
+    if (threadViews.compute(taskId) { _, shown -> ((shown ?: 1) - 1).takeIf { it > 0 } } != null) return
+    mutableState.update { it.copy(taskEntries = it.taskEntries - taskId) }
+}
 
 internal fun AppStore.receiveTasks(events: List<MirrorEvent>) = mutableState.update { state ->
     val received = state.taskEntries.receivingTasks(events)

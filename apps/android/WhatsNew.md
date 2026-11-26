@@ -73,9 +73,13 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 ## 2.51.0
 ### zh-Hant
 - 單獨傳送的語音訊息現在和訊息裡的語音共用同一個播放器：播放鍵、進度條和時間，檔名在下方；「下載」移到訊息選單裡。
+- 配對說明改成「配對手機」，和電腦選單上的名稱一致：Mac 選單列原本的「配對 iPhone…」現在叫「配對手機…」。
+- 第一次設定時可以直接建立 Codync Cloud 雲端電腦，不用先在電腦上安裝 Codync。
 
 ### en-US
 - A voice note sent on its own now uses the same player as one inside a message — the file's name underneath — and Download lives in the message's menu.
+- Pairing instructions now say Pair phone, as the computer's menu does.
+- First-time setup can start a Codync Cloud computer instead of installing Codync on yours.
 
 ## 2.50.0
 ### zh-Hant

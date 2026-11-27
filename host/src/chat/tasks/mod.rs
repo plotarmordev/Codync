@@ -95,6 +95,13 @@ pub struct Report {
 /// How a task's turn ended (from its actor).
 pub enum Outcome {
     Done(Option<String>),
+    /// It ended normally while work it started in the background still runs (`agent::bot::background_work`): what
+    /// runs (`running`, in words that fit "while … still runs"), and its last message (`text`). The first time its
+    /// item waits on it: that message is a progress line, not a report.
+    LeftRunning {
+        running: String,
+        text: Option<String>,
+    },
     /// Why, in words for its bot.
     Failed(Failure, String),
     /// The host couldn't give the item to its task, so no agent was ever asked; why, in words for its bot.
@@ -134,6 +141,9 @@ pub enum Failure {
     NoReport,
     /// A routine run went past its time limit.
     TimedOut,
+    /// Its task ended its turn while work it started in the background still ran, after it was asked to wait for
+    /// it once (#634).
+    Background,
 }
 
 /// State of the boxes that lives only while the host runs.
@@ -326,13 +336,27 @@ pub fn turn_over(hub: &Arc<Hub>, bot: &str, stopped: bool) {
 /// Task `cfg`'s turn ended: its item says how, its result goes where its source reads it (the bot's own work: a
 /// report, as a turn in the chat), and the dispatcher decides what the task does next. An item the user stopped
 /// reports nothing: they know. While a message the user wrote to its thread still waits for its turn the item isn't
-/// over: that turn's end is its end.
-pub fn finished(hub: &Arc<Hub>, cfg: &BotConfig, outcome: Outcome) {
-    let Some(bot) = cfg.task_of.as_deref() else { return };
+/// over: that turn's end is its end. Nor is it the first time its turn ends while what it started in the background
+/// still runs ([`hold`]). Whether it goes on with what the turn left running, either way: then its agent and session
+/// stay as they are.
+pub fn finished(hub: &Arc<Hub>, cfg: &BotConfig, outcome: Outcome) -> bool {
+    let Some(bot) = cfg.task_of.as_deref() else { return false };
     let (owner, task) = (bot.to_owned(), cfg.id.clone());
     let next = move |hub: &Arc<Hub>| dispatch::run(hub, &owner, Some(&task));
+    let left = matches!(outcome, Outcome::LeftRunning { .. });
+    let mut goes_on = false;
     let ended = items::change(hub, bot, |items| {
-        Ok(if thread::unheard(&hub.store, &cfg.id) { None } else { end_claimed(items, &cfg.id, outcome) })
+        goes_on = thread::unheard(&hub.store, &cfg.id);
+        if goes_on {
+            return Ok(None);
+        }
+        if let Outcome::LeftRunning { running, .. } = &outcome {
+            goes_on = hold(hub, cfg, items, running);
+            if goes_on {
+                return Ok(None);
+            }
+        }
+        Ok(end_claimed(items, &cfg.id, outcome))
     });
     match ended {
         Ok(Some(over)) => close(hub, bot, over, next),
@@ -342,6 +366,25 @@ pub fn finished(hub: &Arc<Hub>, cfg: &BotConfig, outcome: Outcome) {
             next(hub);
         }
     }
+    goes_on && left
+}
+
+/// Task `cfg` ended its turn while `running` still runs: the first time, its item goes on, and a message from the
+/// host in its thread asks it to wait for that and report then (`work_held`). Whether it does. A message that
+/// can't be posted ends the item as it is.
+fn hold(hub: &Arc<Hub>, cfg: &BotConfig, items: &mut [Item], running: &str) -> bool {
+    let item = items.iter_mut().find(|i| i.status == Status::Working && i.task.as_deref() == Some(&cfg.id));
+    let Some(item) = item.filter(|item| !item.held) else { return false };
+    let data = json!({"text": prompts::wait_for(running), "from": "host"});
+    if let Err(error) = thread::post_to(hub, cfg, data) {
+        host_error!(hub, "couldn't ask a task to wait for its background work", task = %cfg.id,
+            error = format!("{error:#}"));
+        return false;
+    }
+    item.held = true;
+    let properties = json!({"agent": cfg.backend, "source": item.source.kind()});
+    analytics::capture(hub, Event::WorkHeld, properties.as_object().cloned().unwrap_or_default());
+    true
 }
 
 /// An item that just ended, with its worktree when that is to be looked over before its report says where the
@@ -385,11 +428,7 @@ fn end(items: &mut [Item], task: &str, outcome: Outcome) -> Option<Item> {
             return None;
         }
         Outcome::Done(text) => {
-            // A report to the bot's own turn carries only so much; a routine run's or a request's result is posted
-            // whole, as its message.
-            let most = if item.source.own() { MAX_REPORT } else { usize::MAX };
-            let text = text.map(|t| codync_agent::acp::truncate(t.trim(), most)).filter(|t| !t.is_empty());
-            match text {
+            match report_text(item, text) {
                 Some(text) => (Status::Done, Some(Ok(text)), None),
                 // A routine run with nothing to tell says nothing (`(pass)`).
                 None if matches!(item.source, Source::Routine { .. }) => (Status::Done, Some(Ok(String::new())), None),
@@ -397,6 +436,15 @@ fn end(items: &mut [Item], task: &str, outcome: Outcome) -> Option<Item> {
             }
         }
         Outcome::Failed(failure, why) => (Status::Failed, Some(Err(why)), Some(failure)),
+        // Asked to wait once already, or the host couldn't ask: what it said is kept, after why.
+        Outcome::LeftRunning { running, text } => {
+            let why = format!("it ended its turn while {running} still ran");
+            let why = match report_text(item, text) {
+                Some(text) => format!("{why}. Its last message:\n\n{text}"),
+                None => why,
+            };
+            (Status::Failed, Some(Err(why)), Some(Failure::Background))
+        }
         // To its bot, and in the box, a turn that never began; only `work_finished` tells the two apart.
         Outcome::Undispatched(why) => {
             item.undispatched = true;
@@ -417,6 +465,13 @@ fn end(items: &mut [Item], task: &str, outcome: Outcome) -> Option<Item> {
         told: std::mem::take(&mut item.told),
     });
     Some(item.clone())
+}
+
+/// What its task's last message gives as `item`'s report: one to the bot's own turn carries only so much; a routine
+/// run's or a request's result is posted whole, as its message.
+fn report_text(item: &Item, text: Option<String>) -> Option<String> {
+    let most = if item.source.own() { MAX_REPORT } else { usize::MAX };
+    text.map(|t| codync_agent::acp::truncate(t.trim(), most)).filter(|t| !t.is_empty())
 }
 
 /// `work_finished` for `item`, which just ended. `agent`: the one its task was given, where a task took it (a turn
@@ -441,6 +496,10 @@ fn finished_properties(item: &Item, agent: Option<&str>) -> serde_json::Map<Stri
     }
     if item.place == worktree::Place::NoWorktree {
         properties["worktreeFailed"] = true.into();
+    }
+    // It was asked to wait for what it left running (#634): `outcome` says whether it then reported.
+    if item.held {
+        properties["held"] = true.into();
     }
     properties.as_object().cloned().unwrap_or_default()
 }
@@ -656,6 +715,29 @@ mod tests {
         assert!(stopped.status == Status::Stopped && stopped.report.is_none(), "the user knows");
         assert!(end(&mut items, "t3", Outcome::Stopped).is_none(), "its task has no item any more");
         assert_eq!(json!(Failure::EndedEarly), "ended_early");
+    }
+
+    #[test]
+    fn an_item_that_ends_its_turn_again_while_its_background_work_runs_fails_saying_what_ran() {
+        let mut items = [Item { held: true, ..working("a", "t1") }];
+        let running = "a command started in the background".to_owned();
+        let text = Some(" Still waiting for it ".to_owned());
+        let failed = end(&mut items, "t1", Outcome::LeftRunning { running, text }).expect("ended");
+        assert_eq!((failed.status, failed.failure), (Status::Failed, Some(Failure::Background)));
+        assert_eq!(
+            failed.result.as_deref(),
+            Some(
+                "it ended its turn while a command started in the background still ran. Its last message:\n\nStill waiting for it"
+            )
+        );
+        let told = finished_properties(&failed, None);
+        assert_eq!((&told["error"], &told["held"]), (&json!("background"), &json!(true)));
+        let saved = serde_json::to_value(&failed).expect("an item");
+        assert_eq!(saved["held"], true);
+        assert!(serde_json::to_value(working("b", "t2")).expect("an item").get("held").is_none(), "only once held");
+        let mut tried = failed;
+        tried.set_aside(0);
+        assert!(!tried.held, "tried again, it may be asked to wait again");
     }
 
     #[test]

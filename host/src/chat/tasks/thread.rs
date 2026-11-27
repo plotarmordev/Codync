@@ -88,10 +88,11 @@ pub(super) fn unheard(store: &Store, task: &str) -> bool {
 /// `item`'s task is closed for the item to start again (it gave way, or got a new brief): what the user wrote to
 /// its thread and no turn took yet goes with the item, as what they said since.
 pub(super) fn carry(store: &Store, item: &mut Item, task: &str) {
-    // What its chat passed on is with the item already (`tell`).
+    // What the host wrote there isn't the user's: what its chat passed on is with the item already (`tell`), and a
+    // task's new session isn't asked to wait for what the old one left running (`tasks::hold`).
     // ponytail: a waiting message's files stay behind (only their names go); move them to the new task if users
     // miss them.
-    for entry in waiting(store, task).into_iter().filter(|e| e.data["relay"] != true) {
+    for entry in waiting(store, task).into_iter().filter(|e| e.data["from"] != "host") {
         note(&mut item.notes, &carried(&entry.data));
     }
 }
@@ -131,6 +132,8 @@ fn reopen(hub: &Hub, owner: &BotConfig, item: &mut Item, task: &mut BotConfig) -
     item.started_at = Some(now_ms());
     item.ended_at = None;
     item.failure = None;
+    // A new round: its task may be asked to wait for what it leaves running once again.
+    item.held = false;
     // A worktree being looked over (`Settling`: its item just ended) is in use again too, which the look then leaves.
     // ponytail: that look may still remove an untouched one; the task then fails to start in it and says so. Hold
     // the look until no message can come if that ever shows.
@@ -340,9 +343,10 @@ mod tests {
         let hub = hub();
         let owner = bot("b1", "Mika", "/tmp");
         let mut task = BotConfig { task_of: Some("b1".into()), ..bot("task-1", "Mika", "/nowhere/it/went") };
-        let mut item = item(&json!({"result": "All green.", "endedAt": 5, "startedAt": 1}));
+        let mut item = item(&json!({"result": "All green.", "endedAt": 5, "startedAt": 1, "held": true}));
         reopen(&hub, &owner, &mut item, &mut task).expect("reopened");
         assert_eq!((item.status, item.ended_at, item.result.as_deref()), (Status::Working, None, None));
+        assert!(!item.held, "a new round may be asked to wait again");
         assert!(item.restarted, "cut off now, it ends: it isn't done again from its brief");
         assert_eq!(item.said.as_deref(), Some("All green."));
         assert!(item.started_at.is_some_and(|at| at > 1), "timed from now");

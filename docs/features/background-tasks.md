@@ -295,6 +295,32 @@ An item that doesn't finish reports why, the same way: its task's agent couldn't
 failed mid-turn, or ended short of `end_turn`. Every way a task's turn ends goes through `Actor::turn_over`, so no
 item is left working with nothing behind it.
 
+### Background work left running
+
+A task whose turn ends normally (`end_turn`) while work it started in the background still runs hasn't finished
+its item: its last message is a progress line ("started the review, waiting for it to finish"), not a report, and
+ending the task would stop its agent and what runs inside it (#634). The item prompt already says not to; the host
+also checks, as a fact, never from the message's wording (`Actor::left_running`, `agent/bot/background_work.rs`):
+
+- a subagent Claude's adapter launched in the background in that turn (`isAsync`, read into `Subagent.background`);
+- a process the agent runs detached, in a session of its own (`background_work`), that wasn't there when the item's
+  round began (`Actor::detached_before`, noted as its first turn starts and kept while the item goes on with what a
+  turn left running), where nothing listens: a server left listening is meant to stay and shows among the bot's
+  [dev servers](dev-servers.md). Unsure counts as nothing, so no item waits on a guess; Windows can't tell (no
+  sessions there), so it never waits on a process.
+
+The first time (`Item::held`, saved with the item), the item stays working (`Outcome::LeftRunning` →
+`tasks::hold`): the host posts a message in the thread (`from: host`, which every client shows as what the thread was
+told) asking it to wait for that in the foreground and then report, and the agent and its session stay as they are
+(`release_spent` and `stop_spent` are skipped). That turn's end is the item's end. If it ends normally again while
+something still runs, the item fails with `Failure::Background` and the result `it ended its turn while … still ran`,
+followed by its last message, so every client shows it failed, with that reason and **Try again**. No alert goes out
+for the held turn's end. A message the user wrote to the thread that still waits comes first (`thread::unheard`) and
+doesn't use the hold up: the item goes on with the agent and session kept the same way, and that turn's end is
+checked again; a turn held for a [sign-in](#fallbacks-and-sign-in) never reaches this check; the watchdog looks at the waiting turn as
+at any long one; the hold adds no hop (no report, `MAX_HOPS`). Analytics: `work_held` when an item is held, and
+`work_finished` says `held` with how it then ended.
+
 ## Approvals
 
 A task's permission request becomes a card in **its bot's chat**, with `data.task = {id, title}` (the task bot's id,
@@ -658,7 +684,9 @@ only recalled, never listed.
   `hello.threadKeepDays`, a `threadKeepDays {days}` event to connected apps) deletes a task that many days after it
   last ended: the archived item, its parked task bot with its transcript (`Hub::delete_bot`), its own folder (a
   thread without a bot) and an untouched worktree. A task that worked a later item stays with it. It runs at host
-  start, once a day and as the choice changes. Writing to a task reopens it and its clock starts again when it ends.
+  start, once a day and as the choice changes. The `threadKeepDays` event goes out after the deletion, as the choice
+  changes and whenever the daily look deleted some, and apps list their older tasks again on every one, the same
+  number or not. Writing to a task reopens it and its clock starts again when it ends.
 - **Listed.** `olderThreads {botId?, before?}` → `{threads, more}`: the ended tasks of `botId`, else of every
   bot on the computer, that ended before `before` (the `endedAt` of the oldest one the app has paged; none for the
   newest), newest first, 30 a page, from the boxes and the archive; a page never splits tasks that ended in the same
@@ -811,7 +839,13 @@ per task and reason in a row. Never a title or text. The bot's turn is `turn_fin
 - What a task's agent runs inside its own process (a harness's background agents and shells in the agent's session)
   ends when the task does: its process and that session's processes are stopped (`Acp::kill`). A program it
   detached into a session of its own (a server from its shell) isn't reached and keeps running; one left listening
-  shows among the bot's [dev servers](dev-servers.md).
+  shows among the bot's [dev servers](dev-servers.md). Only some of that holds its item when the turn ends
+  ([background work left running](#background-work-left-running)): a background shell a harness keeps in its own
+  session (whether Claude Code's `run_in_background` does isn't checked yet), another adapter's in-process background
+  work, and on Windows any process aren't seen, and a Claude background subagent only in the turn that launched it
+  (it never says that it finished), so a held turn, or one a waiting message took first, that ends again while it
+  runs is done, not failed. Asked to wait for a subagent that already finished in its turn, the task reports then. A detached
+  process meant to stay that doesn't listen (a watcher, a daemon) holds its item once, then fails it.
 - A task ends as soon as its item does when nothing waits to follow it, so `after` is for work that is still
   working or waiting.
 - A routine's run in a task has its `send_message` refused as before, and what it wrote reaches the chat when it

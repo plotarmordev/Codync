@@ -555,13 +555,20 @@ impl Actor {
         tasks::reported(&self.hub, &self.cfg.id, &items);
     }
 
-    /// The turn is over, however it ended (or never began): a task's item says how and its bot gets the report;
-    /// the items a bot added in the turn may start.
-    pub(super) fn turn_over(&mut self, outcome: Outcome) {
+    /// The turn is over, however it ended (or never began): a thread's task says how and its bot gets the report;
+    /// the tasks a bot added in the turn may start. Whether the thread's task goes on with what the turn left running
+    /// instead, which then stays as it is ([`tasks::finished`]).
+    pub(super) fn turn_over(&mut self, outcome: Outcome) -> bool {
         if self.cfg.is_task() {
-            tasks::finished(&self.hub, &self.cfg, outcome);
+            let goes_on = tasks::finished(&self.hub, &self.cfg, outcome);
+            if !goes_on {
+                // Its task's next round begins from what runs then.
+                self.detached_before = None;
+            }
+            goes_on
         } else {
             tasks::turn_over(&self.hub, &self.cfg.id, matches!(outcome, Outcome::Stopped));
+            false
         }
     }
 
